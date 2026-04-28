@@ -91,7 +91,7 @@ and `sanitizePayment` — that are the only supported way to ship a
 the wire. Anything not on the allowlist (e.g. `password`,
 `inviteToken`, `failedPasswordChangeAttempts`, the OAuth tokens in
 `Organization.integrations`, the `squareCredentials` /
-`cardpointeCredentials` blobs on locations, `cardpointeProfileId`
+`cloverCredentials` blobs on locations, `cloverCustomerId`
 on bowlers, or any future sensitive column on `payments`) is
 dropped at the boundary so a future column cannot leak just because
 nobody noticed.

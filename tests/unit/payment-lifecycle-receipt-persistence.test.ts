@@ -9,7 +9,7 @@
  * with a mocked DB transaction, captures the values passed to
  * `tx.insert(payments).values(...)`, and asserts the receipt fields
  * are propagated for both Square (with + without buyer email) and
- * CardPointe (always false / undefined).
+ * Clover (always false / undefined).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -144,15 +144,15 @@ describe('processScheduledPaymentJob — autopay receipt persistence (Task #503)
     expect(insertedRows[0].receiptUrl).toBe('https://squareup.com/receipt/preview/sq_pay_auto_2');
   });
 
-  it('keeps receiptEmailMissing=false for CardPointe autopay (no hosted receipts)', async () => {
+  it('keeps receiptEmailMissing=false for Clover autopay (no hosted receipts)', async () => {
     mockExecuteScheduled.mockResolvedValue({
       status: 'success',
-      paymentId: 'cp_pay_auto_3',
-      providerName: 'cardpointe',
+      paymentId: 'cv_pay_auto_3',
+      providerName: 'clover',
       receiptUrl: undefined,
       receiptNumber: undefined,
       buyerEmailMissing: undefined,
-      providerRef: { cardpointeRetref: 'retref-1', cardpointeAuthcode: 'auth-1' },
+      providerRef: { cloverChargeId: 'charge-1' },
     });
 
     await processScheduledPaymentJob(baseSchedule, 'job-3', callbacks);

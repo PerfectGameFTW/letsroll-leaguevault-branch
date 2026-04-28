@@ -5,7 +5,9 @@ export interface PaymentProviderConfig {
   paymentProvider: PaymentProviderType;
   appId?: string;
   locationId?: string;
-  tokenizerUrl?: string | null;
+  merchantId?: string;
+  publicTokenizerKey?: string;
+  environment?: 'sandbox' | 'production';
 }
 
 interface UsePaymentProviderReturn {
@@ -13,7 +15,7 @@ interface UsePaymentProviderReturn {
   isLoading: boolean;
   error: string | null;
   isSquare: boolean;
-  isCardPointe: boolean;
+  isClover: boolean;
   supportsWallets: boolean;
 }
 
@@ -61,7 +63,9 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
           paymentProvider: data.paymentProvider || 'square',
           appId: data.appId,
           locationId: data.locationId,
-          tokenizerUrl: data.tokenizerUrl,
+          merchantId: data.merchantId,
+          publicTokenizerKey: data.publicTokenizerKey,
+          environment: data.environment,
         };
         configCache.set(cacheKey, { config: cfg, timestamp: Date.now() });
         if (mountedRef.current) {
@@ -84,7 +88,7 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
     isLoading,
     error,
     isSquare: provider === 'square',
-    isCardPointe: provider === 'cardpointe',
+    isClover: provider === 'clover',
     supportsWallets: provider === 'square',
   };
 }

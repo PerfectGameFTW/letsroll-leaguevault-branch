@@ -12,9 +12,9 @@ import {
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { League, Bowler } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
-import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
+import type { CloverCard } from "@/hooks/use-clover-payment";
 
-type PaymentCard = SquareCard | CardPointeCard | null;
+type PaymentCard = SquareCard | CloverCard | null;
 
 // Human-friendly cadence label for auto-pay toast copy (avoids
 // interpolating raw schedule keys into user-facing text).

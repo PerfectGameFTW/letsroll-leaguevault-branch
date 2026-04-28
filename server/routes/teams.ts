@@ -165,7 +165,7 @@ router.get("/:id/details", async (req, res) => {
     const linkedStatuses = await Promise.all(
       rawBowlers.map(b => storage.isBowlerLinked(b.id))
     );
-    // task #381: project before spreading so cardpointeProfileId /
+    // task #381: project before spreading so cloverCustomerId /
     // paymentProviderLocationId (and any future sensitive column on
     // `bowlers`) cannot ride along on the team-details payload.
     const bowlers = rawBowlers.map((b, i) => ({ ...sanitizeBowler(b), hasAccount: linkedStatuses[i] }));

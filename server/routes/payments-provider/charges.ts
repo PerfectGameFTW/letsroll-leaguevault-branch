@@ -21,7 +21,7 @@ import {
   GENERIC_PAYMENT_USER_MESSAGE,
 } from '../../services/payment-provider-factory';
 import { computePaymentSplit, buildLineItems } from '../../services/payment-execution';
-import { getProviderCustomerId, persistCardpointeProfile } from '../../services/payment-utils';
+import { getProviderCustomerId, persistCloverCustomer } from '../../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
 import { isDev } from '../../config';
 import { getProviderForLeague } from './shared.js';
@@ -277,10 +277,10 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       bowlerId, leagueId, amount,
     });
 
-    const canStoreCard = provider.providerName === 'cardpointe' || !!customerId;
+    const canStoreCard = !!customerId;
     if (req.body.storeCard && canStoreCard && sourceId && !provider.validateCardId(sourceId)) {
       try {
-        const savedCard = await provider.saveCardOnFile(sourceId, customerId || '');
+        const savedCard = await provider.saveCardOnFile(sourceId, customerId);
         if (savedCard?.id) {
           log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
@@ -293,7 +293,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
           } catch (schedError) {
             if (isDev) log.info('No payment schedule to update (normal for one-time payments)');
           }
-          await persistCardpointeProfile(provider, savedCard.id, bowlerId);
+          await persistCloverCustomer(provider, customerId, bowlerId);
         }
       } catch (error) {
         log.error('Failed to save card on file:', error);
@@ -317,8 +317,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       status: 'paid',
       type: providerNameToPaymentType(provider.providerName),
       providerPaymentId: payment.id,
-      cardpointeRetref: payment.providerRef?.cardpointeRetref,
-      cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,
+      cloverChargeId: payment.providerRef?.cloverChargeId,
       receiptUrl: payment.receiptUrl,
       receiptNumber: payment.receiptNumber,
       receiptEmailMissing: false,

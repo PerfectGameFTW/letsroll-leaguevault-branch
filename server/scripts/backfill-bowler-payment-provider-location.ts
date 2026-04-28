@@ -6,7 +6,7 @@
  * ---
  * `bowlers.paymentProviderLocationId` records the location whose
  * payment processor created the bowler's saved-customer record
- * (`paymentCustomerId` / `cardpointeProfileId`). When an account is
+ * (`paymentCustomerId` / `cloverCustomerId`). When an account is
  * deleted the deletion service (`server/services/account-deletion.ts`,
  * `collectProviderTargets`) uses that column to talk to exactly one
  * processor. Rows with the column NULL fall back to the legacy
@@ -98,10 +98,9 @@ const organizationIdFlag: number = parsedOrgIdFlag;
  *     `accessToken` (see `server/services/square-provider.ts`); the
  *     Square `locationId` is only needed for payment / order routes,
  *     not customer deletion.
- *   - CardPointe: the `CardPointePaymentProvider` constructor refuses
- *     to instantiate unless all of `merchantId`, `apiUsername`,
- *     `apiPassword`, and `siteUrl` are present (see
- *     `server/services/cardpointe-provider.ts`).
+ *   - Clover: the `CloverPaymentProvider` constructor refuses to
+ *     instantiate unless `apiToken` and `merchantId` are present
+ *     (see `server/services/clover-provider.ts`).
  *
  * Keeping this predicate aligned with the providers means we never
  * stamp a bowler with a location that the deletion service would
@@ -113,11 +112,9 @@ function isLocationPaymentConfigured(loc: Location): boolean {
     const c = loc.squareCredentials ?? {};
     return Boolean(c.accessToken && c.accessToken.trim().length > 0);
   }
-  if (provider === 'cardpointe') {
-    const c = loc.cardpointeCredentials ?? {};
-    return Boolean(
-      c.merchantId && c.apiUsername && c.apiPassword && c.siteUrl,
-    );
+  if (provider === 'clover') {
+    const c = loc.cloverCredentials ?? {};
+    return Boolean(c.apiToken && c.apiToken.trim().length > 0 && c.merchantId);
   }
   return false;
 }
@@ -154,7 +151,7 @@ async function main() {
         isNull(bowlers.paymentProviderLocationId),
         or(
           isNotNull(bowlers.paymentCustomerId),
-          isNotNull(bowlers.cardpointeProfileId),
+          isNotNull(bowlers.cloverCustomerId),
         ),
       ),
     );
@@ -163,7 +160,7 @@ async function main() {
     .select({
       id: bowlers.id,
       paymentCustomerId: bowlers.paymentCustomerId,
-      cardpointeProfileId: bowlers.cardpointeProfileId,
+      cloverCustomerId: bowlers.cloverCustomerId,
     })
     .from(bowlers)
     .where(
@@ -172,7 +169,7 @@ async function main() {
         isNull(bowlers.paymentProviderLocationId),
         or(
           isNotNull(bowlers.paymentCustomerId),
-          isNotNull(bowlers.cardpointeProfileId),
+          isNotNull(bowlers.cloverCustomerId),
         ),
       ),
     );

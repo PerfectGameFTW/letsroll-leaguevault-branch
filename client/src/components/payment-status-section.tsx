@@ -1,6 +1,6 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { useToast } from "@/hooks/use-toast";
@@ -54,7 +54,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
-  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league.locationId ?? null);
+  const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league.locationId ?? null);
 
   const { card: sqCard, isInitialized: sqInit, error: sqError, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     locationId: league.locationId ?? null,
@@ -64,19 +64,21 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   });
 
-  const { card: cpCard, isInitialized: cpInit, error: cpError, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
-    tokenizerUrl: providerConfig?.tokenizerUrl,
+  const { card: cvCard, isInitialized: cvInit, error: cvError, initializeCard: cvInitCard, cleanupCard: cvCleanup } = useCloverPayment({
+    publicTokenizerKey: providerConfig?.publicTokenizerKey,
+    merchantId: providerConfig?.merchantId,
+    environment: providerConfig?.environment,
     onError: (error) => {
-      console.error('[CardPointe Payment Error]:', error);
+      console.error('[Clover Payment Error]:', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
 
-  const card = isCardPointe ? cpCard : sqCard;
-  const isInitialized = isCardPointe ? cpInit : sqInit;
-  const squareError = isCardPointe ? cpError : sqError;
-  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
-  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
+  const card = isClover ? cvCard : sqCard;
+  const isInitialized = isClover ? cvInit : sqInit;
+  const squareError = isClover ? cvError : sqError;
+  const initializeCard = isClover ? cvInitCard : sqInitCard;
+  const cleanupCard = isClover ? cvCleanup : sqCleanup;
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],

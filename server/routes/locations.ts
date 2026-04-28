@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, handleZodError, sanitizeLocation, sanitizeLocations } from '../utils/api.js';
 import { storage } from '../storage';
-import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema, locationCardPointeCredentialsSchema, PAYMENT_PROVIDERS } from '@shared/schema';
+import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema, locationCloverCredentialsSchema, PAYMENT_PROVIDERS } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
 import { createLogger } from '../logger';
 import { clearProviderCache } from '../services/payment-provider-factory';
@@ -24,9 +24,9 @@ router.get('/', filterByOrganization, async (req: Request, res) => {
       return sendSuccess(res, []);
     }
     // task #381: deny-by-default projection (sanitizeLocations) drops
-    // `squareCredentials` / `cardpointeCredentials` blobs that used
+    // `squareCredentials` / `cloverCredentials` blobs that used
     // to ride along on the base CRUD payload. The dedicated
-    // `/square-config` / `/cardpointe-config` endpoints already
+    // `/square-config` / `/clover-config` endpoints already
     // publish the safe boolean-flag projection.
     sendSuccess(res, sanitizeLocations(locations));
   } catch (error) {
@@ -164,7 +164,7 @@ router.patch('/:id', async (req: Request, res) => {
     }
 
     const updatedLocation = await storage.updateLocation(id, cleanedData);
-    if ('paymentProvider' in cleanedData || 'squareCredentials' in cleanedData || 'cardpointeCredentials' in cleanedData) {
+    if ('paymentProvider' in cleanedData || 'squareCredentials' in cleanedData || 'cloverCredentials' in cleanedData) {
       clearProviderCache(id);
     }
     sendSuccess(res, sanitizeLocation(updatedLocation));
@@ -317,7 +317,7 @@ router.patch('/:id/square-config', async (req: Request, res) => {
   }
 });
 
-router.get('/:id/cardpointe-config', async (req: Request, res) => {
+router.get('/:id/clover-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -331,20 +331,20 @@ router.get('/:id/cardpointe-config', async (req: Request, res) => {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
-    const creds = await storage.getLocationCardPointeConfig(id);
+    const creds = await storage.getLocationCloverConfig(id);
     sendSuccess(res, {
       merchantId: creds?.merchantId || null,
-      apiUsernameConfigured: !!(creds?.apiUsername && creds.apiUsername.trim().length > 0),
-      apiPasswordConfigured: !!(creds?.apiPassword && creds.apiPassword.trim().length > 0),
-      siteUrl: creds?.siteUrl || null,
+      apiTokenConfigured: !!(creds?.apiToken && creds.apiToken.trim().length > 0),
+      publicTokenizerKey: creds?.publicTokenizerKey || null,
+      environment: creds?.environment || null,
     });
   } catch (error) {
-    log.error(`Error fetching CardPointe config for location ${req.params.id}:`, error);
-    sendError(res, 'Failed to fetch CardPointe configuration', 500, 'ServerError');
+    log.error(`Error fetching Clover config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to fetch Clover configuration', 500, 'ServerError');
   }
 });
 
-router.patch('/:id/cardpointe-config', async (req: Request, res) => {
+router.patch('/:id/clover-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -358,31 +358,31 @@ router.patch('/:id/cardpointe-config', async (req: Request, res) => {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
-    const parseResult = locationCardPointeCredentialsSchema.safeParse(req.body);
+    const parseResult = locationCloverCredentialsSchema.safeParse(req.body);
     if (!parseResult.success) {
       return handleZodError(res, parseResult.error);
     }
 
     const incoming = parseResult.data ?? {};
-    const existing = await storage.getLocationCardPointeConfig(id);
+    const existing = await storage.getLocationCloverConfig(id);
     const creds = {
       merchantId: incoming.merchantId !== undefined ? (incoming.merchantId || undefined) : (existing?.merchantId || undefined),
-      apiUsername: incoming.apiUsername !== undefined ? (incoming.apiUsername || undefined) : (existing?.apiUsername || undefined),
-      apiPassword: incoming.apiPassword !== undefined ? (incoming.apiPassword || undefined) : (existing?.apiPassword || undefined),
-      siteUrl: incoming.siteUrl !== undefined ? (incoming.siteUrl || undefined) : (existing?.siteUrl || undefined),
+      apiToken: incoming.apiToken !== undefined ? (incoming.apiToken || undefined) : (existing?.apiToken || undefined),
+      publicTokenizerKey: incoming.publicTokenizerKey !== undefined ? (incoming.publicTokenizerKey || undefined) : (existing?.publicTokenizerKey || undefined),
+      environment: incoming.environment !== undefined ? (incoming.environment || undefined) : (existing?.environment || undefined),
     };
 
-    await storage.updateLocationCardPointeConfig(id, creds);
+    await storage.updateLocationCloverConfig(id, creds);
     clearProviderCache(id);
     sendSuccess(res, {
       merchantId: creds.merchantId || null,
-      apiUsernameConfigured: !!(creds.apiUsername && creds.apiUsername.trim().length > 0),
-      apiPasswordConfigured: !!(creds.apiPassword && creds.apiPassword.trim().length > 0),
-      siteUrl: creds.siteUrl || null,
+      apiTokenConfigured: !!(creds.apiToken && creds.apiToken.trim().length > 0),
+      publicTokenizerKey: creds.publicTokenizerKey || null,
+      environment: creds.environment || null,
     });
   } catch (error) {
-    log.error(`Error updating CardPointe config for location ${req.params.id}:`, error);
-    sendError(res, 'Failed to update CardPointe configuration', 500, 'ServerError');
+    log.error(`Error updating Clover config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to update Clover configuration', 500, 'ServerError');
   }
 });
 

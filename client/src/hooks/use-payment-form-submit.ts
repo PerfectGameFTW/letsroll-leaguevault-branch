@@ -11,9 +11,9 @@ import {
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
-import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
+import type { CloverCard } from "@/hooks/use-clover-payment";
 
-export type PaymentCard = SquareCard | CardPointeCard | null;
+export type PaymentCard = SquareCard | CloverCard | null;
 
 interface UsePaymentFormSubmitOptions {
   form: UseFormReturn<InsertPayment>;
@@ -22,7 +22,7 @@ interface UsePaymentFormSubmitOptions {
   selectedSavedCardId: string;
   setPaymentError: (error: string | null) => void;
   onClose: () => void;
-  isCardPointe?: boolean;
+  isClover?: boolean;
   // optional inline email captured when the selected
   // bowler has none on file — threaded to /payments-provider/payments
   // as `buyerEmail` so Square's hosted receipt still fires.
@@ -36,7 +36,7 @@ export function usePaymentFormSubmit({
   selectedSavedCardId,
   setPaymentError,
   onClose,
-  isCardPointe = false,
+  isClover = false,
   buyerEmail,
 }: UsePaymentFormSubmitOptions) {
   const { toast } = useToast();
@@ -82,9 +82,9 @@ export function usePaymentFormSubmit({
 
         let sourceToken: string;
 
-        if (isCardPointe) {
-          const cpCard = card as CardPointeCard;
-          const result = await cpCard.tokenize();
+        if (isClover) {
+          const cvCard = card as CloverCard;
+          const result = await cvCard.tokenize();
           sourceToken = result.token;
         } else {
           const sqCard = card as SquareCard;

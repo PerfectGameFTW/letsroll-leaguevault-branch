@@ -941,10 +941,10 @@ describe('Organization Isolation', () => {
         expect(payload).not.toContain(`Vitest Iso Location ${stamp}`);
       });
 
-      it('org A GET /api/locations/:id/cardpointe-config (org B location) → 403', async () => {
+      it('org A GET /api/locations/:id/clover-config (org B location) → 403', async () => {
         expect(orgBLocationId).not.toBeNull();
         const { status, data } = await apiGet(
-          `/api/locations/${orgBLocationId}/cardpointe-config`,
+          `/api/locations/${orgBLocationId}/clover-config`,
           sessionA,
         );
         expect(status).toBe(403);

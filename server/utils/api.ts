@@ -204,10 +204,10 @@ export function sanitizeOrgs(orgs: Organization[]): SanitizedOrganization[] {
 }
 
 // Same allowlist strategy for locations (task #381). The
-// `squareCredentials` and `cardpointeCredentials` JSONB columns hold
-// the raw `accessToken` / `apiPassword` for the location's payment
+// `squareCredentials` and `cloverCredentials` JSONB columns hold
+// the raw `accessToken` / `apiToken` for the location's payment
 // processor — they MUST never appear on the wire. The dedicated
-// `/api/locations/:id/square-config` and `/cardpointe-config`
+// `/api/locations/:id/square-config` and `/clover-config`
 // endpoints already publish the safe boolean-flag projection
 // (`accessTokenConfigured: true`); the base CRUD routes had been
 // returning the raw blob alongside it for years. Anything new that
@@ -245,7 +245,7 @@ export function sanitizeLocations(locations: Location[]): SanitizedLocation[] {
 // risk live on this table:
 //
 //   1. Saved-card vault references that are not safe to publish
-//      (`cardpointeProfileId` is the handle the CardPointe API uses
+//      (`cloverCustomerId` is the handle the Clover API uses
 //      to charge the bowler's saved card; `paymentProviderLocationId`
 //      is internal routing data for the deletion service). Neither
 //      has any UI consumer today — they're dropped.
@@ -298,7 +298,7 @@ export function sanitizeBowlers(bowlers: Bowler[]): SanitizedBowler[] {
 // locations + bowlers; payments was deferred as lower-risk because
 // the only sensitive-looking columns are operational:
 //
-//   - `cardpointeAuthcode` is already printed on receipts.
+//   - `cloverChargeId` is already printed on receipts.
 //   - `idempotencyKey` is a client-supplied dedupe key.
 //
 // Both stay on the allowlist because their UI consumers depend on
@@ -325,11 +325,10 @@ const SAFE_PAYMENT_FIELDS = [
   // in view-receipt-button.tsx. Not a credential — Square treats it
   // as a public-ish reference (the dashboard URL contains it).
   'providerPaymentId',
-  // CardPointe transaction references printed on the physical
-  // receipt; the refund flow needs `cardpointeRetref` to charge a
-  // refund through CardPointe. Operational, not a credential.
-  'cardpointeRetref',
-  'cardpointeAuthcode',
+  // Clover charge reference printed on the physical receipt; the
+  // refund flow needs `cloverChargeId` to issue a refund through
+  // Clover. Operational, not a credential.
+  'cloverChargeId',
   // Client-supplied dedupe key. Surfacing it back to the same client
   // that submitted it doesn't disclose anything new.
   'idempotencyKey',

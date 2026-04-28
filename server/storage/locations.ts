@@ -3,10 +3,10 @@ import { db } from "../db.js";
 import {
   locations, leagues, paymentSchedules,
   locationSquareCredentialsSchema,
-  locationCardPointeCredentialsSchema,
+  locationCloverCredentialsSchema,
   type Location, type InsertLocation, type UpdateLocation,
   type LocationSquareCredentials,
-  type LocationCardPointeCredentials,
+  type LocationCloverCredentials,
 } from "@shared/schema";
 import { createLogger } from '../logger';
 import { encrypt, decrypt, isEncrypted } from '../utils/crypto';
@@ -32,23 +32,23 @@ function decryptSquareCreds(creds: LocationSquareCredentials | null | undefined)
   return { ...creds, accessToken: decrypted };
 }
 
-function encryptCardPointeCreds(creds: LocationCardPointeCredentials | null | undefined): LocationCardPointeCredentials | null | undefined {
+function encryptCloverCreds(creds: LocationCloverCredentials | null | undefined): LocationCloverCredentials | null | undefined {
   if (!creds) return creds;
   return {
     ...creds,
-    apiPassword: creds.apiPassword ? encrypt(creds.apiPassword) : creds.apiPassword,
+    apiToken: creds.apiToken ? encrypt(creds.apiToken) : creds.apiToken,
   };
 }
 
-function decryptCardPointeCreds(creds: LocationCardPointeCredentials | null | undefined): LocationCardPointeCredentials | null | undefined {
-  if (!creds || !creds.apiPassword) return creds;
-  if (!isEncrypted(creds.apiPassword)) return creds;
-  const decrypted = decrypt(creds.apiPassword);
+function decryptCloverCreds(creds: LocationCloverCredentials | null | undefined): LocationCloverCredentials | null | undefined {
+  if (!creds || !creds.apiToken) return creds;
+  if (!isEncrypted(creds.apiToken)) return creds;
+  const decrypted = decrypt(creds.apiToken);
   if (decrypted === null) {
-    log.error("Failed to decrypt CardPointe apiPassword — returning without password");
-    return { ...creds, apiPassword: undefined };
+    log.error("Failed to decrypt Clover apiToken — returning without token");
+    return { ...creds, apiToken: undefined };
   }
-  return { ...creds, apiPassword: decrypted };
+  return { ...creds, apiToken: decrypted };
 }
 
 export async function getLocations(organizationId: number): Promise<Location[]> {
@@ -96,7 +96,7 @@ export async function createLocation(data: InsertLocation): Promise<Location> {
   const encrypted = {
     ...data,
     squareCredentials: encryptSquareCreds(data.squareCredentials),
-    cardpointeCredentials: encryptCardPointeCreds(data.cardpointeCredentials),
+    cloverCredentials: encryptCloverCreds(data.cloverCredentials),
   };
   const [result] = await db.insert(locations).values(encrypted).returning();
   return result;
@@ -107,8 +107,8 @@ export async function updateLocation(id: number, data: UpdateLocation): Promise<
   if (data.squareCredentials !== undefined) {
     encrypted = { ...encrypted, squareCredentials: encryptSquareCreds(data.squareCredentials) };
   }
-  if (data.cardpointeCredentials !== undefined) {
-    encrypted = { ...encrypted, cardpointeCredentials: encryptCardPointeCreds(data.cardpointeCredentials) };
+  if (data.cloverCredentials !== undefined) {
+    encrypted = { ...encrypted, cloverCredentials: encryptCloverCreds(data.cloverCredentials) };
   }
   const [result] = await db.update(locations).set(encrypted).where(eq(locations.id, id)).returning();
   return result;
@@ -151,22 +151,22 @@ export async function updateLocationSquareConfig(locationId: number, creds: Loca
   return result;
 }
 
-export async function getLocationCardPointeConfig(locationId: number): Promise<LocationCardPointeCredentials | null> {
-  const [location] = await db.select({ cardpointeCredentials: locations.cardpointeCredentials }).from(locations).where(eq(locations.id, locationId));
+export async function getLocationCloverConfig(locationId: number): Promise<LocationCloverCredentials | null> {
+  const [location] = await db.select({ cloverCredentials: locations.cloverCredentials }).from(locations).where(eq(locations.id, locationId));
 
-  if (!location?.cardpointeCredentials) return null;
+  if (!location?.cloverCredentials) return null;
 
-  const parsed = locationCardPointeCredentialsSchema.safeParse(location.cardpointeCredentials);
+  const parsed = locationCloverCredentialsSchema.safeParse(location.cloverCredentials);
   if (!parsed.success) {
-    log.warn(`Malformed cardpointeCredentials JSONB for location ${locationId}:`, parsed.error.format());
+    log.warn(`Malformed cloverCredentials JSONB for location ${locationId}:`, parsed.error.format());
     return null;
   }
-  return decryptCardPointeCreds(parsed.data) ?? null;
+  return decryptCloverCreds(parsed.data) ?? null;
 }
 
-export async function updateLocationCardPointeConfig(locationId: number, creds: LocationCardPointeCredentials): Promise<Location> {
-  const encrypted = encryptCardPointeCreds(creds);
-  const [result] = await db.update(locations).set({ cardpointeCredentials: encrypted }).where(eq(locations.id, locationId)).returning();
+export async function updateLocationCloverConfig(locationId: number, creds: LocationCloverCredentials): Promise<Location> {
+  const encrypted = encryptCloverCreds(creds);
+  const [result] = await db.update(locations).set({ cloverCredentials: encrypted }).where(eq(locations.id, locationId)).returning();
   return result;
 }
 
@@ -179,8 +179,8 @@ export async function updateLocationAndDeactivateSchedules(
   if (data.squareCredentials !== undefined) {
     encrypted = { ...encrypted, squareCredentials: encryptSquareCreds(data.squareCredentials) };
   }
-  if (data.cardpointeCredentials !== undefined) {
-    encrypted = { ...encrypted, cardpointeCredentials: encryptCardPointeCreds(data.cardpointeCredentials) };
+  if (data.cloverCredentials !== undefined) {
+    encrypted = { ...encrypted, cloverCredentials: encryptCloverCreds(data.cloverCredentials) };
   }
   return db.transaction(async (tx) => {
     for (const scheduleId of scheduleIds) {
@@ -196,10 +196,10 @@ export async function getFirstPaymentConfiguredLocation(orgId: number): Promise<
     .where(eq(locations.organizationId, orgId))
     .orderBy(locations.id);
   return orgLocations.find(loc => {
-    if (loc.paymentProvider === 'cardpointe') {
-      const parsed = locationCardPointeCredentialsSchema.safeParse(loc.cardpointeCredentials);
+    if (loc.paymentProvider === 'clover') {
+      const parsed = locationCloverCredentialsSchema.safeParse(loc.cloverCredentials);
       if (!parsed.success || !parsed.data) return false;
-      return (parsed.data.merchantId ?? '').trim().length > 0;
+      return (parsed.data.apiToken ?? '').trim().length > 0 && (parsed.data.merchantId ?? '').trim().length > 0;
     }
     const parsed = locationSquareCredentialsSchema.safeParse(loc.squareCredentials);
     if (!parsed.success || !parsed.data) return false;

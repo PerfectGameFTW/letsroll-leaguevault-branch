@@ -13,7 +13,7 @@ import type {
   UserRole,
   OrgIntegrations,
   LocationSquareCredentials,
-  LocationCardPointeCredentials,
+  LocationCloverCredentials,
   PaginatedResult,
   EmailTemplate, UpdateEmailTemplate,
   DeletionRequest, InsertDeletionRequest, DeletionRequestStatus,
@@ -86,7 +86,7 @@ export interface IPaymentStorage {
   getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
-  getPaymentByCardpointeRetref(retref: string): Promise<Payment | undefined>;
+  getPaymentByCloverChargeId(chargeId: string): Promise<Payment | undefined>;
   getPaymentByProviderPaymentId(providerPaymentId: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: UpdatePayment): Promise<Payment>;
@@ -177,8 +177,8 @@ export interface ILocationStorage {
   updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location>;
   getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined>;
   getAllSquareConfiguredLocations(): Promise<Location[]>;
-  getLocationCardPointeConfig(locationId: number): Promise<LocationCardPointeCredentials | null>;
-  updateLocationCardPointeConfig(locationId: number, creds: LocationCardPointeCredentials): Promise<Location>;
+  getLocationCloverConfig(locationId: number): Promise<LocationCloverCredentials | null>;
+  updateLocationCloverConfig(locationId: number, creds: LocationCloverCredentials): Promise<Location>;
   getFirstPaymentConfiguredLocation(orgId: number): Promise<Location | undefined>;
   updateLocationAndDeactivateSchedules(id: number, data: UpdateLocation, scheduleIds: number[]): Promise<Location>;
 }

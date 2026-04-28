@@ -1,6 +1,6 @@
 import type { PaymentProvider } from './payment-provider';
 import { SquarePaymentProvider } from './square-provider';
-import { CardPointePaymentProvider } from './cardpointe-provider';
+import { CloverPaymentProvider } from './clover-provider';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
@@ -121,8 +121,8 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
     case 'square':
       provider = new SquarePaymentProvider(locationId);
       break;
-    case 'cardpointe':
-      provider = new CardPointePaymentProvider(locationId);
+    case 'clover':
+      provider = new CloverPaymentProvider(locationId);
       break;
     default:
       throw new ProviderNotConfiguredError(

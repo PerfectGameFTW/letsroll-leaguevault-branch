@@ -30,7 +30,7 @@ export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
   // Show the button for any paid card row that either has a cached
   // receipt URL or a provider payment id we can fetch by. Provider
   // resolution happens server-side in the lazy-backfill endpoint;
-  // legacy CardPointe rows simply 404 cleanly and surface a toast.
+  // legacy non-Square rows simply 404 cleanly and surface a toast.
   const isCardPaid =
     payment.status === "paid" &&
     (payment.type === "square" || payment.type === "credit_card");

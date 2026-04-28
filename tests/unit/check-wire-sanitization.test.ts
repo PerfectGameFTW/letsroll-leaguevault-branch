@@ -139,7 +139,7 @@ function makeFixture(extraFiles: Record<string, string>): string {
   organizationId: number;
   paymentProvider: string;
   squareCredentials: Record<string, unknown>;
-  cardpointeCredentials: Record<string, unknown>;
+  cloverCredentials: Record<string, unknown>;
 };
 `,
   );
@@ -154,7 +154,7 @@ function makeFixture(extraFiles: Record<string, string>): string {
   active: boolean;
   organizationId: number;
   paymentCustomerId: string | null;
-  cardpointeProfileId: string | null;
+  cloverCustomerId: string | null;
   paymentProviderLocationId: number | null;
   bnContactId: string | null;
 };
@@ -171,7 +171,7 @@ function makeFixture(extraFiles: Record<string, string>): string {
   status: string;
   type: string;
   providerPaymentId: string | null;
-  cardpointeAuthcode: string | null;
+  cloverChargeId: string | null;
   // A future sensitive column the safe-list / sanitizer would have
   // to drop, mirroring the squareCredentials shape on Location: any
   // route returning a raw Payment would ship this verbatim, so the
@@ -204,7 +204,7 @@ export type SanitizedUser = Pick<User, 'id' | 'email' | 'name' | 'createdAt'>;
 export type SanitizedOrganization = Pick<Organization, 'id' | 'name' | 'slug' | 'createdAt'>;
 export type SanitizedLocation = Pick<Location, 'id' | 'name' | 'address' | 'city' | 'state' | 'zipCode' | 'organizationId' | 'paymentProvider'>;
 export type SanitizedBowler = Pick<Bowler, 'id' | 'name' | 'email' | 'phone' | 'active' | 'organizationId' | 'paymentCustomerId' | 'bnContactId'>;
-export type SanitizedPayment = Pick<Payment, 'id' | 'bowlerId' | 'leagueId' | 'amount' | 'status' | 'type' | 'providerPaymentId' | 'cardpointeAuthcode' | 'createdAt'>;
+export type SanitizedPayment = Pick<Payment, 'id' | 'bowlerId' | 'leagueId' | 'amount' | 'status' | 'type' | 'providerPaymentId' | 'cloverChargeId' | 'createdAt'>;
 
 // Deny-list (#501): the inverse of the safe lists above. The script
 // reads these constants out of this file via the AST. Mirrors the
@@ -811,7 +811,7 @@ export function ok2() { sendSuccess(res, sanitizeLocations(locations)); }
     // so the spread+extra-key result is `SanitizedBowler & {
     // hasAccount: boolean }`, NOT structurally assignable to
     // `Bowler` (it's missing required columns like
-    // `cardpointeProfileId`). The structural pass must stay
+    // `cloverCustomerId`). The structural pass must stay
     // silent on this exact pattern.
     const dir = makeFixture({
       'server/safe.ts': `import type { Bowler } from '@shared/schema';

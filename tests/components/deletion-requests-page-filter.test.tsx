@@ -26,7 +26,7 @@ function summary(opts: { providerDeleted: boolean; bowlerId?: number }): Deletio
         bowlerId: opts.bowlerId ?? 1,
         anonymized: true,
         hadPaymentCustomerId: true,
-        hadCardpointeProfileId: false,
+        hadCloverCustomerId: false,
       },
     ],
     paymentProvider: [

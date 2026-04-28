@@ -12,7 +12,7 @@ import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.j
 import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
-import { getProviderCustomerId, persistCardpointeProfile } from '../../services/payment-utils';
+import { getProviderCustomerId, persistCloverCustomer } from '../../services/payment-utils';
 import { getProviderForLeague } from './shared.js';
 
 const log = createLogger('Payments');
@@ -48,17 +48,17 @@ router.post('/cards/:bowlerId', async (req, res) => {
       ? await getProviderForLeague(cardLeagueId)
       : await getPaymentProvider(null);
     const providerCustId = getProviderCustomerId(bowler, provider);
-    if (!providerCustId && provider.providerName !== 'cardpointe') {
+    if (!providerCustId) {
       return sendError(res, 'Bowler does not have a payment customer account', 400);
     }
 
-    const savedCard = await provider.saveCardOnFile(sourceId, providerCustId || '');
+    const savedCard = await provider.saveCardOnFile(sourceId, providerCustId);
     if (!savedCard?.id) {
       return sendError(res, 'Failed to save card on file', 500);
     }
 
     log.info('Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
-    await persistCardpointeProfile(provider, savedCard.id, bowlerId);
+    await persistCloverCustomer(provider, providerCustId, bowlerId);
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
     if (error instanceof ProviderNotConfiguredError) {

@@ -12,7 +12,7 @@
  *  - Square + bowler.email + no override          -> 200 (uses on-file email)
  *  - Square + no bowler.email + override          -> 200 (uses override)
  *  - Square + no bowler.email + no override       -> 400 BUYER_EMAIL_REQUIRED
- *  - CardPointe + no email anywhere               -> 200 (no enforcement; CP has no hosted receipts)
+ *  - Clover + no email anywhere               -> 200 (no enforcement; CP has no hosted receipts)
  */
 import {
   afterAll, afterEach, beforeAll, beforeEach,
@@ -53,8 +53,8 @@ const mockSquareProvider = {
   saveCardOnFile: vi.fn(),
   validateCardId: vi.fn().mockReturnValue(false),
 };
-const mockCardpointeProvider = {
-  providerName: 'cardpointe' as const,
+const mockCloverProvider = {
+  providerName: 'clover' as const,
   processPayment: vi.fn(),
   createOrderWithPayment: vi.fn(),
   getPayment: vi.fn(),
@@ -77,7 +77,7 @@ vi.mock('../../server/services/payment-execution', () => ({
 
 vi.mock('../../server/services/payment-utils', () => ({
   getProviderCustomerId: () => 'cust_xyz',
-  persistCardpointeProfile: vi.fn(),
+  persistCloverCustomer: vi.fn(),
 }));
 
 vi.mock('../../server/routes/payments-provider/shared', () => ({
@@ -118,7 +118,7 @@ beforeEach(() => {
   mockHasAccessToLeague.mockReset();
   mockHasAccessToBowler.mockReset();
   mockGetPaymentProvider.mockReset();
-  for (const provider of [mockSquareProvider, mockCardpointeProvider]) {
+  for (const provider of [mockSquareProvider, mockCloverProvider]) {
     for (const fn of [provider.processPayment, provider.createOrderWithPayment, provider.getPayment, provider.saveCardOnFile]) {
       (fn as ReturnType<typeof vi.fn>).mockReset();
     }
@@ -214,13 +214,13 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
     expect(mockStorage.createPayment).not.toHaveBeenCalled();
   });
 
-  it('CardPointe + NO email anywhere -> 200, enforcement does NOT trigger', async () => {
-    mockGetPaymentProvider.mockResolvedValue(mockCardpointeProvider);
+  it('Clover + NO email anywhere -> 200, enforcement does NOT trigger', async () => {
+    mockGetPaymentProvider.mockResolvedValue(mockCloverProvider);
     mockStorage.getBowler.mockResolvedValue({
-      id: 7, name: 'Pat', email: null, cardpointeProfileId: 'cp_123',
+      id: 7, name: 'Pat', email: null, cloverCustomerId: 'cv_123',
     });
-    mockCardpointeProvider.processPayment.mockResolvedValue({
-      id: 'cp_pay_c', status: 'COMPLETED', providerRef: {},
+    mockCloverProvider.processPayment.mockResolvedValue({
+      id: 'cv_pay_c', status: 'COMPLETED', providerRef: {},
     });
 
     const res = await postCharge({
@@ -228,6 +228,6 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
     });
 
     expect(res.status).toBe(200);
-    expect(mockCardpointeProvider.processPayment).toHaveBeenCalled();
+    expect(mockCloverProvider.processPayment).toHaveBeenCalled();
   });
 });

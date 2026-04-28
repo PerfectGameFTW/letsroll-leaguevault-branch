@@ -174,8 +174,8 @@ export async function getPaymentByIdempotencyKey(key: string): Promise<Payment |
   return result;
 }
 
-export async function getPaymentByCardpointeRetref(retref: string): Promise<Payment | undefined> {
-  const [result] = await db.select().from(payments).where(eq(payments.cardpointeRetref, retref)).limit(1);
+export async function getPaymentByCloverChargeId(chargeId: string): Promise<Payment | undefined> {
+  const [result] = await db.select().from(payments).where(eq(payments.cloverChargeId, chargeId)).limit(1);
   return result;
 }
 

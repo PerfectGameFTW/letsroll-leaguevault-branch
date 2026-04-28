@@ -22,7 +22,7 @@ function paymentTypeLabel(payment: Payment): string {
     case "check": return `Check #${payment.checkNumber}`;
     case "credit_card": return "Credit Card";
     case "square": return "Square";
-    case "cardpointe": return "CardPointe";
+    case "clover": return "Clover";
     default: return "Other Payment";
   }
 }
@@ -76,7 +76,7 @@ export function PaymentsTable({
               const bowler = bowlers.find((b) => b.id === payment.bowlerId);
               // Resend is offered for any paid card row; the server
               // resolves provider/receipt availability and returns a
-              // clean error for legacy CardPointe rows.
+              // clean error for non-Square rows.
               const canResend = isAdmin
                 && payment.status === 'paid'
                 && (payment.type === 'square' || payment.type === 'credit_card');

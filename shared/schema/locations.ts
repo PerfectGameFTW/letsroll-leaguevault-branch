@@ -4,7 +4,7 @@ import { z } from "zod";
 import { nameSchema } from "./constants";
 import { organizations } from "./organizations";
 
-export const PAYMENT_PROVIDERS = ['square', 'cardpointe'] as const;
+export const PAYMENT_PROVIDERS = ['square', 'clover'] as const;
 export type PaymentProviderType = (typeof PAYMENT_PROVIDERS)[number];
 
 export interface LocationSquareCredentials {
@@ -19,18 +19,21 @@ export const locationSquareCredentialsSchema = z.object({
   locationId: z.string().optional(),
 }).nullable().optional();
 
-export interface LocationCardPointeCredentials {
+export const CLOVER_ENVIRONMENTS = ['sandbox', 'production'] as const;
+export type CloverEnvironment = (typeof CLOVER_ENVIRONMENTS)[number];
+
+export interface LocationCloverCredentials {
+  apiToken?: string;
   merchantId?: string;
-  apiUsername?: string;
-  apiPassword?: string;
-  siteUrl?: string;
+  publicTokenizerKey?: string;
+  environment?: CloverEnvironment;
 }
 
-export const locationCardPointeCredentialsSchema = z.object({
+export const locationCloverCredentialsSchema = z.object({
+  apiToken: z.string().optional(),
   merchantId: z.string().optional(),
-  apiUsername: z.string().optional(),
-  apiPassword: z.string().optional(),
-  siteUrl: z.string().optional(),
+  publicTokenizerKey: z.string().optional(),
+  environment: z.enum(CLOVER_ENVIRONMENTS).optional(),
 }).nullable().optional();
 
 export const locations = pgTable("locations", {
@@ -44,7 +47,7 @@ export const locations = pgTable("locations", {
   active: boolean("active").notNull().default(true),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
   squareCredentials: jsonb("square_credentials").$type<LocationSquareCredentials>(),
-  cardpointeCredentials: jsonb("cardpointe_credentials").$type<LocationCardPointeCredentials>(),
+  cloverCredentials: jsonb("clover_credentials").$type<LocationCloverCredentials>(),
   paymentProvider: text("payment_provider").$type<PaymentProviderType>().default('square'),
 }, (table) => ({
   organizationIdx: index("locations_organization_idx").on(table.organizationId),
@@ -62,7 +65,7 @@ export const insertLocationSchema = baseLocationSchema.extend({
   active: z.boolean().default(true),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
-  cardpointeCredentials: locationCardPointeCredentialsSchema,
+  cloverCredentials: locationCloverCredentialsSchema,
   paymentProvider: z.enum(PAYMENT_PROVIDERS).default('square').optional(),
 }).omit({ id: true });
 
@@ -76,7 +79,7 @@ export const updateLocationSchema = z.object({
   active: z.boolean(),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
-  cardpointeCredentials: locationCardPointeCredentialsSchema,
+  cloverCredentials: locationCloverCredentialsSchema,
   paymentProvider: z.enum(PAYMENT_PROVIDERS),
 }).partial();
 

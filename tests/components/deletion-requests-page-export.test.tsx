@@ -21,12 +21,12 @@ const summary: DeletionExecutionSummary = {
   email: 'gone@example.com',
   user: { deleted: true, userId: 42 },
   bowlers: [
-    { bowlerId: 100, anonymized: true, hadPaymentCustomerId: true, hadCardpointeProfileId: false },
+    { bowlerId: 100, anonymized: true, hadPaymentCustomerId: true, hadCloverCustomerId: false },
     {
       bowlerId: 101,
       anonymized: false,
       hadPaymentCustomerId: false,
-      hadCardpointeProfileId: false,
+      hadCloverCustomerId: false,
       reason: 'locked by active session',
     },
   ],

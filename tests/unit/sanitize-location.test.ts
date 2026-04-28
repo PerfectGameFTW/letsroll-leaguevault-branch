@@ -29,11 +29,11 @@ function makeFullyPopulatedLocation(): Location {
       accessToken: 'sq-access-token-do-not-leak',
       locationId: 'sq-location-id-do-not-leak',
     },
-    cardpointeCredentials: {
-      merchantId: 'cp-merchant-id-do-not-leak',
-      apiUsername: 'cp-api-username-do-not-leak',
-      apiPassword: 'cp-api-password-do-not-leak',
-      siteUrl: 'cp-site-url-do-not-leak',
+    cloverCredentials: {
+      merchantId: 'cv-merchant-id-do-not-leak',
+      apiToken: 'cv-api-token-do-not-leak',
+      publicTokenizerKey: 'cv-public-key-do-not-leak',
+      environment: 'sandbox',
     },
     paymentProvider: 'square',
   };
@@ -43,7 +43,7 @@ describe('sanitizeLocation', () => {
   it('strips the known sensitive fields', () => {
     const sanitized = sanitizeLocation(makeFullyPopulatedLocation()) as Record<string, unknown>;
     expect(sanitized).not.toHaveProperty('squareCredentials');
-    expect(sanitized).not.toHaveProperty('cardpointeCredentials');
+    expect(sanitized).not.toHaveProperty('cloverCredentials');
   });
 
   it('preserves the safe fields', () => {
@@ -127,7 +127,7 @@ describe('sanitizeLocation', () => {
     expect(sanitized).toHaveLength(2);
     for (const row of sanitized) {
       expect(row).not.toHaveProperty('squareCredentials');
-      expect(row).not.toHaveProperty('cardpointeCredentials');
+      expect(row).not.toHaveProperty('cloverCredentials');
     }
     expect(sanitized[0].id).toBe(1);
     expect(sanitized[1].id).toBe(2);

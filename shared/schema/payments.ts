@@ -21,8 +21,7 @@ export const payments = pgTable("payments", {
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
   providerPaymentId: text("provider_payment_id"),
-  cardpointeRetref: text("cardpointe_retref"),
-  cardpointeAuthcode: text("cardpointe_authcode"),
+  cloverChargeId: text("clover_charge_id"),
   idempotencyKey: text("idempotency_key").unique(),
   squareRefundId: text("square_refund_id"),
   refundReason: text("refund_reason"),
@@ -31,9 +30,9 @@ export const payments = pgTable("payments", {
   // CreatePayment / RefundPayment includes one. We persist the URL +
   // human-readable receipt number Square returns so we can render a
   // "View receipt" link in the UI without a second API round-trip, and
-  // so Resend Receipt has something concrete to email out. CardPointe
-  // does not emit hosted receipts, so these stay null for that provider.
-  // See task #503.
+  // so Resend Receipt has something concrete to email out. Clover
+  // Ecommerce does not emit hosted receipts, so these stay null for
+  // that provider. See task #503.
   receiptUrl: text("receipt_url"),
   receiptNumber: text("receipt_number"),
   // True when a paid card row was created without a buyer email — i.e.
@@ -86,8 +85,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().optional(),
   providerPaymentId: z.string().optional(),
-  cardpointeRetref: z.string().optional(),
-  cardpointeAuthcode: z.string().optional(),
+  cloverChargeId: z.string().optional(),
   idempotencyKey: z.string().optional(),
   receiptUrl: z.string().optional(),
   receiptNumber: z.string().optional(),
@@ -115,8 +113,7 @@ export const updatePaymentSchema = z.object({
   type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().nullable(),
   providerPaymentId: z.string().nullable(),
-  cardpointeRetref: z.string().nullable(),
-  cardpointeAuthcode: z.string().nullable(),
+  cloverChargeId: z.string().nullable(),
   squareRefundId: z.string().nullable(),
   refundReason: z.string().nullable(),
   refundedAt: dateSchema.nullable(),

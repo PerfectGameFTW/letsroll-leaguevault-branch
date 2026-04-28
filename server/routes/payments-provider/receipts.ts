@@ -37,7 +37,7 @@ const resendBodySchema = z.object({
  * from the provider's GetPayment when the URL hasn't been cached yet.
  *
  * Returns `null` only when the receipt is genuinely unavailable (e.g.
- * cash/check, CardPointe, or Square deleted the payment). Provider
+ * cash/check, Clover, or Square deleted the payment). Provider
  * configuration errors propagate as `ProviderNotConfiguredError` so
  * the caller can map them to 422.
  */

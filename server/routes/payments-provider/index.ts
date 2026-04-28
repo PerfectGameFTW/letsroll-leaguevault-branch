@@ -2,7 +2,7 @@
  * Payment provider router (mounted at /api/payments-provider).
  *
  * Owns the **execution side** of payments: charging the payment provider
- * (Square / CardPointe), customer create/update, catalog, card vault, wallet
+ * (Square / Clover), customer create/update, catalog, card vault, wallet
  * domain registration, and idempotent payment recording for live charges.
  *
  * For straight DB CRUD over the payments table (list/update/delete/refund),

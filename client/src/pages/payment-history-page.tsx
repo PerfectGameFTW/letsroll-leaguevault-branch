@@ -8,7 +8,7 @@ import { Link, useSearch, useLocation as useWouterLocation } from "wouter";
 import { ChevronDown } from "lucide-react";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { createPayment } from "@/lib/square";
@@ -140,7 +140,7 @@ export default function PaymentHistoryPage() {
 
   const league = leagueMap.get(leagueId!);
 
-  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league?.locationId ?? null);
+  const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league?.locationId ?? null);
 
   const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     onError: (error) => {
@@ -149,18 +149,20 @@ export default function PaymentHistoryPage() {
     }
   });
 
-  const { card: cpCard, isInitialized: cpInit, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
-    tokenizerUrl: providerConfig?.tokenizerUrl,
+  const { card: cvCard, isInitialized: cvInit, initializeCard: cvInitCard, cleanupCard: cvCleanup } = useCloverPayment({
+    publicTokenizerKey: providerConfig?.publicTokenizerKey,
+    merchantId: providerConfig?.merchantId,
+    environment: providerConfig?.environment,
     onError: (error) => {
-      console.error('[CardPointe Payment Error]:', error);
+      console.error('[Clover Payment Error]:', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
 
-  const card = isCardPointe ? cpCard : sqCard;
-  const isInitialized = isCardPointe ? cpInit : sqInit;
-  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
-  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
+  const card = isClover ? cvCard : sqCard;
+  const isInitialized = isClover ? cvInit : sqInit;
+  const initializeCard = isClover ? cvInitCard : sqInitCard;
+  const cleanupCard = isClover ? cvCleanup : sqCleanup;
 
   useEffect(() => {
     if (!payDialogType) {
@@ -208,9 +210,9 @@ export default function PaymentHistoryPage() {
     // launch into an avoidable 400.
     const trimmedReceiptEmail = receiptEmail.trim();
     // only Square enforces
-    // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
+    // BUYER_EMAIL_REQUIRED server-side; Clover doesn't emit
     // hosted receipts so don't block its wallet flow either.
-    if (!isCardPointe && !bowlerEmail && !trimmedReceiptEmail) {
+    if (!isClover && !bowlerEmail && !trimmedReceiptEmail) {
       toast({
         title: 'Email required',
         description: 'Enter an email for the receipt before paying with Apple Pay / Google Pay.',
@@ -502,7 +504,7 @@ export default function PaymentHistoryPage() {
             onApplePayClick={handleApplePayClick}
             onGooglePayClick={handleGooglePayClick}
             isWalletProcessing={isWalletBusy || isWalletProcessing}
-            bowlerHasEmail={!!bowlerEmail || isCardPointe}
+            bowlerHasEmail={!!bowlerEmail || isClover}
             receiptEmail={receiptEmail}
             onReceiptEmailChange={setReceiptEmail}
           />

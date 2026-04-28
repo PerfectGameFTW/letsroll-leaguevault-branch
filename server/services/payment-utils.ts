@@ -6,26 +6,37 @@ import { createLogger } from "../logger";
 const log = createLogger('PaymentUtils');
 
 export function getProviderCustomerId(bowler: Bowler, provider: PaymentProvider): string | undefined {
-  if (provider.providerName === 'cardpointe') {
-    return bowler.cardpointeProfileId || undefined;
+  if (provider.providerName === 'clover') {
+    return bowler.cloverCustomerId || undefined;
   }
   return bowler.paymentCustomerId || undefined;
 }
 
-export async function persistCardpointeProfile(provider: PaymentProvider, cardId: string, bowlerId: number): Promise<void> {
-  if (provider.providerName === 'cardpointe' && cardId.includes('/')) {
-    const profileId = cardId.split('/')[0];
-    try {
-      // Stamp the originating location alongside the profile so the
-      // account-deletion service can target exactly one processor
-      // for cleanup later instead of scanning every league-reachable
-      // location. See task #346.
-      await storage.updateBowler(bowlerId, {
-        cardpointeProfileId: profileId,
-        paymentProviderLocationId: provider.locationId,
-      });
-    } catch (profileError) {
-      log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
-    }
+/**
+ * Persist the Clover customer id (and the originating processor
+ * location) on the bowler row after a successful save-card-on-file
+ * round-trip. The Clover save-card flow takes a customer id as input
+ * and returns a saved-source id — not the customer id itself — so the
+ * customer id is sourced from the caller-supplied `customerId` rather
+ * than the saved-card id. No-op for non-Clover providers.
+ *
+ * Stamping `paymentProviderLocationId` here lets the account-deletion
+ * service target exactly one processor for cleanup later instead of
+ * scanning every league-reachable location (see task #346).
+ */
+export async function persistCloverCustomer(
+  provider: PaymentProvider,
+  customerId: string | undefined,
+  bowlerId: number,
+): Promise<void> {
+  if (provider.providerName !== 'clover') return;
+  if (!customerId) return;
+  try {
+    await storage.updateBowler(bowlerId, {
+      cloverCustomerId: customerId,
+      paymentProviderLocationId: provider.locationId,
+    });
+  } catch (profileError) {
+    log.error('Failed to persist Clover customer ID on bowler:', profileError);
   }
 }

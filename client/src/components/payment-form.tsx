@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { Form } from "@/components/ui/form";
@@ -86,7 +86,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(leagueInfo?.locationId ?? null);
+  const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(leagueInfo?.locationId ?? null);
 
   const {
     card: squareCard,
@@ -107,13 +107,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   });
 
   const {
-    card: cpCard,
-    isInitialized: cpInitialized,
-    error: cpError,
-    initializeCard: cpInitializeCard,
-    cleanupCard: cpCleanupCard,
-  } = useCardPointePayment({
-    tokenizerUrl: providerConfig?.tokenizerUrl,
+    card: cvCard,
+    isInitialized: cvInitialized,
+    error: cvError,
+    initializeCard: cvInitializeCard,
+    cleanupCard: cvCleanupCard,
+  } = useCloverPayment({
+    publicTokenizerKey: providerConfig?.publicTokenizerKey,
+    merchantId: providerConfig?.merchantId,
+    environment: providerConfig?.environment,
     onError: (error) => {
       form.setValue("type", "cash");
       toast({
@@ -124,11 +126,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  const card = isCardPointe ? cpCard : squareCard;
-  const isInitialized = isCardPointe ? cpInitialized : squareInitialized;
-  const cardError = isCardPointe ? cpError : squareError;
-  const initializeCard = isCardPointe ? cpInitializeCard : squareInitializeCard;
-  const cleanupCard = isCardPointe ? cpCleanupCard : squareCleanupCard;
+  const card = isClover ? cvCard : squareCard;
+  const isInitialized = isClover ? cvInitialized : squareInitialized;
+  const cardError = isClover ? cvError : squareError;
+  const initializeCard = isClover ? cvInitializeCard : squareInitializeCard;
+  const cleanupCard = isClover ? cvCleanupCard : squareCleanupCard;
 
   useEffect(() => {
     if (leagueId) {
@@ -265,9 +267,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     const selected = bowlers.find((b) => b.id === bowlerId);
     const trimmedReceiptEmail = receiptEmail.trim();
     // only Square enforces
-    // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
+    // BUYER_EMAIL_REQUIRED server-side; Clover doesn't emit
     // hosted receipts so it must NOT be blocked here.
-    if (!isCardPointe && !selected?.email && !trimmedReceiptEmail) {
+    if (!isClover && !selected?.email && !trimmedReceiptEmail) {
       setPaymentError(
         'This bowler has no email on file. Enter an email for the receipt before paying with Apple Pay / Google Pay.',
       );
@@ -355,7 +357,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     selectedSavedCardId,
     setPaymentError,
     onClose,
-    isCardPointe,
+    isClover,
     buyerEmail: !bowlerHasEmail ? receiptEmail : undefined,
   });
 
@@ -418,9 +420,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
             {/* only Square enforces
                 BUYER_EMAIL_REQUIRED. Don't render the inline gate
-                for CardPointe — it has no hosted-receipt support
+                for Clover — it has no hosted-receipt support
                 and the server doesn't require buyerEmail. */}
-            {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && !isCardPointe && (
+            {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && !isClover && (
               <FormItem>
                 <FormLabel>
                   Email for receipt <span className="text-destructive">*</span>
@@ -486,9 +488,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   // none on file. Server enforces this with
                   // BUYER_EMAIL_REQUIRED; mirrored here so the user
                   // never sees an avoidable round-trip.
-                  // CardPointe doesn't
+                  // Clover doesn't
                   // enforce BUYER_EMAIL_REQUIRED so excluded here.
-                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim() && !isCardPointe)
+                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim() && !isClover)
                 }
               >
                 {form.formState.isSubmitting ? (

@@ -31,11 +31,11 @@ interface SquareLocationConfig {
   locationId: string | null;
 }
 
-interface CardPointeLocationConfig {
+interface CloverLocationConfig {
   merchantId: string | null;
-  apiUsernameConfigured: boolean;
-  apiPasswordConfigured: boolean;
-  siteUrl: string | null;
+  apiTokenConfigured: boolean;
+  publicTokenizerKey: string | null;
+  environment: 'sandbox' | 'production' | null;
 }
 
 interface PaymentLocationCardProps {
@@ -53,7 +53,7 @@ function ProviderSelector({ location }: { location: Location }) {
     onSuccess: (_, provider) => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       clearProviderConfigCache();
-      toast({ title: "Provider updated", description: `Payment provider for ${location.name} set to ${provider === 'square' ? 'Square' : 'CardPointe'}.` });
+      toast({ title: "Provider updated", description: `Payment provider for ${location.name} set to ${provider === 'square' ? 'Square' : 'Clover'}.` });
     },
     onError: (error: Error) => {
       toast({ title: "Update failed", description: error.message, variant: "destructive" });
@@ -73,7 +73,7 @@ function ProviderSelector({ location }: { location: Location }) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="square">Square</SelectItem>
-          <SelectItem value="cardpointe">CardPointe</SelectItem>
+          <SelectItem value="clover">Clover</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -232,19 +232,19 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
   );
 }
 
-function CardPointeConfigForm({ location }: PaymentLocationCardProps) {
+function CloverConfigForm({ location }: PaymentLocationCardProps) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [merchantId, setMerchantId] = useState("");
-  const [apiUsername, setApiUsername] = useState("");
-  const [apiPassword, setApiPassword] = useState("");
-  const [siteUrl, setSiteUrl] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [apiToken, setApiToken] = useState("");
+  const [publicTokenizerKey, setPublicTokenizerKey] = useState("");
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
+  const [showToken, setShowToken] = useState(false);
 
-  const { data: configResponse, isLoading } = useQuery<ApiResponse<CardPointeLocationConfig>>({
-    queryKey: ["/api/locations", location.id, "cardpointe-config"],
+  const { data: configResponse, isLoading } = useQuery<ApiResponse<CloverLocationConfig>>({
+    queryKey: ["/api/locations", location.id, "clover-config"],
     queryFn: async () => {
-      const res = await fetch(`/api/locations/${location.id}/cardpointe-config`, { credentials: "include" });
+      const res = await fetch(`/api/locations/${location.id}/clover-config`, { credentials: "include" });
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
       return res.json();
     },
@@ -252,17 +252,17 @@ function CardPointeConfigForm({ location }: PaymentLocationCardProps) {
   });
 
   const config = configResponse?.data;
-  const isConfigured = !!(config?.merchantId && config?.apiPasswordConfigured);
+  const isConfigured = !!(config?.merchantId && config?.apiTokenConfigured);
 
   const mutation = useMutation({
-    mutationFn: async (data: { merchantId?: string; apiUsername?: string; apiPassword?: string; siteUrl?: string }) => {
-      return apiRequest(`/api/locations/${location.id}/cardpointe-config`, "PATCH", data);
+    mutationFn: async (data: { merchantId?: string; apiToken?: string; publicTokenizerKey?: string; environment?: 'sandbox' | 'production' }) => {
+      return apiRequest(`/api/locations/${location.id}/clover-config`, "PATCH", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/locations", location.id, "cardpointe-config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/locations", location.id, "clover-config"] });
       clearProviderConfigCache();
-      toast({ title: "CardPointe settings saved", description: `CardPointe credentials for ${location.name} have been updated.` });
-      setApiPassword("");
+      toast({ title: "Clover settings saved", description: `Clover credentials for ${location.name} have been updated.` });
+      setApiToken("");
       setExpanded(false);
     },
     onError: (error: Error) => {
@@ -273,19 +273,19 @@ function CardPointeConfigForm({ location }: PaymentLocationCardProps) {
   function handleOpen() {
     if (config) {
       setMerchantId(config.merchantId || "");
-      setSiteUrl(config.siteUrl || "");
+      setPublicTokenizerKey(config.publicTokenizerKey || "");
+      setEnvironment((config.environment as 'sandbox' | 'production') || 'sandbox');
     }
-    setApiUsername("");
-    setApiPassword("");
+    setApiToken("");
     setExpanded(true);
   }
 
   function handleSave() {
     mutation.mutate({
       merchantId: merchantId || undefined,
-      apiUsername: apiUsername || undefined,
-      apiPassword: apiPassword || undefined,
-      siteUrl: siteUrl || undefined,
+      apiToken: apiToken || undefined,
+      publicTokenizerKey: publicTokenizerKey || undefined,
+      environment,
     });
   }
 
@@ -321,66 +321,75 @@ function CardPointeConfigForm({ location }: PaymentLocationCardProps) {
       {expanded && (
         <div className="space-y-4 pt-2">
           <p className="text-sm text-muted-foreground">
-            Enter the CardPointe credentials for <strong>{location.name}</strong>.
+            Enter the Clover credentials for <strong>{location.name}</strong>.
           </p>
 
           <div className="space-y-2">
-            <Label htmlFor={`cp-merchant-${location.id}`}>Merchant ID</Label>
+            <Label htmlFor={`cv-merchant-${location.id}`}>Merchant ID</Label>
             <Input
-              id={`cp-merchant-${location.id}`}
-              placeholder={config?.merchantId || "800000000123"}
+              id={`cv-merchant-${location.id}`}
+              placeholder={config?.merchantId || "ABC1234567890"}
               value={merchantId}
               onChange={(e) => setMerchantId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Your CardPointe Merchant ID from your CardPointe account.
+              Your Clover Merchant ID, found in your Clover Dashboard under Account &amp; Setup.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`cp-username-${location.id}`}>API Username</Label>
-            <Input
-              id={`cp-username-${location.id}`}
-              placeholder={config?.apiUsernameConfigured ? "••••••••• (configured — enter new to replace)" : "username"}
-              value={apiUsername}
-              onChange={(e) => setApiUsername(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`cp-password-${location.id}`}>API Password</Label>
+            <Label htmlFor={`cv-token-${location.id}`}>API Token</Label>
             <div className="relative">
               <Input
-                id={`cp-password-${location.id}`}
-                type={showPassword ? "text" : "password"}
-                placeholder={config?.apiPasswordConfigured ? "••••••••••••••• (configured — enter new to replace)" : "password"}
-                value={apiPassword}
-                onChange={(e) => setApiPassword(e.target.value)}
+                id={`cv-token-${location.id}`}
+                type={showToken ? "text" : "password"}
+                placeholder={config?.apiTokenConfigured ? "••••••••••••••• (configured — enter new token to replace)" : "Clover Ecommerce API token"}
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
                 className="pr-10"
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowToken(!showToken)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              API credentials from your CardPointe Gateway account.
+              Private Ecommerce API token from your Clover Developer Dashboard. Used server-side only.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`cp-site-${location.id}`}>Site URL</Label>
+            <Label htmlFor={`cv-pak-${location.id}`}>Public Tokenizer Key</Label>
             <Input
-              id={`cp-site-${location.id}`}
-              placeholder={config?.siteUrl || "fts-uat.cardconnect.com"}
-              value={siteUrl}
-              onChange={(e) => setSiteUrl(e.target.value)}
+              id={`cv-pak-${location.id}`}
+              placeholder={config?.publicTokenizerKey || "pk_..."}
+              value={publicTokenizerKey}
+              onChange={(e) => setPublicTokenizerKey(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              The CardPointe gateway hostname (e.g., fts.cardconnect.com for production).
+              Public Apple Pay/tokenization key from your Clover account. Sent to the browser to render the secure card form.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`cv-env-${location.id}`}>Environment</Label>
+            <Select
+              value={environment}
+              onValueChange={(val) => setEnvironment(val as 'sandbox' | 'production')}
+            >
+              <SelectTrigger id={`cv-env-${location.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sandbox">Sandbox</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Use Sandbox for testing and Production for live charges.
             </p>
           </div>
 
@@ -400,15 +409,15 @@ function CardPointeConfigForm({ location }: PaymentLocationCardProps) {
 
 function PaymentLocationCard({ location }: PaymentLocationCardProps) {
   const provider = (location.paymentProvider as PaymentProviderType) || 'square';
-  const isCardPointe = provider === 'cardpointe';
+  const isClover = provider === 'clover';
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isCardPointe ? 'bg-blue-600' : 'bg-black'}`}>
-              {isCardPointe ? (
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isClover ? 'bg-emerald-600' : 'bg-black'}`}>
+              {isClover ? (
                 <CreditCard className="h-5 w-5 text-white" />
               ) : (
                 <SiSquare className="h-5 w-5 text-white" />
@@ -423,8 +432,8 @@ function PaymentLocationCard({ location }: PaymentLocationCardProps) {
       </CardHeader>
       <Separator />
       <CardContent className="pt-4">
-        {isCardPointe ? (
-          <CardPointeConfigForm location={location} />
+        {isClover ? (
+          <CloverConfigForm location={location} />
         ) : (
           <SquareConfigForm location={location} />
         )}
@@ -458,7 +467,7 @@ export function SquareSection({ orgId }: SquareSectionProps) {
         </div>
         <div>
           <h3 className="text-sm font-semibold">Payment Processing</h3>
-          <p className="text-xs text-muted-foreground">Square or CardPointe — configured per location</p>
+          <p className="text-xs text-muted-foreground">Square or Clover — configured per location</p>
         </div>
       </div>
 

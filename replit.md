@@ -48,29 +48,29 @@ Validations can be re-run on demand from the agent's code-execution sandbox via 
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
 - **Database**: Neon PostgreSQL (via `pg` driver + `drizzle-orm/node-postgres`)
-- **Payments**: Provider abstraction layer (Square SDK + CardPointe Gateway)
+- **Payments**: Provider abstraction layer (Square SDK + Clover Ecommerce)
   - Backend:
     - `server/services/payment-provider.ts` - Core PaymentProvider interface + optional CatalogProvider/WalletProvider interfaces + type guards
     - `server/services/square-provider.ts` - SquarePaymentProvider wrapping existing Square SDK calls
     - `server/services/payment-provider-factory.ts` - `getPaymentProvider(locationId)` resolves provider from location config
     - `server/services/payment-execution.ts` - Provider-aware charge execution
-    - `server/services/cardpointe.ts` - CardPointe Gateway REST API client (auth, capture, void, refund, profile CRUD)
-    - `server/services/cardpointe-provider.ts` - CardPointePaymentProvider implementing PaymentProvider interface
+    - `server/services/clover.ts` - Clover Ecommerce REST API client (charge, capture, void, refund, customer/source CRUD)
+    - `server/services/clover-provider.ts` - CloverPaymentProvider implementing PaymentProvider interface
     - `server/routes/payment-routes.ts` - Provider-aware payment API (mounted at `/api/payments-provider/`)
     - `server/routes/locations.ts` - Location config routes including per-provider credential CRUD and provider switching
   - Frontend:
-    - `client/src/hooks/use-payment-provider.ts` - Fetches + caches provider config (Square vs CardPointe) per locationId
+    - `client/src/hooks/use-payment-provider.ts` - Fetches + caches provider config (Square vs Clover) per locationId
     - `client/src/hooks/use-square-payment.ts` - Square Web Payments SDK card tokenizer hook
-    - `client/src/hooks/use-cardpointe-payment.ts` - CardPointe Hosted iFrame Tokenizer hook (postMessage-based)
-    - `client/src/hooks/use-wallet-payments.ts` - Apple Pay/Google Pay (Square-only, auto-disabled for CardPointe)
+    - `client/src/hooks/use-clover-payment.ts` - Clover Ecommerce SDK iframe-element card tokenizer hook
+    - `client/src/hooks/use-wallet-payments.ts` - Apple Pay/Google Pay (Square-only, auto-disabled for Clover)
     - `client/src/hooks/use-bowler-payment-submit.ts` - Provider-agnostic bowler payment submission
     - `client/src/hooks/use-payment-form-submit.ts` - Provider-agnostic admin payment form submission
     - `client/src/lib/square.ts` - Square SDK init, tokenization, payment creation (accepts any card type)
-    - `client/src/components/square-integration-section.tsx` - Admin payment config (Square + CardPointe per location, provider selector)
+    - `client/src/components/square-integration-section.tsx` - Admin payment config (Square + Clover per location, provider selector)
   - Schema:
-    - `shared/schema/locations.ts` - `paymentProvider` field + `cardpointeCredentials` JSONB on locations table
-    - `shared/schema/bowlers.ts` - `cardpointeProfileId` for stored card profiles
-    - `shared/schema/payments.ts` - `cardpointeRetref` / `cardpointeAuthcode` for CardPointe transaction references
+    - `shared/schema/locations.ts` - `paymentProvider` field + `cloverCredentials` JSONB (apiToken/merchantId/publicTokenizerKey/environment) on locations table
+    - `shared/schema/bowlers.ts` - `cloverCustomerId` for stored Clover customer records
+    - `shared/schema/payments.ts` - `cloverChargeId` for Clover charge references
 
 ## Key Files
 - `shared/schema/` - Database schema split by domain (barrel re-exports from `shared/schema/index.ts`)

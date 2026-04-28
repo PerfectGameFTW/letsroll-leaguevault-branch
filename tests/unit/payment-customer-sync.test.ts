@@ -84,7 +84,7 @@ const baseBowler = {
   active: true,
   order: 0,
   paymentCustomerId: null as string | null,
-  cardpointeProfileId: null,
+  cloverCustomerId: null,
   bnContactId: null,
   paymentSyncPendingAt: null as string | null,
 };

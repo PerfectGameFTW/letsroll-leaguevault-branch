@@ -66,7 +66,7 @@ vi.mock('../../server/services/payment-execution', () => ({
 
 vi.mock('../../server/services/payment-utils', () => ({
   getProviderCustomerId: () => 'cust_123',
-  persistCardpointeProfile: vi.fn(),
+  persistCloverCustomer: vi.fn(),
 }));
 
 vi.mock('../../server/routes/payments-provider/shared', () => ({

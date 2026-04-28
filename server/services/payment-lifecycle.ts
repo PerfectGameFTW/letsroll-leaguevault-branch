@@ -169,11 +169,10 @@ async function handleSuccessfulPayment(
       type: providerNameToPaymentType(paymentResult.providerName || ''),
       weekOf: scheduleRecord.nextPaymentDate,
       providerPaymentId: paymentResult.paymentId,
-      cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
-      cardpointeAuthcode: paymentResult.providerRef?.cardpointeAuthcode,
+      cloverChargeId: paymentResult.providerRef?.cloverChargeId,
       // same receipt fields the one-off charge path
       // persists. `buyerEmailMissing` is meaningful for Square only —
-      // CardPointe never emits a hosted receipt regardless.
+      // Clover never emits a hosted receipt regardless.
       receiptUrl: paymentResult.receiptUrl,
       receiptNumber: paymentResult.receiptNumber,
       receiptEmailMissing:

@@ -110,7 +110,7 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
         order: 0,
         organizationId: org.id,
         paymentCustomerId: null,
-        cardpointeProfileId: null,
+        cloverCustomerId: null,
         bnContactId: null,
         paymentSyncPendingAt: null,
       })
@@ -190,7 +190,7 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
         order: 0,
         organizationId: org.id,
         paymentCustomerId: null,
-        cardpointeProfileId: null,
+        cloverCustomerId: null,
         bnContactId: null,
         paymentSyncPendingAt: null,
       })
@@ -277,7 +277,7 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
         order: 0,
         organizationId: org.id,
         paymentCustomerId: null,
-        cardpointeProfileId: null,
+        cloverCustomerId: null,
         bnContactId: null,
         paymentSyncPendingAt: null,
       })

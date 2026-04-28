@@ -294,7 +294,7 @@ describe('POST /api/account/confirm-email-change', () => {
         order: 0,
         organizationId: testOrgId,
         paymentCustomerId: null,
-        cardpointeProfileId: null,
+        cloverCustomerId: null,
         bnContactId: null,
         paymentSyncPendingAt: null,
       })

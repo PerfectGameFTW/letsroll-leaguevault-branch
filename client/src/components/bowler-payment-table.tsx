@@ -24,7 +24,7 @@ function getPaymentMethodLabel(payment: Payment) {
   switch (payment.type) {
     case 'credit_card': return 'Credit Card';
     case 'square': return 'Square';
-    case 'cardpointe': return 'CardPointe';
+    case 'clover': return 'Clover';
     case 'cash': return 'Cash';
     case 'check': return `Check #${payment.checkNumber || ''}`;
     default: return 'Other';

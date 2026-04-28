@@ -65,7 +65,7 @@ export class DatabaseStorage implements IStorage {
   getPaymentsPaginated!: IStorage["getPaymentsPaginated"];
   getPaymentById!: IStorage["getPaymentById"];
   getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
-  getPaymentByCardpointeRetref!: IStorage["getPaymentByCardpointeRetref"];
+  getPaymentByCloverChargeId!: IStorage["getPaymentByCloverChargeId"];
   getPaymentByProviderPaymentId!: IStorage["getPaymentByProviderPaymentId"];
   createPayment!: IStorage["createPayment"];
   updatePayment!: IStorage["updatePayment"];
@@ -143,8 +143,8 @@ export class DatabaseStorage implements IStorage {
   updateLocationSquareConfig!: IStorage["updateLocationSquareConfig"];
   getFirstSquareConfiguredLocation!: IStorage["getFirstSquareConfiguredLocation"];
   getAllSquareConfiguredLocations!: IStorage["getAllSquareConfiguredLocations"];
-  getLocationCardPointeConfig!: IStorage["getLocationCardPointeConfig"];
-  updateLocationCardPointeConfig!: IStorage["updateLocationCardPointeConfig"];
+  getLocationCloverConfig!: IStorage["getLocationCloverConfig"];
+  updateLocationCloverConfig!: IStorage["updateLocationCloverConfig"];
   getFirstPaymentConfiguredLocation!: IStorage["getFirstPaymentConfiguredLocation"];
   updateLocationAndDeactivateSchedules!: IStorage["updateLocationAndDeactivateSchedules"];
 

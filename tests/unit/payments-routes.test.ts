@@ -423,7 +423,7 @@ describe('POST /api/payments/:id/refund', () => {
     status: 'paid',
     amount: 2500,
     leagueId: LEAGUE_OK.id,
-    cardpointeRetref: 'RETREF-XYZ',
+    cloverChargeId: 'CHARGE-XYZ',
     providerPaymentId: null,
   };
 
@@ -437,7 +437,7 @@ describe('POST /api/payments/:id/refund', () => {
     const res = await post('/api/payments/50/refund', { reason: 'cust' }, ORG_A_USER);
     expect(res.status).toBe(200);
     expect(mockGetPaymentProvider).toHaveBeenCalledWith(LEAGUE_OK.locationId);
-    expect(refundPayment).toHaveBeenCalledWith('RETREF-XYZ', 2500, 'cust');
+    expect(refundPayment).toHaveBeenCalledWith('CHARGE-XYZ', 2500, 'cust');
     expect(mockStorage.refundPayment).toHaveBeenCalledWith(50, 'RF_1', 'cust');
     expect((await res.json()).data.status).toBe('refunded');
   });

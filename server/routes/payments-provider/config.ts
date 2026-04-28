@@ -25,12 +25,14 @@ router.get('/config', async (req, res) => {
             req.user?.role === 'system_admin' ||
             (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
           if (isAuthorized) {
-            if (loc.paymentProvider === 'cardpointe') {
-              const cpCreds = await storage.getLocationCardPointeConfig(lvLocationId);
-              if (cpCreds?.merchantId && cpCreds.merchantId.trim().length > 0 && cpCreds.siteUrl && cpCreds.siteUrl.trim().length > 0) {
+            if (loc.paymentProvider === 'clover') {
+              const clCreds = await storage.getLocationCloverConfig(lvLocationId);
+              if (clCreds?.merchantId && clCreds.merchantId.trim().length > 0) {
                 return res.json({
-                  paymentProvider: 'cardpointe',
-                  tokenizerUrl: `https://${cpCreds.siteUrl.replace(/^https?:\/\//, '')}/itoke/ajax-tokenizer.html`,
+                  paymentProvider: 'clover',
+                  merchantId: clCreds.merchantId.trim(),
+                  publicTokenizerKey: clCreds.publicTokenizerKey?.trim() || '',
+                  environment: clCreds.environment ?? 'sandbox',
                 });
               }
             }

@@ -8,10 +8,6 @@ const SENSITIVE_NAME_PATTERN = /token|secret|password|key|credential|auth/i;
 // Benign columns whose names happen to match the broadened pattern but
 // are safe to return. Add here only with explicit justification.
 const SENSITIVE_NAME_ALLOWLIST = new Set<string>([
-  // Task #504: CardPointe auth code is operational data — it's printed
-  // on the physical receipt the bowler walks away with. Stripping it
-  // would silently break the receipt rendering and the refund flow.
-  'cardpointeAuthcode',
   // Task #504: client-supplied dedupe key. The same client that
   // submitted it gets it echoed back on the deduplicated-success
   // response; it discloses nothing the caller didn't already have.
@@ -35,8 +31,7 @@ function makeFullyPopulatedPayment(): Payment {
     type: 'square',
     checkNumber: null,
     providerPaymentId: 'sq-payment-id',
-    cardpointeRetref: 'cp-retref',
-    cardpointeAuthcode: 'cp-authcode',
+    cloverChargeId: 'cv-charge-id',
     idempotencyKey: 'idem-key-1',
     squareRefundId: null,
     refundReason: null,
@@ -81,17 +76,16 @@ describe('sanitizePayment', () => {
   it('preserves the operational fields the receipts / refund / sync UI consumes', () => {
     // `providerPaymentId` powers the Square dashboard deep-link in
     // bowler-payment-history-table.tsx and the lazy receipt backfill
-    // in view-receipt-button.tsx; `cardpointeRetref` /
-    // `cardpointeAuthcode` are printed on the physical receipt and
-    // power the CardPointe refund flow; `idempotencyKey` is echoed
-    // back on the deduplicated-success response; `receiptUrl` /
-    // `receiptNumber` / `receiptEmailMissing` drive the receipt UI;
-    // `checkNumber` / `notes` are admin-visible. Dropping any of
-    // these would silently break the UI or the refund flow.
+    // in view-receipt-button.tsx; `cloverChargeId` is printed on the
+    // physical receipt and powers the Clover refund flow;
+    // `idempotencyKey` is echoed back on the deduplicated-success
+    // response; `receiptUrl` / `receiptNumber` / `receiptEmailMissing`
+    // drive the receipt UI; `checkNumber` / `notes` are admin-visible.
+    // Dropping any of these would silently break the UI or the refund
+    // flow.
     const sanitized = sanitizePayment(makeFullyPopulatedPayment());
     expect(sanitized.providerPaymentId).toBe('sq-payment-id');
-    expect(sanitized.cardpointeRetref).toBe('cp-retref');
-    expect(sanitized.cardpointeAuthcode).toBe('cp-authcode');
+    expect(sanitized.cloverChargeId).toBe('cv-charge-id');
     expect(sanitized.idempotencyKey).toBe('idem-key-1');
     expect(sanitized.receiptUrl).toBe('https://squareup.com/receipt/preview/abc');
     expect(sanitized.receiptNumber).toBe('rcpt-123');
