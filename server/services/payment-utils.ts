@@ -40,3 +40,55 @@ export async function persistCloverCustomer(
     log.error('Failed to persist Clover customer ID on bowler:', profileError);
   }
 }
+
+/**
+ * Guarantee that the bowler has a provider customer id before a
+ * save-card / list-cards / remove-card round-trip. For Square this is
+ * normally bootstrapped by the profile-update sync (see
+ * `payment-customer-sync.ts`), but Clover orgs don't run through that
+ * Square-only path, so a first-time Clover bowler would otherwise hit
+ * "no payment customer account" 400s on save-card. This helper performs
+ * a just-in-time `createOrUpdateCustomer` against the active provider
+ * and persists the resulting id on the bowler row so subsequent calls
+ * (list, charge, delete) pick it up via `getProviderCustomerId`.
+ *
+ * Returns the resolved customer id, or `undefined` if the bowler has
+ * no email (Clover requires email) or the provider call failed.
+ */
+export async function ensureProviderCustomer(
+  provider: PaymentProvider,
+  bowler: Bowler,
+): Promise<string | undefined> {
+  const existing = getProviderCustomerId(bowler, provider);
+  if (existing) return existing;
+  if (!bowler.email) return undefined;
+  try {
+    const customer = await provider.createOrUpdateCustomer(
+      bowler.name,
+      bowler.email,
+      bowler.phone ?? null,
+      `bowler:${bowler.id}`,
+    );
+    if (!customer?.id) return undefined;
+    if (provider.providerName === 'clover') {
+      await persistCloverCustomer(provider, customer.id, bowler.id);
+    } else {
+      try {
+        await storage.updateBowler(bowler.id, {
+          paymentCustomerId: customer.id,
+          paymentProviderLocationId: provider.locationId,
+        });
+      } catch (writeErr) {
+        log.error('Failed to persist provider customer ID on bowler:', writeErr);
+      }
+    }
+    return customer.id;
+  } catch (err) {
+    log.warn('ensureProviderCustomer: createOrUpdateCustomer failed', {
+      bowlerId: bowler.id,
+      providerName: provider.providerName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}

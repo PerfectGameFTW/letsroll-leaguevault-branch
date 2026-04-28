@@ -12,7 +12,7 @@ import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.j
 import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
-import { getProviderCustomerId, persistCloverCustomer } from '../../services/payment-utils';
+import { getProviderCustomerId, persistCloverCustomer, ensureProviderCustomer } from '../../services/payment-utils';
 import { getProviderForLeague } from './shared.js';
 
 const log = createLogger('Payments');
@@ -47,7 +47,11 @@ router.post('/cards/:bowlerId', async (req, res) => {
     const provider = cardLeagueId
       ? await getProviderForLeague(cardLeagueId)
       : await getPaymentProvider(null);
-    const providerCustId = getProviderCustomerId(bowler, provider);
+    // Bootstrap a provider customer on first save (task #573). Without
+    // this, a brand-new Clover bowler — who never went through the
+    // Square-only profile-sync path — would always see "no payment
+    // customer account" 400s on save-card.
+    const providerCustId = await ensureProviderCustomer(provider, bowler);
     if (!providerCustId) {
       return sendError(res, 'Bowler does not have a payment customer account', 400);
     }

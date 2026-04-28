@@ -4,15 +4,20 @@
 --
 -- Nothing was ever processed through CardPointe in production — the
 -- shared.PAYMENT_PROVIDERS enum has already been swapped to
--- ('square', 'clover') in shared/schema/locations.ts and the
--- bowlers/payments JSONB columns for Clover have been added in
--- shared/schema/{bowlers,payments}.ts. This migration drops the
--- now-unused CardPointe DB columns entirely.
---
--- The corresponding Clover columns are added by Drizzle's automatic
--- table sync (locations.clover_credentials JSONB and
--- bowlers.clover_customer_id text) on next push; the payments table
--- already carries `clover_charge_id` from the schema definition.
+-- ('square', 'clover') in shared/schema/locations.ts. This migration:
+--   1) Adds the new Clover columns explicitly so any environment that
+--      runs migrations (rather than `db:push`) lands on a complete
+--      schema.
+--   2) Drops the now-unused CardPointe DB columns entirely.
+ALTER TABLE "locations"
+  ADD COLUMN IF NOT EXISTS "clover_credentials" jsonb;
+--> statement-breakpoint
+ALTER TABLE "bowlers"
+  ADD COLUMN IF NOT EXISTS "clover_customer_id" text;
+--> statement-breakpoint
+ALTER TABLE "payments"
+  ADD COLUMN IF NOT EXISTS "clover_charge_id" text;
+--> statement-breakpoint
 ALTER TABLE "locations"
   DROP COLUMN IF EXISTS "cardpointe_credentials";
 --> statement-breakpoint
