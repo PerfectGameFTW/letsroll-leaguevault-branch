@@ -269,6 +269,7 @@ export interface IApplePayJobStorage {
   reopenApplePayJobForRetry(jobId: number): Promise<boolean>;
   getApplePayJobStatus(jobId: number): Promise<ApplePayJobStatus | undefined>;
   cancelApplePayJob(jobId: number): Promise<ApplePayJob | undefined>;
+  deleteApplePayJob(jobId: number): Promise<boolean>;
   retryApplePayJob(jobId: number): Promise<{ job: ApplePayJob; resetCount: number } | undefined>;
   retryApplePayJobItem(
     jobId: number,

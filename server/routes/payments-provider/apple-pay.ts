@@ -179,6 +179,40 @@ router.post('/apple-pay/jobs/:id/cancel', async (req, res) => {
   }
 });
 
+router.delete('/apple-pay/jobs/:id', async (req, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid job id', 400, 'INVALID_ID');
+
+    const existing = await storage.getApplePayJob(id);
+    if (!existing) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
+
+    const deleted = await storage.deleteApplePayJob(id);
+    if (!deleted) {
+      // Active jobs (pending/running) must be canceled first so the worker
+      // can't keep claiming items out from under a deleted parent row.
+      return sendError(
+        res,
+        `Job is ${existing.status}; only terminal jobs (succeeded, failed, partial, canceled) can be deleted. Cancel an active job first.`,
+        409,
+        'NOT_DELETABLE',
+      );
+    }
+    log.warn('Apple Pay job deleted by admin', {
+      jobId: id,
+      by: req.user?.id,
+      prevStatus: existing.status,
+    });
+    sendSuccess(res, { deleted: true, jobId: id });
+  } catch (error) {
+    log.error('Apple Pay job delete error:', error);
+    sendError(res, 'Failed to delete job', 500);
+  }
+});
+
 router.post('/apple-pay/jobs/:id/retry', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {

@@ -66,6 +66,15 @@ function isRetryable(status: string): boolean {
   return status === 'failed' || status === 'partial' || status === 'canceled';
 }
 
+function isTerminal(status: string): boolean {
+  return (
+    status === 'succeeded' ||
+    status === 'failed' ||
+    status === 'partial' ||
+    status === 'canceled'
+  );
+}
+
 function invalidateJobQueries(jobId?: number) {
   queryClient.invalidateQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs'] });
   if (jobId !== undefined) {
@@ -200,8 +209,28 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
     onError: handleMutationError('Could not retry item'),
   });
 
+  // Hard-delete a terminal job + its items (FK ON DELETE CASCADE removes
+  // the items). Backend pins this to terminal jobs only — active jobs
+  // must be canceled first or the worker would race the delete.
+  const deleteMutation = useMutation({
+    mutationFn: async () => apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}`, 'DELETE'),
+    onSuccess: (resp) => {
+      if (handleMutationResp(resp, 'Could not delete')) {
+        toast({ title: 'Job deleted', description: `Job #${jobId} has been deleted.` });
+        invalidateJobQueries(jobId);
+        // Drop the now-stale per-job detail cache so a re-open of the same
+        // id (very unlikely after delete, but possible if the user navigates
+        // back via a deep link) refetches and lands on the 404 path.
+        queryClient.removeQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs', jobId] });
+        onClose();
+      }
+    },
+    onError: handleMutationError('Could not delete'),
+  });
+
   const canCancel = job ? isActive(job.status) : false;
   const canRetry = job ? isRetryable(job.status) : false;
+  const canDelete = job ? isTerminal(job.status) : false;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -266,6 +295,25 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
                     data-testid="button-retry-job"
                   >
                     {retryMutation.isPending ? 'Retrying…' : `Retry ${counts.failed} failed item${counts.failed === 1 ? '' : 's'}`}
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete job #${jobId}? This permanently removes the job and its ${items.length} item${items.length === 1 ? '' : 's'}. This cannot be undone.`,
+                        )
+                      ) {
+                        deleteMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    data-testid="button-delete-job"
+                  >
+                    {deleteMutation.isPending ? 'Deleting…' : 'Delete job'}
                   </Button>
                 )}
               </div>

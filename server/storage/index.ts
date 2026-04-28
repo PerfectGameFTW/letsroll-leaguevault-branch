@@ -191,6 +191,7 @@ export class DatabaseStorage implements IStorage {
   reopenApplePayJobForRetry!: IStorage["reopenApplePayJobForRetry"];
   getApplePayJobStatus!: IStorage["getApplePayJobStatus"];
   cancelApplePayJob!: IStorage["cancelApplePayJob"];
+  deleteApplePayJob!: IStorage["deleteApplePayJob"];
   retryApplePayJob!: IStorage["retryApplePayJob"];
   retryApplePayJobItem!: IStorage["retryApplePayJobItem"];
 

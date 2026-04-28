@@ -32,6 +32,7 @@ import {
   getApplePayJob,
   getApplePayJobItemCounts,
   cancelApplePayJob,
+  deleteApplePayJob,
   retryApplePayJob,
   retryApplePayJobItem,
   reopenApplePayJobForRetry,
@@ -645,6 +646,55 @@ describe("apple pay job storage — cancel guards", () => {
   it("returns undefined for a non-existent job", async () => {
     const updated = await cancelApplePayJob(2_147_483_000);
     expect(updated).toBeUndefined();
+  });
+});
+
+describe("apple pay job storage — delete guards", () => {
+  it("deletes a terminal job and (via cascade) its items", async () => {
+    for (const terminal of ["succeeded", "failed", "partial", "canceled"] as const) {
+      const jobId = await makeJob();
+      await insertApplePayJobItems(jobId, [
+        { organizationId: null, locationId: null, domain: `del-${terminal}-1.test` },
+        { organizationId: null, locationId: null, domain: `del-${terminal}-2.test` },
+      ]);
+      await db.update(applePayJobs).set({ status: terminal }).where(eq(applePayJobs.id, jobId));
+
+      const deleted = await deleteApplePayJob(jobId);
+      expect(deleted, `expected delete of ${terminal} job to succeed`).toBe(true);
+
+      // Job row gone.
+      const reloaded = await getApplePayJob(jobId);
+      expect(reloaded).toBeUndefined();
+
+      // Items gone via FK ON DELETE CASCADE.
+      const orphanedItems = await db
+        .select({ id: applePayJobItems.id })
+        .from(applePayJobItems)
+        .where(eq(applePayJobItems.jobId, jobId));
+      expect(orphanedItems).toHaveLength(0);
+
+      // Drop from cleanup list — the row is already gone.
+      const idx = createdJobIds.indexOf(jobId);
+      if (idx >= 0) createdJobIds.splice(idx, 1);
+    }
+  });
+
+  it("refuses to delete an active job (pending or running)", async () => {
+    for (const active of ["pending", "running"] as const) {
+      const jobId = await makeJob();
+      await db.update(applePayJobs).set({ status: active }).where(eq(applePayJobs.id, jobId));
+
+      const deleted = await deleteApplePayJob(jobId);
+      expect(deleted, `expected delete of ${active} job to be a no-op`).toBe(false);
+
+      const reloaded = await getApplePayJob(jobId);
+      expect(reloaded?.status).toBe(active);
+    }
+  });
+
+  it("returns false for a non-existent job", async () => {
+    const deleted = await deleteApplePayJob(2_147_483_000);
+    expect(deleted).toBe(false);
   });
 });
 

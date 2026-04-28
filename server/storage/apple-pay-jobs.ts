@@ -412,6 +412,25 @@ export async function cancelApplePayJob(jobId: number): Promise<ApplePayJob | un
 }
 
 /**
+ * Hard-delete a job and (via FK ON DELETE CASCADE) its items. Only acts on
+ * jobs in a TERMINAL state (succeeded / failed / partial / canceled) — an
+ * active pending/running job must be canceled first so the worker can't
+ * keep claiming items out from under a deleted parent. Returns true if a
+ * row was deleted, false otherwise (active job, unknown id, or already
+ * gone). #5104 was the orphan test job that motivated this admin action.
+ */
+export async function deleteApplePayJob(jobId: number): Promise<boolean> {
+  const deleted = await db
+    .delete(applePayJobs)
+    .where(and(
+      eq(applePayJobs.id, jobId),
+      sql`${applePayJobs.status} NOT IN ('pending', 'running')`,
+    ))
+    .returning({ id: applePayJobs.id });
+  return deleted.length > 0;
+}
+
+/**
  * Reset failed items in a terminal job back to `pending` and re-open the job
  * so the worker will pick it up again. Idempotent — only acts on jobs in a
  * terminal state. Returns the re-opened job, or `undefined` if not retryable
