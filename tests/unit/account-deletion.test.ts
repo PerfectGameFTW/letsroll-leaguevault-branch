@@ -21,7 +21,6 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   users,
-  organizations,
   bowlers,
   locations,
   leagues,
@@ -33,9 +32,9 @@ import { hashPassword } from '../../server/lib/password';
 import * as paymentProviderFactory from '../../server/services/payment-provider-factory';
 import { ProviderNotConfiguredError } from '../../server/services/payment-provider-factory';
 import * as emailService from '../../server/services/email';
+import { getBaselineOrgAId } from '../helpers';
 
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 const createdBowlerIds: number[] = [];
 
 afterEach(async () => {
@@ -47,24 +46,20 @@ afterEach(async () => {
     await db.delete(bowlers).where(inArray(bowlers.id, createdBowlerIds));
     createdBowlerIds.length = 0;
   }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@vitest.local`;
 }
 
+// Task #607: every test attaches its scratch users/bowlers/leagues
+// to the seeded vitest-org-a baseline. executeAccountDeletion is
+// keyed by email (anonymises matching bowlers, deletes the matching
+// user) — it has no last-admin or sole-occupant guard at this layer,
+// so multiple tests sharing the baseline org never trip each other up.
 async function makeOrg(): Promise<number> {
-  const slug = `vitest-deletion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: 'Vitest Deletion Org', slug, active: true })
-    .returning({ id: organizations.id });
-  createdOrgIds.push(org.id);
-  return org.id;
+  return getBaselineOrgAId();
 }
 
 async function makeUser(email: string, organizationId: number): Promise<number> {

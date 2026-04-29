@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, organizations } from '@shared/schema';
+import { users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import {
   PASSWORD_CHANGE_LOCKOUT_THRESHOLD,
@@ -23,15 +23,17 @@ import {
   apiPost,
   login,
   BASE_URL,
+  getBaselineOrgAId,
   type AuthSession,
 } from '../helpers';
 
+// Task #607: attach test users to the seeded `vitest-org-a` baseline
+// instead of inserting a fresh org per run. The org row is permanent;
+// tests still clean up the user rows they create.
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 
 const ORIGINAL_PASSWORD = 'LockoutTest!2026';
 const NEW_STRONG_PASSWORD = 'BrandNewLkPw!2026';
-const ORG_SLUG = `lk-${Date.now().toString(36)}`;
 
 let testOrgId: number;
 
@@ -44,22 +46,13 @@ function uniqEmail(prefix: string): string {
 }
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: `change-pw-lockout-test-${ORG_SLUG}`, slug: `change-pw-lockout-test-${ORG_SLUG}` })
-    .returning();
-  testOrgId = org.id;
-  createdOrgIds.push(org.id);
+  testOrgId = await getBaselineOrgAId();
 });
 
 afterAll(async () => {
   if (createdUserIds.length > 0) {
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
-  }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
   }
 });
 

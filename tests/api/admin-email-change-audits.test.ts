@@ -18,7 +18,6 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   adminEmailChangeAudits,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
@@ -30,6 +29,7 @@ import {
   TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
+  getBaselineOrgAId,
 } from '../helpers';
 
 interface AuditRow {
@@ -64,12 +64,9 @@ describe('Admin email-change audits API', () => {
   beforeAll(async () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    const orgSlug = `vitest-audit-${SUFFIX}`;
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: 'Vitest Audit Org', slug: orgSlug, active: true })
-      .returning({ id: organizations.id });
-    createdOrgId = org.id;
+    // Task #607: attach the audit-history fixture users to the seeded
+    // baseline org instead of creating one per run.
+    createdOrgId = await getBaselineOrgAId();
 
     const passwordHash = await hashPassword('not-used-here');
     const [target] = await db
@@ -128,9 +125,7 @@ describe('Admin email-change audits API', () => {
     if (secondaryTargetUserId) {
       await db.delete(users).where(eq(users.id, secondaryTargetUserId));
     }
-    if (createdOrgId) {
-      await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-    }
+    // Baseline org is preserved across runs (Task #607).
   });
 
   it('requires authentication', async () => {

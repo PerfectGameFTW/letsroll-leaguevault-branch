@@ -12,17 +12,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomBytes } from 'crypto';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, organizations } from '@shared/schema';
+import { users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { storage } from '../../server/storage';
-import { login, BASE_URL, type AuthSession } from '../helpers';
+import { login, BASE_URL, getBaselineOrgAId, type AuthSession } from '../helpers';
 
 const ORIGINAL_PASSWORD = 'SetPwTest!2026';
 const NEW_PASSWORD = 'BrandNewSetPw!2026XX';
-const ORG_SLUG = `sp-${Date.now().toString(36)}`;
 
+// Task #607: attach users to the seeded `vitest-org-a` baseline.
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 
 let testOrgId: number;
 
@@ -34,22 +33,13 @@ function uniqEmail(prefix: string): string {
 }
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: `set-password-test-${ORG_SLUG}`, slug: `set-password-test-${ORG_SLUG}` })
-    .returning();
-  testOrgId = org.id;
-  createdOrgIds.push(org.id);
+  testOrgId = await getBaselineOrgAId();
 });
 
 afterAll(async () => {
   if (createdUserIds.length > 0) {
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
-  }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
   }
 });
 

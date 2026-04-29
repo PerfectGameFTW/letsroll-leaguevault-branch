@@ -38,15 +38,19 @@ import { storage } from '../../server/storage';
 import {
   users,
   bowlers,
-  organizations,
   locations,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { syncBowlerForUser } from '../../server/services/payment-customer-sync';
+import { getBaselineOrgAId } from '../helpers';
 
+// Task #607: attach test rows to the seeded `vitest-org-a` baseline.
+// Each test still creates its own location with its own mocked Square
+// credentials and looks the bowler/user up via that locationId, so
+// sharing the org row across tests doesn't change the resolved
+// provider config — the helper indexes by location, not by org.
 const createdUserIds: number[] = [];
 const createdBowlerIds: number[] = [];
-const createdOrgIds: number[] = [];
 const createdLocationIds: number[] = [];
 
 afterAll(async () => {
@@ -58,9 +62,6 @@ afterAll(async () => {
   }
   if (createdLocationIds.length > 0) {
     await db.delete(locations).where(inArray(locations.id, createdLocationIds));
-  }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
   }
 });
 
@@ -83,14 +84,7 @@ describe('payment_sync_pending_at lifecycle (mocked provider)', () => {
     // sync helper resolves a provider locationId and reaches the mocked
     // createOrUpdateCustomer call. The credentials never leave the test
     // because the factory is mocked.
-    const [org] = await db
-      .insert(organizations)
-      .values({
-        name: uniq('lifecycle-org'),
-        slug: uniq('lifecycle-org-slug'),
-      })
-      .returning();
-    createdOrgIds.push(org.id);
+    const org = { id: await getBaselineOrgAId() };
 
     const [location] = await db
       .insert(locations)

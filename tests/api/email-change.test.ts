@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { storage } from '../../server/storage';
-import { users, organizations, emailChangeRequests, bowlers, adminEmailChangeAudits, adminProfileEditAudits } from '@shared/schema';
+import { users, emailChangeRequests, bowlers, adminEmailChangeAudits, adminProfileEditAudits } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { createHash } from 'crypto';
 import {
@@ -30,6 +30,7 @@ import {
   TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
+  getBaselineOrgAId,
   type AuthSession,
   BASE_URL,
 } from '../helpers';
@@ -60,11 +61,10 @@ async function postWithBucket(
   return { status: res.status, body: parsed };
 }
 
+// Task #607: attach users to the seeded `vitest-org-a` baseline.
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 
 const TEST_PASSWORD = 'EmailChangeTest!2026';
-const ORG_SLUG = `ec-${Date.now().toString(36)}`;
 
 let testOrgId: number;
 
@@ -81,12 +81,7 @@ function hashToken(token: string): string {
 }
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: `email-change-test-${ORG_SLUG}`, slug: `email-change-test-${ORG_SLUG}` })
-    .returning();
-  testOrgId = org.id;
-  createdOrgIds.push(org.id);
+  testOrgId = await getBaselineOrgAId();
 });
 
 afterAll(async () => {
@@ -113,10 +108,6 @@ afterAll(async () => {
     // email_change_requests rows cascade-delete with the user
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
-  }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
   }
 });
 

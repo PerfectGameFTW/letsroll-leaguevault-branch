@@ -51,9 +51,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { emailChangeRequests, organizations, users } from '@shared/schema';
+import { emailChangeRequests, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { applyConfirmEmailChangeTxn } from '../../server/routes/account';
+import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -64,15 +65,10 @@ const targetOriginalEmail = `confirm-target-${SUFFIX}@example.com`;
 const conflictEmail = `confirm-conflict-${SUFFIX}@example.com`;
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: `confirm-atomicity-${SUFFIX}`,
-      slug: `confirm-atomicity-${SUFFIX}`,
-      active: true,
-    })
-    .returning({ id: organizations.id });
-  createdOrgId = org.id;
+  // Task #607: attach to the seeded baseline org instead of creating
+  // a new one each run. Only this file's target + conflict user rows
+  // and email-change-request rows are torn down in afterAll.
+  createdOrgId = await getBaselineOrgAId();
 
   const passwordHash = await hashPassword('not-used-here');
 
@@ -115,9 +111,7 @@ afterAll(async () => {
   if (conflictUserId) {
     await db.delete(users).where(eq(users.id, conflictUserId));
   }
-  if (createdOrgId) {
-    await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 describe('applyConfirmEmailChangeTxn atomicity (task #494)', () => {

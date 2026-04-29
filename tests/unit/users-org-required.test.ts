@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, organizations } from '@shared/schema';
+import { users } from '@shared/schema';
 import {
   createUser,
   updateUserRole,
@@ -18,29 +18,25 @@ import {
 } from '../../server/storage/users';
 import { setUserOrganization } from '../../server/storage/organizations';
 import { hashPassword } from '../../server/lib/password';
+import { getBaselineOrgAId, getBaselineOrgIds } from '../helpers';
 
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 
 afterEach(async () => {
   if (createdUserIds.length > 0) {
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
   }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
-  }
+  // Baseline orgs are preserved across runs (Task #607).
 });
 
+// Task #607: most tests just need *some* valid org id to attach a
+// non-admin user to so the role/org invariant is satisfied — they
+// never assert on the org row itself. Use the seeded baseline org A
+// for that. The "reassign to a different organization" test below
+// uses both baselines (A and B) directly via getBaselineOrgIds().
 async function makeOrg(): Promise<number> {
-  const slug = `vitest-org-required-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: 'Vitest Org Required', slug, active: true })
-    .returning({ id: organizations.id });
-  createdOrgIds.push(org.id);
-  return org.id;
+  return getBaselineOrgAId();
 }
 
 async function makeUserDirect(opts: {
@@ -226,15 +222,16 @@ describe('users_role_org_required invariant — storage', () => {
     });
 
     it('allows reassigning a non-admin to a different organization', async () => {
-      const orgA = await makeOrg();
-      const orgB = await makeOrg();
+      // Use the two distinct baseline orgs so the "different org"
+      // semantics are real.
+      const { orgAId, orgBId } = await getBaselineOrgIds();
       const userId = await makeUserDirect({
         email: uniqueEmail('reassign'),
         role: 'user',
-        organizationId: orgA,
+        organizationId: orgAId,
       });
-      const updated = await setUserOrganization(userId, orgB);
-      expect(updated.organizationId).toBe(orgB);
+      const updated = await setUserOrganization(userId, orgBId);
+      expect(updated.organizationId).toBe(orgBId);
     });
   });
 

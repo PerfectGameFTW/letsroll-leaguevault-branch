@@ -53,13 +53,13 @@ import { eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   adminPasswordResetAudits,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import * as adminAuditModule from '../../server/storage/admin-password-reset-audits';
 import * as userStorageModule from '../../server/storage/users';
 import { resetUserPasswordTxn } from '../../server/routes/organization-admin';
+import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -73,15 +73,10 @@ let originalHash = '';
 let newHash = '';
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: `pw-reset-atomicity-${SUFFIX}`,
-      slug: `pw-reset-atomicity-${SUFFIX}`,
-      active: true,
-    })
-    .returning({ id: organizations.id });
-  createdOrgId = org.id;
+  // Task #607: attach to the seeded baseline org instead of creating
+  // a new one each run. Only this file's actor + target users + audit
+  // rows are torn down in afterAll.
+  createdOrgId = await getBaselineOrgAId();
 
   // Distinct hashes so we can distinguish "the rollback succeeded
   // and the original survives" from "the new hash leaked through".
@@ -137,9 +132,7 @@ afterAll(async () => {
   if (actorUserId) {
     await db.delete(users).where(eq(users.id, actorUserId));
   }
-  if (createdOrgId) {
-    await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 describe('resetUserPasswordTxn atomicity (task #519)', () => {

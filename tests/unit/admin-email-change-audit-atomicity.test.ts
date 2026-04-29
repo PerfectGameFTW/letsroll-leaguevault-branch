@@ -40,12 +40,12 @@ import { db } from '../../server/db';
 import {
   adminEmailChangeAudits,
   emailChangeRequests,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import * as adminAuditModule from '../../server/storage/admin-email-change-audits';
 import { applyEmailChangeRequestTxn } from '../../server/routes/account';
+import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -54,15 +54,11 @@ let targetUserId = 0;
 let createdOrgId = 0;
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: `atomicity-${SUFFIX}`,
-      slug: `atomicity-${SUFFIX}`,
-      active: true,
-    })
-    .returning({ id: organizations.id });
-  createdOrgId = org.id;
+  // Task #607: attach the test target user to the seeded `vitest-org-a`
+  // baseline instead of inserting a fresh per-run org. Only this file's
+  // own users + audits + email-change-requests are torn down — the
+  // baseline org row stays put.
+  createdOrgId = await getBaselineOrgAId();
 
   const passwordHash = await hashPassword('not-used-here');
   const [actor] = await db
@@ -109,9 +105,7 @@ afterAll(async () => {
   if (actorUserId) {
     await db.delete(users).where(eq(users.id, actorUserId));
   }
-  if (createdOrgId) {
-    await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 describe('applyEmailChangeRequestTxn atomicity (task #377)', () => {

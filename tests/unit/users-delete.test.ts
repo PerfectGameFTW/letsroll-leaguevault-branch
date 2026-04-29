@@ -15,7 +15,6 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   users,
-  organizations,
   applePayJobs,
   deletionRequests,
   orphanCleanupAudits,
@@ -27,9 +26,9 @@ import {
 } from '../../server/storage/users';
 import { createApplePayJob } from '../../server/storage/apple-pay-jobs';
 import { hashPassword } from '../../server/lib/password';
+import { getBaselineOrgAId } from '../helpers';
 
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 const createdJobIds: number[] = [];
 const createdDeletionRequestIds: number[] = [];
 const createdAuditIds: number[] = [];
@@ -55,26 +54,20 @@ afterEach(async () => {
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
   }
-  if (createdOrgIds.length > 0) {
-    await db
-      .delete(organizations)
-      .where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@vitest.local`;
 }
 
+// Task #607: every test that needs an org just attaches its scratch
+// users to the seeded vitest-org-a baseline. The deleteUser storage
+// helper has no last-admin guard at this layer (that's enforced at
+// the route layer in tests/api/users-delete.test.ts), so multiple
+// tests sharing the same org never trip each other up.
 async function makeOrg(): Promise<number> {
-  const slug = `vitest-delete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const [org] = await db
-    .insert(organizations)
-    .values({ name: 'Vitest Delete Org', slug, active: true })
-    .returning({ id: organizations.id });
-  createdOrgIds.push(org.id);
-  return org.id;
+  return getBaselineOrgAId();
 }
 
 async function makeUser(opts: {

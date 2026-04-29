@@ -11,7 +11,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, bowlers, organizations, locations } from '@shared/schema';
+import { users, bowlers, locations } from '@shared/schema';
 import { adminProfileEditAudits } from '@shared/schema/admin-profile-edit-audits';
 import { hashPassword } from '../../server/lib/password';
 import {
@@ -22,11 +22,16 @@ import {
   TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
+  getBaselineOrgAId,
 } from '../helpers';
 
+// Task #607: attach test users / bowlers / locations to the seeded
+// `vitest-org-a` baseline instead of inserting a fresh org per test.
+// The baseline has no payment-provider config, so the helper still
+// hits the deterministic 'skipped' branch when no Square credentials
+// are attached to the test's location.
 const createdUserIds: number[] = [];
 const createdBowlerIds: number[] = [];
-const createdOrgIds: number[] = [];
 const createdLocationIds: number[] = [];
 
 afterAll(async () => {
@@ -54,10 +59,6 @@ afterAll(async () => {
   if (createdLocationIds.length > 0) {
     await db.delete(locations).where(inArray(locations.id, createdLocationIds));
     createdLocationIds.length = 0;
-  }
-  if (createdOrgIds.length > 0) {
-    await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
   }
 });
 
@@ -89,16 +90,11 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
     const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
     expect(admin.user.organizationId === null).toBe(true);
 
-    // Create a fresh org so we know it has no Square config and the
-    // helper takes the deterministic 'skipped' branch.
-    const [org] = await db
-      .insert(organizations)
-      .values({
-        name: uniq('sync-test-org'),
-        slug: uniq('sync-test-org-slug'),
-      })
-      .returning();
-    createdOrgIds.push(org.id);
+    // Use the seeded baseline org (vitest-org-a). It has no
+    // payment-provider config attached, so the sync helper takes the
+    // deterministic 'skipped' branch — same as a freshly inserted
+    // org would. Task #607.
+    const org = { id: await getBaselineOrgAId() };
 
     const [bowler] = await db
       .insert(bowlers)
@@ -155,14 +151,8 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
     // 'pending_retry'.
     const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    const [org] = await db
-      .insert(organizations)
-      .values({
-        name: uniq('retry-test-org'),
-        slug: uniq('retry-test-org-slug'),
-      })
-      .returning();
-    createdOrgIds.push(org.id);
+    // Baseline org (vitest-org-a) — see Task #607 cleanup notes above.
+    const org = { id: await getBaselineOrgAId() };
 
     const [location] = await db
       .insert(locations)
@@ -260,11 +250,8 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
   it('returns 422 when the bowler has no linked user', async () => {
     const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: uniq('422-org'), slug: uniq('422-org').toLowerCase(), active: true })
-      .returning();
-    createdOrgIds.push(org.id);
+    // Baseline org (vitest-org-a) — see Task #607 cleanup notes above.
+    const org = { id: await getBaselineOrgAId() };
 
     // Create an isolated bowler with no linked user
     const [bowler] = await db

@@ -61,12 +61,12 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   adminProfileEditAudits,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import * as adminProfileEditAuditModule from '../../server/storage/admin-profile-edit-audits';
 import { applyAdminProfileEditTxn } from '../../server/routes/account';
+import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -81,15 +81,10 @@ const targetOriginalEmail = `profile-target-${SUFFIX}@example.com`;
 const conflictEmail = `profile-conflict-${SUFFIX}@example.com`;
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: `profile-edit-atomicity-${SUFFIX}`,
-      slug: `profile-edit-atomicity-${SUFFIX}`,
-      active: true,
-    })
-    .returning({ id: organizations.id });
-  createdOrgId = org.id;
+  // Task #607: attach to the seeded baseline org instead of creating
+  // a new one each run. Only this file's actor + target + conflict
+  // user rows and audit rows are torn down in afterAll.
+  createdOrgId = await getBaselineOrgAId();
 
   const passwordHash = await hashPassword('not-used-here');
 
@@ -149,9 +144,7 @@ afterAll(async () => {
       .where(inArray(adminProfileEditAudits.targetUserId, idsToClear));
     await db.delete(users).where(inArray(users.id, idsToClear));
   }
-  if (createdOrgId) {
-    await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 describe('applyAdminProfileEditTxn atomicity (task #496)', () => {

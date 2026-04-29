@@ -12,7 +12,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, organizations, orphanCleanupAudits } from '@shared/schema';
+import { users, orphanCleanupAudits } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import {
   apiDelete,
@@ -22,10 +22,19 @@ import {
   TEST_ORG_A_EMAIL,
   TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
+  acquireFixtureOrg,
+  releaseFixtureOrg,
 } from '../helpers';
 
+// Task #607: the two scenarios that genuinely need a fresh,
+// admin-less org (the last-admin guard and the audit-trail conflict
+// test) use deterministic-slug fixture orgs that are torn down + re-
+// created per run, so the org count stays flat across runs even if
+// a test crashes mid-execution.
+const LAST_ADMIN_ORG_SLUG = 'vitest-users-delete-last-admin';
+const AUDIT_CONFLICT_ORG_SLUG = 'vitest-users-delete-audit-conflict';
+
 const createdUserIds: number[] = [];
-const createdOrgIds: number[] = [];
 const createdAuditIds: number[] = [];
 
 afterAll(async () => {
@@ -39,12 +48,8 @@ afterAll(async () => {
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
   }
-  if (createdOrgIds.length > 0) {
-    await db
-      .delete(organizations)
-      .where(inArray(organizations.id, createdOrgIds));
-    createdOrgIds.length = 0;
-  }
+  await releaseFixtureOrg(LAST_ADMIN_ORG_SLUG);
+  await releaseFixtureOrg(AUDIT_CONFLICT_ORG_SLUG);
 });
 
 function uniqueEmail(prefix: string): string {
@@ -130,16 +135,13 @@ describe('DELETE /api/org-admin/users/:id', () => {
   it('blocks deleting the last org_admin even when caller is system_admin (400)', async () => {
     const sysSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    // Create a fresh org with exactly one org_admin so deleting it would
-    // leave the org admin-less.
-    const slug = `vitest-last-admin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: 'Vitest Last Admin Org', slug, active: true })
-      .returning({ id: organizations.id });
-    createdOrgIds.push(org.id);
+    // Use a deterministic-slug fixture org with exactly one org_admin
+    // so deleting it would leave the org admin-less. acquireFixtureOrg
+    // tears down any leftover from a prior crashed run, then re-creates
+    // it fresh — the dev DB row count stays flat across runs.
+    const orgId = await acquireFixtureOrg(LAST_ADMIN_ORG_SLUG, 'Vitest Last Admin Org');
 
-    const loneAdminId = await makeUser({ role: 'org_admin', organizationId: org.id });
+    const loneAdminId = await makeUser({ role: 'org_admin', organizationId: orgId });
 
     const { status, data } = await apiDelete(
       `/api/org-admin/users/${loneAdminId}`,
@@ -179,17 +181,12 @@ describe('DELETE /api/org-admin/users/:id', () => {
   it('returns 409 AUDIT_TRAIL_CONFLICT when target has cleanup-audit rows', async () => {
     const sysSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    const slug = `vitest-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: 'Vitest Audit Org', slug, active: true })
-      .returning({ id: organizations.id });
-    createdOrgIds.push(org.id);
+    const orgId = await acquireFixtureOrg(AUDIT_CONFLICT_ORG_SLUG, 'Vitest Audit Conflict Org');
 
     // Add a second admin so the last-admin guard does not fire for the
     // target we're trying to delete.
-    await makeUser({ role: 'org_admin', organizationId: org.id });
-    const targetId = await makeUser({ role: 'org_admin', organizationId: org.id });
+    await makeUser({ role: 'org_admin', organizationId: orgId });
+    const targetId = await makeUser({ role: 'org_admin', organizationId: orgId });
 
     const [audit] = await db
       .insert(orphanCleanupAudits)
@@ -198,7 +195,7 @@ describe('DELETE /api/org-admin/users/:id', () => {
         resourceType: 'leagues',
         resourceId: 999_998,
         action: 'delete',
-        organizationId: org.id,
+        organizationId: orgId,
       })
       .returning({ id: orphanCleanupAudits.id });
     createdAuditIds.push(audit.id);

@@ -5,6 +5,23 @@
 // because the dev server sets `Secure` session cookies that are dropped
 // over plain http://localhost. Outside of Replit the localhost fallback
 // is used. Override explicitly with TEST_BASE_URL if needed.
+import { eq, inArray } from 'drizzle-orm';
+import { db } from '../server/db';
+import {
+  organizations,
+  users,
+  bowlers,
+  leagues,
+  locations,
+  adminEmailChangeAudits,
+  adminProfileEditAudits,
+  adminPasswordResetAudits,
+  adminRoleChangeAudits,
+  orphanCleanupAudits,
+  applePayJobs,
+  deletionRequests,
+} from '@shared/schema';
+
 const REPLIT_HOST = process.env.REPLIT_DEV_DOMAIN || (process.env.REPLIT_DOMAINS?.split(',')[0]);
 const BASE_URL = process.env.TEST_BASE_URL || (REPLIT_HOST ? `https://${REPLIT_HOST}` : 'http://localhost:5000');
 
@@ -14,6 +31,9 @@ const TEST_ORG_A_EMAIL = process.env.TEST_ORG_A_EMAIL || 'testadmin@example.com'
 const TEST_ORG_B_EMAIL = process.env.TEST_ORG_B_EMAIL || 'testadmin2@example.com';
 const TEST_ORG_PASSWORD = process.env.TEST_ORG_PASSWORD || 'org-local-dev';
 const TEST_NEW_ORG_ADMIN_PASSWORD = process.env.TEST_NEW_ORG_ADMIN_PASSWORD || 'new-org-admin-local-dev';
+
+const TEST_ORG_A_SLUG = process.env.TEST_ORG_A_SLUG || 'vitest-org-a';
+const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -184,6 +204,150 @@ export async function apiDelete<T = unknown>(
   return { status: res.status, data };
 }
 
+/**
+ * Look up the seeded vitest baseline organizations by slug.
+ *
+ * Task #607: every test file used to insert its own organization in
+ * its `beforeAll`, leaking hundreds of rows into the dev DB over
+ * time. The supported pattern now is to attach test users / bowlers
+ * to one of the two baselines that `seedTestUsers()` provisions
+ * (`vitest-org-a` / `vitest-org-b`). Tests are still responsible for
+ * cleaning up the rows they insert (users / bowlers / audits / etc),
+ * but the org row itself is permanent.
+ *
+ * Throws if the baselines are missing — that means the seeder has
+ * not run, which is a setup error, not a runtime quirk to swallow.
+ */
+async function getBaselineOrgIds(): Promise<{ orgAId: number; orgBId: number }> {
+  const rows = await db
+    .select({ id: organizations.id, slug: organizations.slug })
+    .from(organizations)
+    .where(inArray(organizations.slug, [TEST_ORG_A_SLUG, TEST_ORG_B_SLUG]));
+  const a = rows.find((r) => r.slug === TEST_ORG_A_SLUG);
+  const b = rows.find((r) => r.slug === TEST_ORG_B_SLUG);
+  if (!a || !b) {
+    throw new Error(
+      `Baseline test orgs missing (looked for ${TEST_ORG_A_SLUG} / ${TEST_ORG_B_SLUG}). ` +
+        'Run `npx tsx tests/setup/seed-test-users.ts` to provision them.',
+    );
+  }
+  return { orgAId: a.id, orgBId: b.id };
+}
+
+async function getBaselineOrgAId(): Promise<number> {
+  const { orgAId } = await getBaselineOrgIds();
+  return orgAId;
+}
+
+/**
+ * Acquire (or recreate) a dedicated, deterministic-slug fixture
+ * organization for tests that genuinely need an org distinct from
+ * the shared baselines (e.g. last-admin-in-org guards, or the
+ * organizations CRUD suite that creates and then deletes its own
+ * subject row).
+ *
+ * The deterministic slug is the key difference from the old per-run
+ * pattern: even if a previous run crashed before its afterAll
+ * cleanup, the next call here finds the leftover row, tears down
+ * its dependents, and re-creates it fresh. The total org-row count
+ * across runs stays flat. (Task #607.)
+ */
+async function acquireFixtureOrg(slug: string, name: string): Promise<number> {
+  // Refuse to clobber the protected slugs — those are owned by the
+  // seeder, not by individual fixtures.
+  if (slug === TEST_ORG_A_SLUG || slug === TEST_ORG_B_SLUG) {
+    throw new Error(`acquireFixtureOrg refuses to overwrite baseline slug "${slug}"`);
+  }
+  await releaseFixtureOrg(slug);
+  const [row] = await db
+    .insert(organizations)
+    .values({ name, slug, active: true })
+    .returning({ id: organizations.id });
+  return row.id;
+}
+
+/**
+ * Tear down a fixture org by deterministic slug — including every
+ * dependent row that would otherwise block the delete. Safe to call
+ * for a slug that has no row (no-op).
+ */
+async function releaseFixtureOrg(slug: string): Promise<void> {
+  if (slug === TEST_ORG_A_SLUG || slug === TEST_ORG_B_SLUG) {
+    throw new Error(`releaseFixtureOrg refuses to delete baseline slug "${slug}"`);
+  }
+  const [existing] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, slug));
+  if (!existing) return;
+
+  const orgId = existing.id;
+  const userRows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.organizationId, orgId));
+  const userIds = userRows.map((r) => r.id);
+  const bowlerRows = await db
+    .select({ id: bowlers.id })
+    .from(bowlers)
+    .where(eq(bowlers.organizationId, orgId));
+  const bowlerIds = bowlerRows.map((r) => r.id);
+
+  await db.transaction(async (tx) => {
+    if (userIds.length > 0) {
+      // RESTRICT audit tables that point at users.id — delete by
+      // both target and actor.
+      await tx
+        .delete(adminEmailChangeAudits)
+        .where(inArray(adminEmailChangeAudits.targetUserId, userIds));
+      await tx
+        .delete(adminEmailChangeAudits)
+        .where(inArray(adminEmailChangeAudits.actorUserId, userIds));
+      await tx
+        .delete(adminProfileEditAudits)
+        .where(inArray(adminProfileEditAudits.targetUserId, userIds));
+      await tx
+        .delete(adminProfileEditAudits)
+        .where(inArray(adminProfileEditAudits.actorUserId, userIds));
+      await tx
+        .delete(adminPasswordResetAudits)
+        .where(inArray(adminPasswordResetAudits.targetUserId, userIds));
+      await tx
+        .delete(adminPasswordResetAudits)
+        .where(inArray(adminPasswordResetAudits.actorUserId, userIds));
+      await tx
+        .delete(adminRoleChangeAudits)
+        .where(inArray(adminRoleChangeAudits.targetUserId, userIds));
+      await tx
+        .delete(adminRoleChangeAudits)
+        .where(inArray(adminRoleChangeAudits.actorUserId, userIds));
+      await tx
+        .delete(orphanCleanupAudits)
+        .where(inArray(orphanCleanupAudits.adminUserId, userIds));
+      // NO ACTION FKs into users — null them out.
+      await tx
+        .update(applePayJobs)
+        .set({ createdBy: null })
+        .where(inArray(applePayJobs.createdBy, userIds));
+      await tx
+        .update(deletionRequests)
+        .set({ reviewedBy: null })
+        .where(inArray(deletionRequests.reviewedBy, userIds));
+    }
+    if (bowlerIds.length > 0) {
+      await tx
+        .update(users)
+        .set({ bowlerId: null })
+        .where(inArray(users.bowlerId, bowlerIds));
+    }
+    await tx.delete(leagues).where(eq(leagues.organizationId, orgId));
+    await tx.delete(bowlers).where(eq(bowlers.organizationId, orgId));
+    await tx.delete(users).where(eq(users.organizationId, orgId));
+    await tx.delete(locations).where(eq(locations.organizationId, orgId));
+    await tx.delete(organizations).where(eq(organizations.id, orgId));
+  });
+}
+
 export {
   BASE_URL,
   TEST_ADMIN_EMAIL,
@@ -192,4 +356,10 @@ export {
   TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
   TEST_NEW_ORG_ADMIN_PASSWORD,
+  TEST_ORG_A_SLUG,
+  TEST_ORG_B_SLUG,
+  getBaselineOrgIds,
+  getBaselineOrgAId,
+  acquireFixtureOrg,
+  releaseFixtureOrg,
 };

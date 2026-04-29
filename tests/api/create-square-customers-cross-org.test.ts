@@ -32,7 +32,16 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { bowlers, locations, organizations } from '@shared/schema';
+import { bowlers, locations } from '@shared/schema';
+import { acquireFixtureOrg, releaseFixtureOrg } from '../helpers';
+
+// Task #607: deterministic-slug fixture orgs that are torn down +
+// recreated per run. Each org has its own scratch location and the
+// single bowler we want the script to (or refuse to) touch — that's
+// the smallest possible surface for the cross-org guard test, and it
+// keeps the seeded baseline orgs out of the script's SELECT path.
+const ORG_A_SLUG = 'vitest-csc-org-a';
+const ORG_B_SLUG = 'vitest-csc-org-b';
 
 const SCRIPT = join(process.cwd(), 'server/scripts/create-square-customers.ts');
 const FAKE_SQUARE = join(process.cwd(), 'tests/fixtures/fake-square-client.ts');
@@ -98,27 +107,25 @@ function uniqueSuffix(): string {
 }
 
 beforeAll(async () => {
-  // Two brand-new orgs so the script's org-filtered SELECT only ever
-  // sees the one bowler we put in each — no chance of stomping
-  // unrelated bowlers from the seeded `Vitest Org A/B` accounts that
-  // other suites may be writing to in parallel.
+  // Two deterministic-slug fixture orgs so the script's org-filtered
+  // SELECT only ever sees the one bowler we put in each — no chance
+  // of stomping unrelated bowlers from the shared seeded baselines
+  // that other suites write to. acquireFixtureOrg tears down any
+  // leftover from a prior crashed run, then re-creates the org fresh,
+  // so the dev-DB row count stays flat across runs (Task #607).
+  const orgAId = await acquireFixtureOrg(ORG_A_SLUG, 'Vitest CSC Org A');
+  const orgBId = await acquireFixtureOrg(ORG_B_SLUG, 'Vitest CSC Org B');
+  const partial: Partial<SeedIds> = { orgAId, orgBId };
+
+  // Locations are unique-per-run so two parallel processes (or a
+  // crashed-then-rerun process where acquireFixtureOrg tore the prior
+  // org row down) never collide on the locations.name UNIQUE index.
   const suffix = uniqueSuffix();
-
-  const [orgA] = await db
-    .insert(organizations)
-    .values({ name: 'Vitest CSC Org A', slug: `vitest-csc-orga-${suffix}`, active: true })
-    .returning({ id: organizations.id });
-  const [orgB] = await db
-    .insert(organizations)
-    .values({ name: 'Vitest CSC Org B', slug: `vitest-csc-orgb-${suffix}`, active: true })
-    .returning({ id: organizations.id });
-  const partial: Partial<SeedIds> = { orgAId: orgA.id, orgBId: orgB.id };
-
   const [locationA] = await db
     .insert(locations)
     .values({
       name: `vitest-csc-loc-a-${suffix}`,
-      organizationId: orgA.id,
+      organizationId: orgAId,
       active: true,
       paymentProvider: 'square',
     })
@@ -127,7 +134,7 @@ beforeAll(async () => {
     .insert(locations)
     .values({
       name: `vitest-csc-loc-b-${suffix}`,
-      organizationId: orgB.id,
+      organizationId: orgBId,
       active: true,
       paymentProvider: 'square',
     })
@@ -144,7 +151,7 @@ beforeAll(async () => {
     .values({
       name: 'Vitest CSC Bowler A',
       email: `vitest-csc-a-${suffix}@example.com`,
-      organizationId: orgA.id,
+      organizationId: orgAId,
     })
     .returning({ id: bowlers.id });
   const [bowlerB] = await db
@@ -152,7 +159,7 @@ beforeAll(async () => {
     .values({
       name: 'Vitest CSC Bowler B',
       email: `vitest-csc-b-${suffix}@example.com`,
-      organizationId: orgB.id,
+      organizationId: orgBId,
     })
     .returning({ id: bowlers.id });
   partial.bowlerAId = bowlerA.id;
@@ -162,10 +169,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!seededIds) return;
-  const { bowlerAId, bowlerBId, locationAId, locationBId, orgAId, orgBId } = seededIds;
+  const { bowlerAId, bowlerBId, locationAId, locationBId } = seededIds;
   await db.delete(bowlers).where(inArray(bowlers.id, [bowlerAId, bowlerBId]));
   await db.delete(locations).where(inArray(locations.id, [locationAId, locationBId]));
-  await db.delete(organizations).where(inArray(organizations.id, [orgAId, orgBId]));
+  // Drop the fixture org rows themselves so the dev-DB org count
+  // stays flat across runs (Task #607). releaseFixtureOrg also clears
+  // any other dependents that may have been created mid-test.
+  await releaseFixtureOrg(ORG_A_SLUG);
+  await releaseFixtureOrg(ORG_B_SLUG);
   seededIds = null;
 });
 

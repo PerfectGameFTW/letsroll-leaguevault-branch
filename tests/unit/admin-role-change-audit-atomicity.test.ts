@@ -52,13 +52,13 @@ import { eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   adminRoleChangeAudits,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import * as adminAuditModule from '../../server/storage/admin-role-change-audits';
 import * as userStorageModule from '../../server/storage/users';
 import { applyRoleChangeWithAuditTxn } from '../../server/routes/organization-admin';
+import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -70,15 +70,10 @@ let targetUserId = 0;
 let createdOrgId = 0;
 
 beforeAll(async () => {
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      name: `role-change-atomicity-${SUFFIX}`,
-      slug: `role-change-atomicity-${SUFFIX}`,
-      active: true,
-    })
-    .returning({ id: organizations.id });
-  createdOrgId = org.id;
+  // Task #607: attach to the seeded baseline org instead of creating
+  // a new one each run. Only this file's actor + target user rows and
+  // audit rows are torn down in afterAll.
+  createdOrgId = await getBaselineOrgAId();
 
   const passwordHash = await hashPassword('not-used-here');
 
@@ -130,9 +125,7 @@ afterAll(async () => {
   if (actorUserId) {
     await db.delete(users).where(eq(users.id, actorUserId));
   }
-  if (createdOrgId) {
-    await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-  }
+  // Baseline org is preserved across runs (Task #607).
 });
 
 describe('applyRoleChangeWithAuditTxn atomicity (task #544)', () => {

@@ -37,7 +37,6 @@ import { db } from '../../server/db';
 import {
   adminEmailChangeAudits,
   emailChangeRequests,
-  organizations,
   users,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
@@ -48,6 +47,7 @@ import {
   type AuthSession,
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
+  getBaselineOrgAId,
 } from '../helpers';
 
 interface AuditRow {
@@ -85,15 +85,9 @@ describe('Admin email-change audit post-confirm signal (task #487)', () => {
   beforeAll(async () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
-    const [org] = await db
-      .insert(organizations)
-      .values({
-        name: `post-confirm-${SUFFIX}`,
-        slug: `post-confirm-${SUFFIX}`,
-        active: true,
-      })
-      .returning({ id: organizations.id });
-    createdOrgId = org.id;
+    // Task #607: attach the post-confirm fixture user to the seeded
+    // baseline org instead of creating one per run.
+    createdOrgId = await getBaselineOrgAId();
 
     const passwordHash = await hashPassword('not-used-here');
     const [target] = await db
@@ -169,9 +163,7 @@ describe('Admin email-change audit post-confirm signal (task #487)', () => {
         .where(eq(emailChangeRequests.userId, targetUserId));
       await db.delete(users).where(eq(users.id, targetUserId));
     }
-    if (createdOrgId) {
-      await db.delete(organizations).where(eq(organizations.id, createdOrgId));
-    }
+    // Baseline org is preserved across runs (Task #607).
   });
 
   it('marks the exact audit row identified by emailChangeRequestId and leaves siblings untouched', async () => {
