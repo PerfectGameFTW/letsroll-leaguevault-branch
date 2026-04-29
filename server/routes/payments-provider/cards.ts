@@ -12,6 +12,7 @@ import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.j
 import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
+import { buildPaymentErrorResponse } from '../../utils/payment-error-response.js';
 import { getProviderCustomerId, persistCloverCustomer, ensureProviderCustomer } from '../../services/payment-utils';
 import { getProviderForLeague } from './shared.js';
 
@@ -65,11 +66,17 @@ router.post('/cards/:bowlerId', async (req, res) => {
     await persistCloverCustomer(provider, providerCustId, bowlerId);
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
-    if (error instanceof ProviderNotConfiguredError) {
-      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
-    }
     log.error('Save card error:', error);
-    return sendError(res, 'Failed to save card');
+    // Surface the provider's typed `userMessage` + `code` (e.g.
+    // "Invalid payment information.", "CARD_TOKEN_EXPIRED") instead
+    // of the generic "Failed to save card" wall — matches the
+    // charge / refund routes via the shared helper. Task #605.
+    const { status, userMessage, code } = buildPaymentErrorResponse(
+      error,
+      'Failed to save card',
+      'SAVE_CARD_ERROR',
+    );
+    return sendError(res, userMessage, status, code);
   }
 });
 
@@ -178,12 +185,31 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
     log.info('Card disabled:', cardId.substring(0, 15) + '...');
     sendSuccess(res, { disabled: true });
   } catch (error) {
-    if (error instanceof ProviderNotConfiguredError) {
-      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+    log.error('Disable card error:', error instanceof Error ? error.message : error);
+
+    // The Square + Clover providers throw a hand-authored
+    // "Card does not belong to this customer" Error when the
+    // requested card id isn't one of this customer's saved cards
+    // (see server/services/square-provider.ts::disableCard). That's
+    // a tenancy violation rather than a provider failure, so it
+    // keeps its dedicated 403 mapping. Everything else routes
+    // through the shared helper so admins see the typed
+    // PaymentProviderError.userMessage / code instead of an
+    // ad-hoc string. Task #605.
+    if (
+      error instanceof Error &&
+      !(error instanceof ProviderNotConfiguredError) &&
+      error.constructor === Error &&
+      error.message.includes('does not belong')
+    ) {
+      return sendError(res, error.message, 403);
     }
-    const message = error instanceof Error ? error.message : 'Failed to remove card';
-    log.error('Disable card error:', message);
-    sendError(res, message, message.includes('does not belong') ? 403 : 500);
+    const { status, userMessage, code } = buildPaymentErrorResponse(
+      error,
+      'Failed to remove card',
+      'REMOVE_CARD_ERROR',
+    );
+    sendError(res, userMessage, status, code);
   }
 });
 

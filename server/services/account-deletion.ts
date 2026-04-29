@@ -3,10 +3,8 @@ import { db } from '../db.js';
 import { bowlerLeagues, leagues, emailChangeRequests } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { createLogger } from '../logger';
-import {
-  getPaymentProvider,
-  ProviderNotConfiguredError,
-} from './payment-provider-factory';
+import { getPaymentProvider } from './payment-provider-factory';
+import { buildPaymentErrorResponse } from '../utils/payment-error-response';
 import { hasCustomerCleanupSupport } from './payment-provider';
 import { sendAccountDeletionConfirmation } from './email';
 import type { DeletionExecutionSummary } from '@shared/schema';
@@ -165,23 +163,32 @@ export async function executeAccountDeletion(
         deleted: true,
       });
     } catch (error) {
-      const msg =
-        error instanceof ProviderNotConfiguredError
-          ? error.message
-          : error instanceof Error
-          ? error.message
-          : String(error);
+      // Route the error through the shared helper so the typed
+      // PaymentProviderError.userMessage / ProviderNotConfiguredError
+      // map to the same actionable strings every other payment-write
+      // path uses. The audit summary's `error` field is rendered to
+      // an admin in the deletion-history view, so a typed
+      // "Your payment was declined." would be misleading here — for
+      // anything we don't recognize as typed, we keep the raw
+      // `error.message` (server-side audit, not user-visible toast).
+      // Task #605.
+      const fallback = error instanceof Error ? error.message : String(error);
+      const { userMessage } = buildPaymentErrorResponse(
+        error,
+        fallback,
+        'PROVIDER_DELETION_FAILED',
+      );
       log.warn('Payment-provider customer deletion failed', {
         locationId: target.locationId,
         customerId: target.customerId,
-        error: msg,
+        error: userMessage,
       });
       summary.paymentProvider.push({
         locationId: target.locationId,
         providerName,
         customerId: target.customerId,
         deleted: false,
-        error: msg,
+        error: userMessage,
       });
     }
   }

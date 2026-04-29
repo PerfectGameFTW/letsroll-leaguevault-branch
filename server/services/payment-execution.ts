@@ -4,6 +4,7 @@ import { payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema
 import { providerNameToPaymentType } from "@shared/schema/constants";
 import { logger } from "../logger";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
+import { buildPaymentErrorResponse } from "../utils/payment-error-response";
 import type { PaymentProvider, OrderLineItem } from "./payment-provider";
 
 export interface ChargeResult {
@@ -84,29 +85,57 @@ export async function executeCharge(
         buyerEmailMissing,
       };
     } catch (error) {
-      return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error', providerName: provider.providerName };
+      // Surface the typed PaymentProviderError.userMessage instead
+      // of the raw `error.message` so the failed-payment row's
+      // `notes` ("Failed payment: …" — see payment-lifecycle.ts)
+      // carries the actionable provider reason an admin can act on,
+      // not "Unknown error" or a leaked SDK string. Task #605.
+      const { userMessage } = buildPaymentErrorResponse(
+        error,
+        error instanceof Error ? error.message : 'Unknown error',
+        'PAYMENT_ERROR',
+      );
+      return { status: 'error', error: userMessage, providerName: provider.providerName };
     }
   } else {
-    const processResult = await provider.processPayment(
-      cardId,
-      amount,
-      false,
-      paymentCustomerId,
-      buyerEmail,
-      undefined,
-    );
-    if (processResult?.id) {
-      return {
-        status: 'success',
-        paymentId: processResult.id,
-        providerRef: processResult.providerRef,
-        providerName: provider.providerName,
-        receiptUrl: processResult.receiptUrl,
-        receiptNumber: processResult.receiptNumber,
-        buyerEmailMissing,
-      };
+    try {
+      const processResult = await provider.processPayment(
+        cardId,
+        amount,
+        false,
+        paymentCustomerId,
+        buyerEmail,
+        undefined,
+      );
+      if (processResult?.id) {
+        return {
+          status: 'success',
+          paymentId: processResult.id,
+          providerRef: processResult.providerRef,
+          providerName: provider.providerName,
+          receiptUrl: processResult.receiptUrl,
+          receiptNumber: processResult.receiptNumber,
+          buyerEmailMissing,
+        };
+      }
+      return { status: 'error', error: 'Payment processing failed', providerName: provider.providerName };
+    } catch (error) {
+      // Mirror the createOrderWithPayment branch above so the
+      // no-line-items processPayment path (autopay / scheduled
+      // executions when the league has no catalog item ids) also
+      // routes typed PaymentProviderError / ProviderNotConfiguredError
+      // failures through the shared helper. Without this, a typed
+      // provider failure on this branch would propagate out raw and
+      // the caller's failed-payment row would carry the leaked
+      // `error.message` (or "Unknown error") instead of the actionable
+      // sanitized provider reason. Task #605.
+      const { userMessage } = buildPaymentErrorResponse(
+        error,
+        error instanceof Error ? error.message : 'Unknown error',
+        'PAYMENT_ERROR',
+      );
+      return { status: 'error', error: userMessage, providerName: provider.providerName };
     }
-    return { status: 'error', error: 'Payment processing failed', providerName: provider.providerName };
   }
 }
 
@@ -123,7 +152,11 @@ export async function executeChargeForLocation(
     return executeCharge(provider, cardId, amount, lineItems, paymentCustomerId, buyerEmail);
   } catch (e) {
     if (e instanceof ProviderNotConfiguredError) {
-      return { status: 'error', error: `Payment provider not configured: ${e.message}` };
+      // Use the helper's canonical not-configured message instead of
+      // interpolating the raw `e.message` (which can include the
+      // location id or processor name). Task #605.
+      const { userMessage } = buildPaymentErrorResponse(e, '', 'PAYMENT_ERROR');
+      return { status: 'error', error: userMessage };
     }
     throw e;
   }
@@ -142,7 +175,11 @@ export async function executeScheduledPayment(
     provider = await getPaymentProvider(locationId);
   } catch (e) {
     if (e instanceof ProviderNotConfiguredError) {
-      return { status: 'error', error: `Payment provider not configured: ${e.message}` };
+      // Same canonical message as the interactive charge path —
+      // the failed-payment row's `notes` should not embed internal
+      // location ids. Task #605.
+      const { userMessage } = buildPaymentErrorResponse(e, '', 'PAYMENT_ERROR');
+      return { status: 'error', error: userMessage };
     }
     throw e;
   }

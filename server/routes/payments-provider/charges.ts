@@ -17,9 +17,9 @@ import {
   getPaymentProvider,
   ProviderNotConfiguredError,
   PaymentProviderError,
-  sanitizePaymentUserMessage,
   GENERIC_PAYMENT_USER_MESSAGE,
 } from '../../services/payment-provider-factory';
+import { buildPaymentErrorResponse } from '../../utils/payment-error-response.js';
 import { computePaymentSplit, buildLineItems } from '../../services/payment-execution';
 import { getProviderCustomerId, persistCloverCustomer, ensureProviderCustomer } from '../../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
@@ -345,9 +345,6 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       savedCardId: storedCardId ?? null,
     });
   } catch (error) {
-    if (error instanceof ProviderNotConfiguredError) {
-      return sendError(res, 'Payment system is not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
-    }
     // Always log the full technical detail server-side, regardless of
     // which user-facing branch we take below. Includes the typed
     // `detail` (Square's raw `errors[0].detail`) when present, plus
@@ -372,26 +369,20 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       typedDetail: error instanceof PaymentProviderError ? error.detail : undefined,
     });
 
-    // task #514: only the typed `userMessage` is allowed through to
-    // the client — Square's raw `providerErrors[0].detail` is NOT
-    // forwarded as a user message anymore (it can contain provider
-    // jargon like "Card was declined by the issuing bank for reason
-    // CARD_DECLINED_VERIFICATION_REQUIRED"). The unrecognized fallback
-    // is a single, friendly sentence.
-    let userMessage = GENERIC_PAYMENT_USER_MESSAGE;
-    let userCode = 'PAYMENT_ERROR';
-    if (error instanceof PaymentProviderError) {
-      userMessage = error.userMessage;
-      userCode = error.code;
-    }
-
-    // Final safety net: if a future code path forgets to wrap its
-    // failure in PaymentProviderError and somehow lands a JSON-shaped
-    // or multi-line/long string here, swap in the generic fallback so
-    // no JSON ever escapes to the user-visible toast.
-    userMessage = sanitizePaymentUserMessage(userMessage);
-
-    return sendError(res, userMessage, 500, userCode);
+    // task #514 / #605: only the typed `userMessage` is allowed
+    // through to the client — Square's raw `providerErrors[0].detail`
+    // is NOT forwarded as a user message anymore (it can contain
+    // provider jargon like "Card was declined by the issuing bank for
+    // reason CARD_DECLINED_VERIFICATION_REQUIRED"). The unrecognized
+    // fallback is a single, friendly sentence. Mapping is delegated
+    // to the shared helper so the refund / cards / autopay paths
+    // can't drift from this contract.
+    const { status, userMessage, code } = buildPaymentErrorResponse(
+      error,
+      GENERIC_PAYMENT_USER_MESSAGE,
+      'PAYMENT_ERROR',
+    );
+    return sendError(res, userMessage, status, code);
   }
 });
 

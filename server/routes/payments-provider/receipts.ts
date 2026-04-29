@@ -11,6 +11,7 @@ import { hasAccessToPayment } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
+import { buildPaymentErrorResponse } from '../../utils/payment-error-response.js';
 import { sendReceiptResendEmail } from '../../services/email';
 
 const log = createLogger('PaymentReceipts');
@@ -181,11 +182,19 @@ router.post('/payments/:id/resend-receipt', paymentWriteLimiter, async (req, res
     log.info('Receipt resent', { paymentId: id, by: req.user?.id });
     return sendSuccess(res, { sent: true });
   } catch (error) {
-    if (error instanceof ProviderNotConfiguredError) {
-      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
-    }
     log.error('Failed to resend receipt', error);
-    return sendError(res, 'Failed to resend receipt');
+    // The lazy-backfill leg of the resend flow can call into Square's
+    // GetPayment, which may throw a typed PaymentProviderError if the
+    // provider rejects the lookup (e.g. credentials revoked).
+    // Surface that typed reason via the shared helper instead of
+    // collapsing every failure into "Failed to resend receipt".
+    // Task #605.
+    const { status, userMessage, code } = buildPaymentErrorResponse(
+      error,
+      'Failed to resend receipt',
+      'RESEND_RECEIPT_ERROR',
+    );
+    return sendError(res, userMessage, status, code);
   }
 });
 
