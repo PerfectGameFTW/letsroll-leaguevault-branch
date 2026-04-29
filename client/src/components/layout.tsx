@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, MessageSquare, MailWarning } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +13,8 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { UserProfileMenu } from "@/components/user-profile-menu";
 import { GlobalSearch } from "@/components/global-search";
 import {
@@ -45,11 +47,19 @@ const setStoredValue = (key: string, value: unknown) => {
 interface NavItem {
   icon: typeof LayoutDashboard;
   label: string;
+  // For navigable items this is the route. For dropdown-only parents
+  // (e.g. "Super Admin") this is just a stable key — there is no
+  // landing page and the row is never rendered as a `<Link>`.
   href: string;
   hasDropdown?: boolean;
   adminOnly?: boolean;
   orgAdminOnly?: boolean;
+  // When present, this item renders as a parent row that toggles a
+  // nested list of sub-items rather than navigating directly.
   subItems?: NavItem[];
+  // When true, the item is pushed to the bottom of the sidebar nav
+  // (just above the user profile area).
+  pinToBottom?: boolean;
   // When set, the sidebar item shows a small numeric badge sourced from
   // this query key. The query is registered separately in `Layout` so
   // we can scope it to admins and control polling cadence in one place.
@@ -81,38 +91,6 @@ const navItems: NavItem[] = [
     adminOnly: true
   },
   {
-    icon: Mail,
-    label: "Email Templates",
-    href: "/email-templates",
-    adminOnly: true
-  },
-  {
-    icon: Trash2,
-    label: "Deletion Requests",
-    href: "/admin/deletion-requests",
-    adminOnly: true,
-    badgeQueryKey: ['/api/system-admin/deletion-requests/pending-count'] as const,
-  },
-  {
-    icon: Apple,
-    label: "Apple Pay Jobs",
-    href: "/admin/apple-pay-jobs",
-    adminOnly: true,
-    badgeQueryKey: ['/api/payments-provider/apple-pay/jobs/pending-count'] as const,
-  },
-  {
-    icon: ShieldAlert,
-    label: "Data Integrity",
-    href: "/admin/data-integrity",
-    adminOnly: true
-  },
-  {
-    icon: MailWarning,
-    label: "Email Change Audits",
-    href: "/admin/email-change-audits",
-    adminOnly: true
-  },
-  {
     icon: Trophy,
     label: "Leagues",
     href: "/leagues"
@@ -138,7 +116,53 @@ const navItems: NavItem[] = [
     label: "Messaging",
     href: "/messaging",
     orgAdminOnly: true
-  }
+  },
+  // System-admin-only grouping pinned to the bottom of the sidebar.
+  // The parent has no landing page; clicking it expands the sub-menu.
+  // Pending-count badges from the children are aggregated onto the
+  // parent row so admins still see "work waiting" at a glance when the
+  // dropdown is collapsed (#591).
+  {
+    icon: ShieldCheck,
+    label: "Super Admin",
+    href: "/__super-admin",
+    adminOnly: true,
+    pinToBottom: true,
+    subItems: [
+      {
+        icon: Mail,
+        label: "Email Templates",
+        href: "/email-templates",
+        adminOnly: true,
+      },
+      {
+        icon: Trash2,
+        label: "Deletion Requests",
+        href: "/admin/deletion-requests",
+        adminOnly: true,
+        badgeQueryKey: ['/api/system-admin/deletion-requests/pending-count'] as const,
+      },
+      {
+        icon: Apple,
+        label: "Apple Pay Jobs",
+        href: "/admin/apple-pay-jobs",
+        adminOnly: true,
+        badgeQueryKey: ['/api/payments-provider/apple-pay/jobs/pending-count'] as const,
+      },
+      {
+        icon: ShieldAlert,
+        label: "Data Integrity",
+        href: "/admin/data-integrity",
+        adminOnly: true,
+      },
+      {
+        icon: MailWarning,
+        label: "Email Change Audits",
+        href: "/admin/email-change-audits",
+        adminOnly: true,
+      },
+    ],
+  },
 ];
 
 const pageLabels: Record<string, string> = {
@@ -273,6 +297,218 @@ function NavBadge({ count, isCollapsed }: { count: number; isCollapsed: boolean 
   );
 }
 
+function isItemActive(href: string, location: string): boolean {
+  return location === href || (href !== "/" && location.startsWith(href + "/"));
+}
+
+function getBadgeCount(item: NavItem, badgeCounts: Record<string, number>): number {
+  return item.badgeQueryKey ? badgeCounts[item.badgeQueryKey.join('|')] ?? 0 : 0;
+}
+
+// Flat leaf nav row used both at the top level and inside the
+// Super Admin dropdown (in the nested-list and popover variants).
+function NavLeafRow({
+  item,
+  isActive,
+  isCollapsed,
+  badgeCount,
+  onNavigate,
+  variant = 'top',
+}: {
+  item: NavItem;
+  isActive: boolean;
+  isCollapsed: boolean;
+  badgeCount: number;
+  onNavigate?: () => void;
+  variant?: 'top' | 'sub' | 'popover';
+}) {
+  // Sub-rows live in a nested list (slightly indented) or inside a popover
+  // (full width, no indent, never "collapsed" styling). The top variant is
+  // the existing sidebar row.
+  const isSub = variant === 'sub';
+  const isPopover = variant === 'popover';
+  const effectiveCollapsed = isPopover ? false : isCollapsed;
+  return (
+    <Link href={item.href}>
+      <button
+        onClick={onNavigate}
+        data-testid={`nav-link-${item.href}`}
+        aria-label={effectiveCollapsed ? item.label : undefined}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
+          effectiveCollapsed
+            ? "relative justify-center p-2.5"
+            : isSub
+              ? "pl-9 pr-3 py-2"
+              : "px-3 py-2.5",
+          isActive
+            ? "bg-indigo-500/10 text-indigo-400"
+            : "text-slate-300 hover:bg-slate-800 hover:text-white"
+        )}
+        title={effectiveCollapsed ? item.label : undefined}
+      >
+        <item.icon
+          className={cn(
+            "w-5 h-5 shrink-0",
+            isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+          )}
+        />
+        {!effectiveCollapsed && (
+          <span className={cn("font-medium", isSub ? "text-[13px]" : "text-sm")}>
+            {item.label}
+          </span>
+        )}
+        {item.badgeQueryKey && (
+          <NavBadge count={badgeCount} isCollapsed={effectiveCollapsed} />
+        )}
+      </button>
+    </Link>
+  );
+}
+
+// Parent row with a static list of sub-items (e.g. "Super Admin").
+// - Expanded sidebar / mobile sheet: collapsible nested list, auto-open
+//   when a child route is active.
+// - Collapsed sidebar: icon button that opens a side popover listing the
+//   sub-items as a flyout.
+function NavSubMenu({
+  item,
+  isCollapsed,
+  location,
+  onNavigate,
+  badgeCounts,
+}: {
+  item: NavItem;
+  isCollapsed: boolean;
+  location: string;
+  onNavigate?: () => void;
+  badgeCounts: Record<string, number>;
+}) {
+  const subItems = item.subItems ?? [];
+  const childActive = subItems.some((s) => isItemActive(s.href, location));
+  const aggregatedBadge = subItems.reduce(
+    (sum, s) => sum + getBadgeCount(s, badgeCounts),
+    0,
+  );
+
+  // Auto-expand whenever a child route is active. Users may also toggle
+  // the menu open/closed manually; we re-sync on route change so
+  // navigating into a child always reveals the sub-menu.
+  const [userOpen, setUserOpen] = useState<boolean>(childActive);
+  useEffect(() => {
+    if (childActive) setUserOpen(true);
+  }, [childActive]);
+
+  // Popover open state for the collapsed-sidebar flyout.
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
+  // Collapsed sidebar: icon trigger + popover flyout.
+  if (isCollapsed) {
+    return (
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+        <PopoverTrigger asChild>
+          <button
+            data-testid={`nav-submenu-trigger-${item.href}`}
+            aria-label={item.label}
+            aria-haspopup="menu"
+            className={cn(
+              "flex w-full items-center gap-3 rounded-md transition-all duration-200 group relative justify-center p-2.5",
+              childActive
+                ? "bg-indigo-500/10 text-indigo-400"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+            )}
+            title={item.label}
+          >
+            <item.icon
+              className={cn(
+                "w-5 h-5 shrink-0",
+                childActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+              )}
+            />
+            <NavBadge count={aggregatedBadge} isCollapsed />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="w-56 p-1 bg-[#0f172a] border-slate-800 text-slate-300"
+        >
+          <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            {item.label}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {subItems.map((sub) => (
+              <NavLeafRow
+                key={sub.href}
+                item={sub}
+                isActive={isItemActive(sub.href, location)}
+                isCollapsed={false}
+                badgeCount={getBadgeCount(sub, badgeCounts)}
+                onNavigate={() => {
+                  setPopoverOpen(false);
+                  onNavigate?.();
+                }}
+                variant="popover"
+              />
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  // Expanded sidebar / mobile sheet: collapsible nested list.
+  return (
+    <Collapsible open={userOpen} onOpenChange={setUserOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          data-testid={`nav-submenu-trigger-${item.href}`}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-md transition-all duration-200 group px-3 py-2.5",
+            childActive
+              ? "bg-indigo-500/10 text-indigo-400"
+              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+          )}
+        >
+          <item.icon
+            className={cn(
+              "w-5 h-5 shrink-0",
+              childActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+            )}
+          />
+          <span className="font-medium text-sm">{item.label}</span>
+          {!userOpen && aggregatedBadge > 0 && (
+            <NavBadge count={aggregatedBadge} isCollapsed={false} />
+          )}
+          <ChevronDown
+            className={cn(
+              "w-4 h-4 shrink-0 text-slate-500 transition-transform",
+              userOpen ? "rotate-180" : "rotate-0",
+              !userOpen && aggregatedBadge > 0 ? "ml-1" : "ml-auto"
+            )}
+          />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top-1 data-[state=open]:slide-in-from-top-1">
+        <div className="flex flex-col gap-0.5 mt-0.5">
+          {subItems.map((sub) => (
+            <NavLeafRow
+              key={sub.href}
+              item={sub}
+              isActive={isItemActive(sub.href, location)}
+              isCollapsed={false}
+              badgeCount={getBadgeCount(sub, badgeCounts)}
+              onNavigate={onNavigate}
+              variant="sub"
+            />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function SidebarNav({
   navItems,
   isAdmin,
@@ -290,74 +526,80 @@ function SidebarNav({
   onNavigate?: () => void;
   badgeCounts: Record<string, number>;
 }) {
+  const renderItem = (item: NavItem) => {
+    if (item.adminOnly && !isAdmin) return null;
+    if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
+
+    if (item.subItems && item.subItems.length > 0) {
+      return (
+        <NavSubMenu
+          key={item.href}
+          item={item}
+          isCollapsed={isCollapsed}
+          location={location}
+          onNavigate={onNavigate}
+          badgeCounts={badgeCounts}
+        />
+      );
+    }
+
+    const isActive = isItemActive(item.href, location);
+    const isDashboardActive =
+      item.href === "/" && (location === "/" || location === "/home");
+
+    if (item.hasDropdown && !isCollapsed) {
+      return (
+        <NavigationMenu key={item.href}>
+          <NavigationMenuList>
+            <NavigationMenuItem>
+              <NavigationMenuTrigger
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-200 w-full",
+                  isActive
+                    ? "bg-indigo-500/10 text-indigo-400"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                )}
+              >
+                <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
+                {item.label}
+              </NavigationMenuTrigger>
+              <NavigationMenuContent>
+                <Suspense fallback={<LeagueLoadingFallback />}>
+                  <LeaguesDropdownContent />
+                </Suspense>
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+          </NavigationMenuList>
+        </NavigationMenu>
+      );
+    }
+
+    return (
+      <NavLeafRow
+        key={item.href}
+        item={item}
+        isActive={isActive || isDashboardActive}
+        isCollapsed={isCollapsed}
+        badgeCount={getBadgeCount(item, badgeCounts)}
+        onNavigate={onNavigate}
+      />
+    );
+  };
+
+  // Split items into top (default) and bottom (pinToBottom) so the
+  // pinned ones sit just above the user profile area regardless of how
+  // many other rows are present.
+  const topItems = navItems.filter((i) => !i.pinToBottom);
+  const bottomItems = navItems.filter((i) => i.pinToBottom);
+
   return (
     <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
-      {navItems.map((item) => {
-        if (item.adminOnly && !isAdmin) return null;
-        if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
-
-        const isActive = location === item.href ||
-          (item.href !== "/" && location.startsWith(item.href + "/"));
-        const isDashboardActive = item.href === "/" && (location === "/" || location === "/home");
-
-        if (item.hasDropdown && !isCollapsed) {
-          return (
-            <NavigationMenu key={item.href}>
-              <NavigationMenuList>
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-200 w-full",
-                      isActive
-                        ? "bg-indigo-500/10 text-indigo-400"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                    )}
-                  >
-                    <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
-                    {item.label}
-                  </NavigationMenuTrigger>
-                  <NavigationMenuContent>
-                    <Suspense fallback={<LeagueLoadingFallback />}>
-                      <LeaguesDropdownContent />
-                    </Suspense>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-              </NavigationMenuList>
-            </NavigationMenu>
-          );
-        }
-
-        const badgeCount = item.badgeQueryKey
-          ? badgeCounts[item.badgeQueryKey.join('|')] ?? 0
-          : 0;
-
-        return (
-          <Link key={item.href} href={item.href}>
-            <button
-              onClick={onNavigate}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
-                isCollapsed ? "relative justify-center p-2.5" : "px-3 py-2.5",
-                (isActive || isDashboardActive)
-                  ? "bg-indigo-500/10 text-indigo-400"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              )}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <item.icon className={cn(
-                "w-5 h-5 shrink-0",
-                (isActive || isDashboardActive) ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
-              )} />
-              {!isCollapsed && (
-                <span className="font-medium text-sm">{item.label}</span>
-              )}
-              {item.badgeQueryKey && (
-                <NavBadge count={badgeCount} isCollapsed={isCollapsed} />
-              )}
-            </button>
-          </Link>
-        );
-      })}
+      {topItems.map(renderItem)}
+      {bottomItems.length > 0 && (
+        <div className="mt-auto pt-4 flex flex-col gap-1 border-t border-slate-800/60">
+          {bottomItems.map(renderItem)}
+        </div>
+      )}
     </nav>
   );
 }
