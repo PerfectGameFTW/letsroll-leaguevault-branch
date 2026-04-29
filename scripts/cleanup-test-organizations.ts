@@ -14,8 +14,8 @@
  *      Real customer orgs whose slug doesn't match these patterns are
  *      *never* considered for deletion.
  *   2. The org's slug is NOT in `PROTECTED_SLUGS` (defense-in-depth
- *      allow-list covering the 3 known prod-shaped tenants on the dev
- *      DB and the 2 seeded vitest baseline orgs).
+ *      allow-list covering the 3 LIVE customer tenants on the dev DB
+ *      and the 2 seeded vitest baseline orgs).
  *
  * Safety:
  *   - Refuses to run when NODE_ENV=production or REPLIT_DEPLOYMENT is
@@ -108,8 +108,8 @@ function assertSafeEnvironment(): void {
   const isReplitDeployment = isReplitDeploymentValue(process.env.REPLIT_DEPLOYMENT);
   // Mirrors `assertSafeEnvironment` in tests/setup/seed-test-users.ts:
   // an explicit ALLOW_TEST_CLEANUP=1 opt-in lets the operator run this
-  // even against a production-shaped DB. Without that opt-in, prod is
-  // hard-refused.
+  // even against a deployed environment. Without that opt-in, deployed
+  // / production-flagged environments are hard-refused.
   if (allowOverride) return;
   if (nodeEnv === 'production' || isReplitDeployment) {
     throw new Error(
@@ -160,8 +160,9 @@ async function main(): Promise<void> {
   //      and are therefore never deleted, even if their slug ever drifts
   //      out of the allow-list.
   //   2. slug NOT IN PROTECTED_SLUGS        -> defense-in-depth: keeps
-  //      the seeded baseline orgs (`vitest-org-a/b`) and the prod-shaped
-  //      tenants safe even though the baselines do match `vitest-%`.
+  //      the seeded baseline orgs (`vitest-org-a/b`) and the LIVE
+  //      customer tenants safe even though the baselines do match
+  //      `vitest-%`.
   const testSlugMatch = or(
     ...TEST_SLUG_PATTERNS.map((pattern) => sql`${organizations.slug} LIKE ${pattern}`),
   );

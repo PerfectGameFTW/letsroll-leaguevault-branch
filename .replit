@@ -197,6 +197,7 @@ VITE_SENTRY_DSN = "https://424c61a13e92d32157f44e43c5d2e03f@o4511069370777600.in
 
 [userenv.development]
 TRUST_PROXY_PROBE_TOKEN = "devonly-trustproxy-probe-token-do-not-use-in-prod-1234567890"
+DEV_DB_HOST_ALLOWLIST = "ep-dawn-unit-a66zn28k"
 
 [postMerge]
 path = "scripts/post-merge.sh"

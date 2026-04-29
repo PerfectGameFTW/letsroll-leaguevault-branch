@@ -38,7 +38,7 @@ const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
 /**
  * Slugs that belong to LIVE customer organizations on this dev DB
  * (real tenants with real bowlers and real payments — NOT demo data,
- * not "production-shaped baseline orgs"). The fixture helpers below
+ * not test fixtures). The fixture helpers below
  * MUST refuse any operation against these slugs even if a future
  * test or contributor passes one in by mistake. The cleanup script
  * (`scripts/cleanup-test-organizations.ts`) maintains the same list
