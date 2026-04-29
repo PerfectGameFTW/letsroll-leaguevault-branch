@@ -8,25 +8,31 @@
  * `change-password-test-*`, `email-change-test-*`,
  * `vitest-csc-orga-*`, `lifecycle-org-*`, etc).
  *
- * This script deletes every `organizations` row whose slug is NOT in
- * the explicit allow-list, plus all dependent rows that would
- * otherwise block the delete (users / bowlers / leagues / locations
- * and the audit tables that have ON DELETE RESTRICT on user_id).
+ * Selection criteria (BOTH must be true):
+ *   1. The org's slug matches one of the known test-shaped patterns in
+ *      `TEST_SLUG_PATTERNS` (vitest-%, %-test-%, lifecycle-org-%, etc).
+ *      Real customer orgs whose slug doesn't match these patterns are
+ *      *never* considered for deletion.
+ *   2. The org's slug is NOT in `PROTECTED_SLUGS` (defense-in-depth
+ *      allow-list covering the 3 known prod-shaped tenants on the dev
+ *      DB and the 2 seeded vitest baseline orgs).
  *
  * Safety:
  *   - Refuses to run when NODE_ENV=production or REPLIT_DEPLOYMENT is
- *     set, unless ALLOW_TEST_CLEANUP=1 is passed.
+ *     set, *unless* the explicit override env var ALLOW_TEST_CLEANUP=1
+ *     is also passed (mirrors the seeder's `assertSafeEnvironment`
+ *     pattern in `tests/setup/seed-test-users.ts`).
  *   - Wraps every delete in a single transaction. A failure rolls
  *     everything back.
  *   - `--dry-run` prints what would be deleted and exits without
- *     touching the DB. Default mode also requires explicit
- *     confirmation via ALLOW_TEST_CLEANUP=1 to actually delete.
+ *     touching the DB. Default (non-dry-run) mode additionally requires
+ *     explicit confirmation via ALLOW_TEST_CLEANUP=1 to actually delete.
  *
  * Usage:
  *   npx tsx scripts/cleanup-test-organizations.ts --dry-run
  *   ALLOW_TEST_CLEANUP=1 npx tsx scripts/cleanup-test-organizations.ts
  */
-import { and, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
 import { db, pool } from '../server/db';
 import {
   organizations,
@@ -50,6 +56,9 @@ import { isReplitDeploymentValue } from '../server/utils/replit-env';
  *     (Perfect Game / Let's Roll Bowling / Sun Valley Lanes & Games)
  *   - The two seeded vitest baseline orgs that the refactored test
  *     suite re-uses across runs
+ *
+ * Defense-in-depth: even if a future test pattern accidentally matches
+ * one of these, the allow-list keeps them safe.
  */
 const PROTECTED_SLUGS = [
   'perfect-game',
@@ -59,13 +68,48 @@ const PROTECTED_SLUGS = [
   'vitest-org-b',
 ];
 
+/**
+ * Positive-match patterns identifying slugs that came from the test
+ * suite. Only orgs whose slug matches one of these (and that are NOT in
+ * `PROTECTED_SLUGS`) are eligible for deletion. Real customer orgs
+ * whose slug doesn't match any of these are *never* touched.
+ *
+ * Sourced from the historical leak corpus (`change-password-test-*`,
+ * `email-change-test-*`, `lifecycle-org-*`, `vitest-csc-orga-*`,
+ * `sync-test-*`, `retry-test-*`, `422-org*`, `audit-org*`, `acme*`,
+ * etc) plus the deterministic-recycle slugs the refactored suite now
+ * uses (`vitest-*`).
+ */
+const TEST_SLUG_PATTERNS = [
+  'vitest-%',
+  'test-%',
+  '%-test-%',
+  '%-test',
+  'lifecycle-org%',
+  'change-password-%',
+  'email-change-%',
+  'sync-test-%',
+  'retry-test-%',
+  '422-org%',
+  'audit-org%',
+  'acme%',
+  'csc-org%',
+  'org-test%',
+];
+
 function assertSafeEnvironment(): void {
   const nodeEnv = process.env.NODE_ENV;
+  const allowOverride = process.env.ALLOW_TEST_CLEANUP === '1';
   const isReplitDeployment = isReplitDeploymentValue(process.env.REPLIT_DEPLOYMENT);
+  // Mirrors `assertSafeEnvironment` in tests/setup/seed-test-users.ts:
+  // an explicit ALLOW_TEST_CLEANUP=1 opt-in lets the operator run this
+  // even against a production-shaped DB. Without that opt-in, prod is
+  // hard-refused.
+  if (allowOverride) return;
   if (nodeEnv === 'production' || isReplitDeployment) {
     throw new Error(
       'Refusing to run cleanup-test-organizations: NODE_ENV=production or REPLIT_DEPLOYMENT is set. ' +
-        'This script is for the dev / CI database only.',
+        'Set ALLOW_TEST_CLEANUP=1 only if you really intend to delete test-shaped orgs from this database.',
     );
   }
 }
@@ -100,20 +144,32 @@ async function main(): Promise<void> {
   }
 
   // --- Resolve doomed orgs --------------------------------------------------
+  // Selection rule (BOTH filters apply):
+  //   1. slug LIKE ANY(TEST_SLUG_PATTERNS)  -> only test-shaped slugs
+  //      are eligible. Real customer orgs never match a test pattern
+  //      and are therefore never deleted, even if their slug ever drifts
+  //      out of the allow-list.
+  //   2. slug NOT IN PROTECTED_SLUGS        -> defense-in-depth: keeps
+  //      the seeded baseline orgs (`vitest-org-a/b`) and the prod-shaped
+  //      tenants safe even though the baselines do match `vitest-%`.
+  const testSlugMatch = or(
+    ...TEST_SLUG_PATTERNS.map((pattern) => sql`${organizations.slug} LIKE ${pattern}`),
+  );
   const doomed = await db
     .select({ id: organizations.id, slug: organizations.slug, name: organizations.name })
     .from(organizations)
-    .where(notInArray(organizations.slug, PROTECTED_SLUGS));
+    .where(and(testSlugMatch, notInArray(organizations.slug, PROTECTED_SLUGS)));
 
   if (doomed.length === 0) {
-    console.log('Nothing to clean up: every organization slug is in the allow-list.');
+    console.log('Nothing to clean up: no organization slug matches a test pattern.');
     await pool.end();
     return;
   }
 
   const doomedIds = doomed.map((o) => o.id);
-  console.log(`Found ${doomed.length} non-protected organizations.`);
-  console.log(`Protected slugs (kept): ${PROTECTED_SLUGS.join(', ')}`);
+  console.log(`Found ${doomed.length} test-shaped organizations to delete.`);
+  console.log(`Test patterns:   ${TEST_SLUG_PATTERNS.join(', ')}`);
+  console.log(`Protected slugs: ${PROTECTED_SLUGS.join(', ')}`);
   console.log('First 10 doomed orgs:', doomed.slice(0, 10).map((o) => `${o.id}:${o.slug}`).join(', '));
 
   // --- Resolve doomed user / bowler ids ------------------------------------
