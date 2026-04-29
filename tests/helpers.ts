@@ -35,6 +35,23 @@ const TEST_NEW_ORG_ADMIN_PASSWORD = process.env.TEST_NEW_ORG_ADMIN_PASSWORD || '
 const TEST_ORG_A_SLUG = process.env.TEST_ORG_A_SLUG || 'vitest-org-a';
 const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
 
+/**
+ * Slugs that belong to LIVE customer organizations on this dev DB
+ * (real tenants with real bowlers and real payments — NOT demo data,
+ * not "production-shaped baseline orgs"). The fixture helpers below
+ * MUST refuse any operation against these slugs even if a future
+ * test or contributor passes one in by mistake. The cleanup script
+ * (`scripts/cleanup-test-organizations.ts`) maintains the same list
+ * in `PROTECTED_SLUGS` for the same reason — keep both in sync.
+ *
+ * Filed under Task #609.
+ */
+const LIVE_CUSTOMER_ORG_SLUGS = [
+  'perfect-game',
+  'lets-roll-bowling',
+  'sun-valley-lanes-games',
+] as const;
+
 interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -253,8 +270,18 @@ async function getBaselineOrgAId(): Promise<number> {
  * across runs stays flat. (Task #607.)
  */
 async function acquireFixtureOrg(slug: string, name: string): Promise<number> {
-  // Refuse to clobber the protected slugs — those are owned by the
-  // seeder, not by individual fixtures.
+  // Refuse to clobber the LIVE customer slugs (real tenants with
+  // real bowlers and real payments). Belt-and-suspenders: even if a
+  // future test passes one of these in by mistake, we never write
+  // to it.
+  if ((LIVE_CUSTOMER_ORG_SLUGS as readonly string[]).includes(slug)) {
+    throw new Error(
+      `acquireFixtureOrg refuses to operate on "${slug}" — that is a live ` +
+        'customer organization on the dev DB, not a test fixture.',
+    );
+  }
+  // Refuse to clobber the seeded vitest baseline slugs — those are
+  // owned by the seeder, not by individual fixtures.
   if (slug === TEST_ORG_A_SLUG || slug === TEST_ORG_B_SLUG) {
     throw new Error(`acquireFixtureOrg refuses to overwrite baseline slug "${slug}"`);
   }
@@ -272,6 +299,12 @@ async function acquireFixtureOrg(slug: string, name: string): Promise<number> {
  * for a slug that has no row (no-op).
  */
 async function releaseFixtureOrg(slug: string): Promise<void> {
+  if ((LIVE_CUSTOMER_ORG_SLUGS as readonly string[]).includes(slug)) {
+    throw new Error(
+      `releaseFixtureOrg refuses to delete "${slug}" — that is a live ` +
+        'customer organization on the dev DB, not a test fixture.',
+    );
+  }
   if (slug === TEST_ORG_A_SLUG || slug === TEST_ORG_B_SLUG) {
     throw new Error(`releaseFixtureOrg refuses to delete baseline slug "${slug}"`);
   }

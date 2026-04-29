@@ -49,13 +49,18 @@ import {
   orphanCleanupAudits,
 } from '@shared/schema';
 import { isReplitDeploymentValue } from '../server/utils/replit-env';
+import { assertSafeDatabaseHost } from '../server/utils/db-safety';
 
 /**
  * Slugs that must NEVER be touched by this script:
- *   - The three real production-shaped tenants on the dev DB
- *     (Perfect Game / Let's Roll Bowling / Sun Valley Lanes & Games)
+ *   - The three LIVE customer organizations on the dev DB — these
+ *     are real tenants with real bowlers and real payments
+ *     (Perfect Game / Let's Roll Bowling / Sun Valley Lanes & Games).
+ *     Do not modify. The same list is mirrored in
+ *     `LIVE_CUSTOMER_ORG_SLUGS` in `tests/helpers.ts` and must be
+ *     kept in sync there. (Task #609.)
  *   - The two seeded vitest baseline orgs that the refactored test
- *     suite re-uses across runs
+ *     suite re-uses across runs (`vitest-org-a` / `vitest-org-b`).
  *
  * Defense-in-depth: even if a future test pattern accidentally matches
  * one of these, the allow-list keeps them safe.
@@ -132,6 +137,11 @@ interface CleanupCounts {
 
 async function main(): Promise<void> {
   assertSafeEnvironment();
+  // Second, INDEPENDENT layer of defense (Task #609). Even if the
+  // operator's NODE_ENV is wrong (e.g. development) but their
+  // DATABASE_URL still points at the production tenant, this guard
+  // refuses to run. See `server/utils/db-safety.ts`.
+  assertSafeDatabaseHost('cleanup-test-organizations');
 
   const dryRun = process.argv.includes('--dry-run');
   const confirmed = process.env.ALLOW_TEST_CLEANUP === '1';

@@ -12,6 +12,7 @@ import { db } from '../../server/db';
 import { leagues, organizations, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { isReplitDeploymentValue } from '../../server/utils/replit-env';
+import { assertSafeDatabaseHost } from '../../server/utils/db-safety';
 
 /**
  * Hard guard: this seeder forcibly resets passwords / roles / org for any
@@ -148,6 +149,11 @@ async function ensureUser(spec: UserSpec): Promise<void> {
 
 export async function seedTestUsers(): Promise<void> {
   assertSafeEnvironment();
+  // Second, INDEPENDENT layer of defense (Task #609). Even if the
+  // operator's NODE_ENV is wrong (e.g. development) but their
+  // DATABASE_URL still points at the production tenant, this guard
+  // refuses to run. See `server/utils/db-safety.ts`.
+  assertSafeDatabaseHost('seed-test-users');
   const orgAId = await ensureOrganization('Vitest Org A', TEST_ORG_A_SLUG);
   const orgBId = await ensureOrganization('Vitest Org B', TEST_ORG_B_SLUG);
 
