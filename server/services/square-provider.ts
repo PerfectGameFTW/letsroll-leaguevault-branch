@@ -27,6 +27,65 @@ import type {
 
 const log = createLogger("SquareService");
 
+/**
+ * Safety cap on catalog pagination (Task #613). Square paginates
+ * `catalog.list` and `catalog.searchItems` with a `cursor`; without a
+ * cap, a stuck or pathological cursor (e.g. an SDK bug that never
+ * unsets it) would loop forever and pin a request. The cap is
+ * deliberately well above any plausible real-world catalog size — a
+ * legitimate organization that hits this limit is itself a signal
+ * worth investigating, hence the `warn` log.
+ */
+const CATALOG_PAGINATION_MAX_ITEMS = 5_000;
+const CATALOG_PAGINATION_MAX_PAGES = 20;
+
+/**
+ * Walk a Square catalog cursor until it is empty (or a safety cap is
+ * hit), accumulating every CatalogObject across all pages. Used by
+ * `listCatalogCategories` and both branches of `listCatalogItems` so
+ * the cursor-handling and the safety cap live in exactly one place.
+ *
+ * `fetchPage` is the per-call differentiator:
+ *   - `catalog.list` returns a `Page<CatalogObject>` whose cursor lives
+ *     at `page.response?.cursor`.
+ *   - `catalog.searchItems` returns the response body directly with
+ *     `cursor` at the top level.
+ * The caller adapts whichever shape they use into a uniform
+ * `{ objects, nextCursor }` for this helper.
+ */
+async function paginateCatalogObjects(
+  fetchPage: (cursor: string | undefined) => Promise<{
+    objects: CatalogObject[];
+    nextCursor: string | undefined;
+  }>,
+  context: string,
+): Promise<CatalogObject[]> {
+  const all: CatalogObject[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  do {
+    const { objects, nextCursor } = await fetchPage(cursor);
+    all.push(...objects);
+    pages += 1;
+    cursor = nextCursor;
+    if (all.length >= CATALOG_PAGINATION_MAX_ITEMS) {
+      log.warn(
+        `${context}: hit MAX_ITEMS=${CATALOG_PAGINATION_MAX_ITEMS} cap after ${pages} page(s); ` +
+          'stopping pagination. Some catalog items may be missing from the response.',
+      );
+      break;
+    }
+    if (pages >= CATALOG_PAGINATION_MAX_PAGES && cursor) {
+      log.warn(
+        `${context}: hit MAX_PAGES=${CATALOG_PAGINATION_MAX_PAGES} cap with cursor still set; ` +
+          `${all.length} object(s) returned. Some catalog items may be missing from the response.`,
+      );
+      break;
+    }
+  } while (cursor);
+  return all;
+}
+
 function buildSquareClient(accessToken: string, appId?: string): SquareClient {
   const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
   const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
@@ -881,17 +940,20 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      const allObjects: CatalogObject[] = [];
-      let cursor: string | undefined;
-      do {
-        // v40+ flat-client `catalog.list` returns a Page<CatalogObject>;
-        // we walk the cursor manually so the existing per-page accumulation
-        // semantics are preserved verbatim.
-        const page = await client.catalog.list({ cursor, types: 'CATEGORY' });
-        const objects = page.data ?? [];
-        allObjects.push(...objects);
-        cursor = page.response?.cursor || undefined;
-      } while (cursor);
+      // v40+ flat-client `catalog.list` returns a Page<CatalogObject>;
+      // we walk the cursor through the shared `paginateCatalogObjects`
+      // helper so the safety cap (Task #613) applies here too even
+      // though categories rarely approach it.
+      const allObjects = await paginateCatalogObjects(
+        async (cursor) => {
+          const page = await client.catalog.list({ cursor, types: 'CATEGORY' });
+          return {
+            objects: page.data ?? [],
+            nextCursor: page.response?.cursor || undefined,
+          };
+        },
+        'listCatalogCategories',
+      );
 
       // v40+ CatalogObject is a discriminated union via `type`. Narrow
       // to the CATEGORY variant so `categoryData` is reachable, and
@@ -930,10 +992,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
     try {
       // The mapper is identical for both branches (search-by-category
-      // and the unscoped first-page list). Pulled out so the
-      // discriminated-union narrowing on `type === 'ITEM'` lives in
-      // one place, and so a future tweak to the consumer-facing
-      // CatalogItem shape only has to be made once.
+      // and the unscoped list). Pulled out so the discriminated-union
+      // narrowing on `type === 'ITEM'` lives in one place, and so a
+      // future tweak to the consumer-facing CatalogItem shape only has
+      // to be made once.
       type ItemObject = CatalogObject & { type: 'ITEM' };
       type VariationObject = CatalogObject & { type: 'ITEM_VARIATION' };
       const isItemObject = (obj: CatalogObject): obj is ItemObject => obj.type === 'ITEM';
@@ -963,23 +1025,46 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         };
       };
 
+      // Both branches paginate via Square's `cursor` until the response
+      // stops returning one (Task #613). Pre-#613, both branches read
+      // only the first page, so any organization whose Square catalog
+      // grew past Square's default page size silently lost items in
+      // the admin UI with no signal. The shared `paginateCatalogObjects`
+      // helper enforces a safety cap (5,000 items / 20 pages) and
+      // logs a `warn` if hit so a runaway loop can't masquerade as a
+      // huge catalog.
       if (categoryId) {
-        const response = await client.catalog.searchItems({
-          categoryIds: [categoryId],
-        });
-        const items = response.items ?? [];
+        // SearchCatalogItemsResponse exposes `cursor` directly on the
+        // response body (no Page<> wrapper here, unlike `catalog.list`).
+        const allItems = await paginateCatalogObjects(
+          async (cursor) => {
+            const response = await client.catalog.searchItems({
+              categoryIds: [categoryId],
+              cursor,
+            });
+            return {
+              objects: response.items ?? [],
+              nextCursor: response.cursor || undefined,
+            };
+          },
+          `listCatalogItems(categoryId=${categoryId})`,
+        );
         // `searchItems` returns CatalogObject[] in v40+; narrow to the
         // ITEM variant so `itemData` is reachable on the union.
-        return items.filter(isItemObject).map(toCatalogItem);
+        return allItems.filter(isItemObject).map(toCatalogItem);
       }
 
-      // Single-page fetch retains the legacy "first page only" behavior;
-      // operators with >1000 catalog items see the same first-page slice
-      // they did pre-upgrade. Pagination is the responsibility of
-      // categoryId-scoped lookups above.
-      const page = await client.catalog.list({ types: 'ITEM' });
-      const objects = page.data ?? [];
-      return objects.filter(isItemObject).map(toCatalogItem);
+      const allObjects = await paginateCatalogObjects(
+        async (cursor) => {
+          const page = await client.catalog.list({ cursor, types: 'ITEM' });
+          return {
+            objects: page.data ?? [],
+            nextCursor: page.response?.cursor || undefined,
+          };
+        },
+        'listCatalogItems',
+      );
+      return allObjects.filter(isItemObject).map(toCatalogItem);
     } catch (error) {
       log.error('Catalog list error:', error);
       throw new Error('Failed to fetch catalog items: ' + (error instanceof Error ? error.message : String(error)));

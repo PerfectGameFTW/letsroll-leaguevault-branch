@@ -15,6 +15,19 @@ const mocks = vi.hoisted(() => {
     payments: {
       create: vi.fn(),
     },
+    catalog: {
+      list: vi.fn(),
+      searchItems: vi.fn(),
+    },
+    // Stable logger so pagination tests can assert that the safety
+    // cap fired (`log.warn(...)`) on the same instance the
+    // module-level `log` was bound to at import time.
+    log: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
     getLocationSquareConfig: vi.fn(),
   };
 });
@@ -24,6 +37,7 @@ vi.mock('square', () => ({
     return {
       customers: mocks.customers,
       payments: mocks.payments,
+      catalog: mocks.catalog,
     };
   },
   SquareEnvironment: { Production: 'production', Sandbox: 'sandbox' },
@@ -56,12 +70,7 @@ vi.mock('../../storage', () => ({
 }));
 
 vi.mock('../../logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => mocks.log,
 }));
 
 const { SquarePaymentProvider } = await import('../square-provider.js');
@@ -290,6 +299,144 @@ describe('Square Service', () => {
 
     it('listCatalogItems stays degraded (returns [])', async () => {
       await expect(noCredsProvider.listCatalogItems()).resolves.toEqual([]);
+    });
+  });
+
+  // Task #613: pre-#613, both branches of `listCatalogItems` (and the
+  // unscoped first-page list inside `listCatalogCategories`) only ever
+  // walked the first response page. Any organization whose Square
+  // catalog grew past Square's default page size silently lost items
+  // in the admin UI with no signal that more existed. These tests pin
+  // that the cursor is now followed across pages and that a safety
+  // cap fires before a stuck cursor can pin a request indefinitely.
+  describe('catalog pagination (task #613)', () => {
+    const itemObject = (id: string, name: string) => ({
+      id,
+      type: 'ITEM',
+      itemData: { name, variations: [] },
+    });
+
+    const categoryObject = (id: string, name: string) => ({
+      id,
+      type: 'CATEGORY',
+      isDeleted: false,
+      categoryData: { name },
+    });
+
+    // `client.catalog.list` returns a Page<> wrapper whose cursor lives
+    // at `page.response.cursor` (not directly on the page). The
+    // production code reads it from there, so the mock must too.
+    const listPage = (data: unknown[], cursor?: string) => ({
+      data,
+      response: { cursor },
+    });
+
+    it('listCatalogItems (no categoryId) follows the cursor across multiple pages', async () => {
+      mocks.catalog.list
+        .mockResolvedValueOnce(listPage([itemObject('a', 'A'), itemObject('b', 'B')], 'cursor-1'))
+        .mockResolvedValueOnce(listPage([itemObject('c', 'C')], 'cursor-2'))
+        .mockResolvedValueOnce(listPage([itemObject('d', 'D')], undefined));
+
+      const items = await provider.listCatalogItems();
+
+      expect(items.map((i) => i.id)).toEqual(['a', 'b', 'c', 'd']);
+      expect(mocks.catalog.list).toHaveBeenCalledTimes(3);
+      expect(mocks.catalog.list).toHaveBeenNthCalledWith(1, { cursor: undefined, types: 'ITEM' });
+      expect(mocks.catalog.list).toHaveBeenNthCalledWith(2, { cursor: 'cursor-1', types: 'ITEM' });
+      expect(mocks.catalog.list).toHaveBeenNthCalledWith(3, { cursor: 'cursor-2', types: 'ITEM' });
+      expect(mocks.log.warn).not.toHaveBeenCalled();
+    });
+
+    it('listCatalogItems (with categoryId) follows the cursor across multiple pages via searchItems', async () => {
+      mocks.catalog.searchItems
+        .mockResolvedValueOnce({ items: [itemObject('a', 'A')], cursor: 'cursor-1' })
+        .mockResolvedValueOnce({ items: [itemObject('b', 'B')], cursor: 'cursor-2' })
+        .mockResolvedValueOnce({ items: [itemObject('c', 'C')], cursor: undefined });
+
+      const items = await provider.listCatalogItems('CAT-1');
+
+      expect(items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+      expect(mocks.catalog.searchItems).toHaveBeenCalledTimes(3);
+      expect(mocks.catalog.searchItems).toHaveBeenNthCalledWith(1, {
+        categoryIds: ['CAT-1'],
+        cursor: undefined,
+      });
+      expect(mocks.catalog.searchItems).toHaveBeenNthCalledWith(2, {
+        categoryIds: ['CAT-1'],
+        cursor: 'cursor-1',
+      });
+      expect(mocks.catalog.searchItems).toHaveBeenNthCalledWith(3, {
+        categoryIds: ['CAT-1'],
+        cursor: 'cursor-2',
+      });
+      expect(mocks.log.warn).not.toHaveBeenCalled();
+    });
+
+    it('listCatalogItems treats an empty-string cursor as end-of-pagination', async () => {
+      // Some Square SDK responses report `cursor: ''` (rather than
+      // omitting it) on the final page. The helper must not loop on
+      // an empty string. Pre-helper, `catalog.list` already used
+      // `|| undefined` to coerce; this pins that the new shared
+      // helper preserves that behavior for both branches.
+      mocks.catalog.list.mockResolvedValueOnce(listPage([itemObject('only', 'Only')], ''));
+
+      const items = await provider.listCatalogItems();
+
+      expect(items.map((i) => i.id)).toEqual(['only']);
+      expect(mocks.catalog.list).toHaveBeenCalledTimes(1);
+    });
+
+    it('listCatalogItems stops at the MAX_PAGES safety cap and logs a warning', async () => {
+      // Simulate a stuck cursor — every page returns one item and
+      // the same non-empty cursor. The helper must bail at the page
+      // cap (20) instead of looping forever.
+      mocks.catalog.list.mockImplementation(async () =>
+        listPage([itemObject('x', 'X')], 'never-ending-cursor'),
+      );
+
+      const items = await provider.listCatalogItems();
+
+      expect(items).toHaveLength(20);
+      expect(mocks.catalog.list).toHaveBeenCalledTimes(20);
+      expect(mocks.log.warn).toHaveBeenCalledTimes(1);
+      expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_PAGES=20/);
+    });
+
+    it('listCatalogItems stops at the MAX_ITEMS safety cap and logs a warning', async () => {
+      // Simulate huge pages (300 items each) with a non-empty cursor
+      // on every page. The helper must bail once the accumulated
+      // count crosses 5,000, regardless of how many pages remain.
+      const bigPage = Array.from({ length: 300 }, (_, i) => itemObject(`x-${i}`, `X${i}`));
+      mocks.catalog.list.mockImplementation(async () =>
+        listPage(bigPage, 'never-ending-cursor'),
+      );
+
+      const items = await provider.listCatalogItems();
+
+      // 17 pages of 300 = 5100 items, which crosses the 5000 cap.
+      expect(items.length).toBeGreaterThanOrEqual(5_000);
+      expect(mocks.log.warn).toHaveBeenCalledTimes(1);
+      expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_ITEMS=5000/);
+    });
+
+    it('listCatalogCategories also paginates through the cursor', async () => {
+      mocks.catalog.list
+        .mockResolvedValueOnce(listPage([categoryObject('cat-1', 'Cat One')], 'cursor-1'))
+        .mockResolvedValueOnce(listPage([categoryObject('cat-2', 'Cat Two')], undefined));
+
+      const categories = await provider.listCatalogCategories();
+
+      expect(categories.map((c) => c.id).sort()).toEqual(['cat-1', 'cat-2']);
+      expect(mocks.catalog.list).toHaveBeenCalledTimes(2);
+      expect(mocks.catalog.list).toHaveBeenNthCalledWith(1, {
+        cursor: undefined,
+        types: 'CATEGORY',
+      });
+      expect(mocks.catalog.list).toHaveBeenNthCalledWith(2, {
+        cursor: 'cursor-1',
+        types: 'CATEGORY',
+      });
+      expect(mocks.log.warn).not.toHaveBeenCalled();
     });
   });
 });
