@@ -67,6 +67,25 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(30 * 60 * 1000),
+
+  // Comma-separated list of recipient email domains that the SendGrid
+  // dispatcher MUST refuse to deliver to. Used to prevent vitest runs
+  // (which create real users at `@vitest.local`) from generating bounce
+  // events that count against our quota and hurt sender reputation —
+  // see task #593 and the comment block at the top of
+  // `server/services/email.ts`. Unset → defaults to `['vitest.local']`
+  // so the guard works on a fresh checkout with no extra config.
+  // Set to an empty string to disable the guard entirely.
+  BLOCK_EMAIL_DOMAINS: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return ['vitest.local'];
+      return v
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.length > 0);
+    }),
 });
 
 type Env = z.infer<typeof envSchema>;

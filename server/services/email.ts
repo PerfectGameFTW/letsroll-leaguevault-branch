@@ -1,4 +1,4 @@
-import sgMail from '@sendgrid/mail';
+import sgMail, { type MailDataRequired } from '@sendgrid/mail';
 import sanitizeHtml from 'sanitize-html';
 import { storage } from '../storage';
 import { env, isDev } from '../config';
@@ -6,8 +6,147 @@ import { createLogger } from '../logger';
 import { maskEmail } from '../utils/pii';
 import { pickPasswordChangedLocale } from './email-i18n/password-changed';
 import { pickAccountLockoutLocale } from './email-i18n/account-lockout';
+import { captureEmail } from './_internal/email-outbox';
 
 const log = createLogger("Email");
+
+// ---------------------------------------------------------------------------
+// SendGrid dispatch guard (task #593).
+//
+// Every outbound message in this file flows through `dispatchMail` instead of
+// calling `sgMail.send` directly. The dispatcher checks recipient domains
+// against the configured `BLOCK_EMAIL_DOMAINS` list (default: `vitest.local`)
+// and refuses to hand the message to SendGrid when every recipient is on
+// that list. This stops integration tests — which create real users at
+// `@vitest.local` — from generating SendGrid bounces that count against our
+// daily quota and damage sender reputation.
+//
+// Why a domain block instead of a global "skip in tests" flag?
+//   - The full email pipeline (template lookup, variable substitution,
+//     HTML sanitization, From/To assembly) still runs, so a bug in any
+//     of those layers still surfaces in tests exactly as it does today.
+//   - A render/sanitize error throws *before* the guard short-circuits,
+//     so it bubbles up to the test as a failure rather than being swallowed.
+//   - Tests that want to assert on a captured email can use the helpers in
+//     `server/services/_internal/email-outbox.ts` (`getCapturedEmails`,
+//     `clearCapturedEmails`) without needing per-test `vi.mock` of SendGrid.
+//
+// To add another blocked domain, set `BLOCK_EMAIL_DOMAINS` in the env to a
+// comma-separated list (e.g. `BLOCK_EMAIL_DOMAINS=vitest.local,example.test`).
+// To disable the guard entirely (NOT recommended in dev/CI), set it to "".
+// ---------------------------------------------------------------------------
+
+type EmailAddress = string | { email: string; name?: string };
+type Recipients = EmailAddress | EmailAddress[] | undefined;
+
+function addressOf(entry: EmailAddress): string {
+  return typeof entry === 'string' ? entry : entry.email;
+}
+
+function domainOf(entry: EmailAddress): string {
+  const addr = addressOf(entry);
+  const at = addr.lastIndexOf('@');
+  return at < 0 ? '' : addr.slice(at + 1).toLowerCase();
+}
+
+interface PartitionResult {
+  kept: EmailAddress[];
+  dropped: EmailAddress[];
+  droppedDomains: string[];
+}
+
+function partitionRecipients(field: Recipients, blocked: string[]): PartitionResult {
+  if (field === undefined) return { kept: [], dropped: [], droppedDomains: [] };
+  const list = Array.isArray(field) ? field : [field];
+  const kept: EmailAddress[] = [];
+  const dropped: EmailAddress[] = [];
+  const droppedDomains: string[] = [];
+  for (const entry of list) {
+    const dom = domainOf(entry);
+    if (dom && blocked.includes(dom)) {
+      dropped.push(entry);
+      if (!droppedDomains.includes(dom)) droppedDomains.push(dom);
+    } else {
+      kept.push(entry);
+    }
+  }
+  return { kept, dropped, droppedDomains };
+}
+
+function rewriteRecipients(field: Recipients, kept: EmailAddress[]): Recipients {
+  if (field === undefined) return undefined;
+  if (kept.length === 0) return undefined;
+  // Preserve the original shape: scalar in → scalar out (when only one
+  // recipient remains AND the original was scalar), array in → array out.
+  if (!Array.isArray(field) && kept.length === 1) return kept[0];
+  return kept;
+}
+
+function describeSubject(msg: MailDataRequired): string {
+  const s = msg.subject;
+  return typeof s === 'string' ? s : '<no subject>';
+}
+
+async function dispatchMail(msg: MailDataRequired, isMultiple = false): Promise<void> {
+  // `?? []` defends against test files that vi.mock('../../server/config')
+  // and forget to surface the new field — those mocks pre-date task #593.
+  const blocked = env.BLOCK_EMAIL_DOMAINS ?? [];
+  if (blocked.length === 0) {
+    // Guard fully disabled — go straight to SendGrid.
+    await sgMail.send(msg, isMultiple);
+    return;
+  }
+
+  const to = partitionRecipients(msg.to, blocked);
+  const cc = partitionRecipients(msg.cc, blocked);
+  const bcc = partitionRecipients(msg.bcc, blocked);
+
+  const totalRecipients = to.kept.length + to.dropped.length
+    + cc.kept.length + cc.dropped.length
+    + bcc.kept.length + bcc.dropped.length;
+  const totalKept = to.kept.length + cc.kept.length + bcc.kept.length;
+  const allBlocked = totalRecipients > 0 && totalKept === 0;
+  const someBlocked = to.dropped.length + cc.dropped.length + bcc.dropped.length > 0;
+
+  if (allBlocked) {
+    const droppedDomains = Array.from(
+      new Set([...to.droppedDomains, ...cc.droppedDomains, ...bcc.droppedDomains]),
+    );
+    captureEmail({
+      msg: { ...msg },
+      blockedDomains: droppedDomains,
+      capturedAt: new Date(),
+    });
+    const sample = [...to.dropped, ...cc.dropped, ...bcc.dropped]
+      .map((r) => maskEmail(addressOf(r)))
+      .slice(0, 5)
+      .join(', ');
+    log.info(
+      `Blocked SendGrid send to test-only domain(s) [${droppedDomains.join(', ')}] — captured in outbox. Subject: "${describeSubject(msg)}", recipients: ${sample}`,
+    );
+    return;
+  }
+
+  if (someBlocked) {
+    // Mixed recipient list. Rewrite each list to keep only the safe
+    // recipients and forward the trimmed message. Never silently drop
+    // a legitimate recipient — only the blocked ones go away.
+    const rewritten: MailDataRequired = { ...msg };
+    if (msg.to !== undefined) rewritten.to = rewriteRecipients(msg.to, to.kept);
+    if (msg.cc !== undefined) rewritten.cc = rewriteRecipients(msg.cc, cc.kept);
+    if (msg.bcc !== undefined) rewritten.bcc = rewriteRecipients(msg.bcc, bcc.kept);
+    const droppedDomains = Array.from(
+      new Set([...to.droppedDomains, ...cc.droppedDomains, ...bcc.droppedDomains]),
+    );
+    log.info(
+      `Stripped blocked recipient(s) on domain(s) [${droppedDomains.join(', ')}] from SendGrid message. Subject: "${describeSubject(msg)}"`,
+    );
+    await sgMail.send(rewritten, isMultiple);
+    return;
+  }
+
+  await sgMail.send(msg, isMultiple);
+}
 
 type SendgridLikeError = {
   response?: { body?: unknown };
@@ -191,7 +330,7 @@ export async function sendTemplatedEmail(
       },
     };
 
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info(`Templated email '${slug}' sent to:`, isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -280,7 +419,7 @@ export async function sendInviteEmail(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Invite email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -316,7 +455,7 @@ export async function sendTestEmail(
   const html = wrapInHtmlLayout(sanitizeTemplateBody(body), sampleVariables);
 
   try {
-    await sgMail.send({
+    await dispatchMail({
       to: toEmail,
       from: { email: FROM_EMAIL, name: FROM_NAME },
       subject,
@@ -389,7 +528,7 @@ export async function sendPasswordResetFallbackEmail(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Password reset email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -438,7 +577,7 @@ export async function sendDeletionRequestNotification(
   };
 
   try {
-    await sgMail.send(msg, true);
+    await dispatchMail(msg, true);
     log.info(`Deletion request notification sent to ${toEmails.length} admin(s) for request ${request.id}`);
     return true;
   } catch (error) {
@@ -506,7 +645,7 @@ export async function sendApplePayRecoveryAlert(
   };
 
   try {
-    await sgMail.send(msg, true);
+    await dispatchMail(msg, true);
     log.info(
       `Apple Pay recovery alert sent to ${toEmails.length} admin(s) for ${details.itemCount} item(s)`,
     );
@@ -591,7 +730,7 @@ export async function sendReceiptResendEmail(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Receipt resend sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -651,7 +790,7 @@ export async function sendEmailChangeConfirmation(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Email-change confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -706,7 +845,7 @@ export async function sendEmailChangeNotification(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Email-change notification sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -831,7 +970,7 @@ export async function sendPasswordChangedNotification(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Password-changed notification sent to:', isDev ? toEmail : maskEmail(toEmail), { locale: localeCode });
     return true;
   } catch (error) {
@@ -922,7 +1061,7 @@ export async function sendAccountDeletionConfirmation(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Account-deletion confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error) {
@@ -1026,7 +1165,7 @@ export async function sendAccountLockoutAlert(
   };
 
   try {
-    await sgMail.send(msg);
+    await dispatchMail(msg);
     log.info('Account-lockout alert sent to:', isDev ? toEmail : maskEmail(toEmail), { locale: localeCode });
     return true;
   } catch (error) {
