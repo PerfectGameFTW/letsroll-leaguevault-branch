@@ -101,11 +101,63 @@ export const excludeAllSentinelJobsPredicate = sql`(
 )`;
 const excludeAllSentinelJobs = excludeAllSentinelJobsPredicate;
 
+/**
+ * Backstop filter for stranded item-less jobs (#606).
+ *
+ * The sentinel-TLD filter above intentionally lets jobs with ZERO items
+ * through, because real production jobs have a brief empty window
+ * between `createApplePayJob(...)` (the row insert) and the worker's
+ * first `insertApplePayJobItems(...)` call (item enumeration). Without
+ * that carve-out, a real in-flight job would briefly disappear from the
+ * admin page mid-enumeration.
+ *
+ * That carve-out is exactly the leak shape that
+ * `tests/unit/users-delete.test.ts` exposes: it calls
+ * `createApplePayJob(userId)` to verify `deleteUser` nullifies
+ * `apple_pay_jobs.created_by` and never attaches items because the test
+ * doesn't care about them. When the worker is killed mid-test the bare
+ * row outlives `afterEach`, has no items, and slips past the sentinel
+ * filter onto the admin Apple Pay Jobs page.
+ *
+ * The fix below: a job with zero items AND `created_at` older than a
+ * short grace window is also hidden. The window is sized so:
+ *   - It is comfortably longer than any realistic mid-enumeration gap
+ *     (production enumeration completes in well under a second).
+ *   - It is short enough that any stranded empty test row from a prior
+ *     crashed run has long since aged past it before the next admin
+ *     page load.
+ *
+ * 60 seconds is plenty. (The much longer `APPLE_PAY_ITEM_LEASE_MS` is
+ * 10 minutes and covers a different scenario — recovering items that
+ * were claimed by a crashed worker mid-call. That lease is irrelevant
+ * here because we are talking about jobs that have NO items at all,
+ * not stalled `processing` items.)
+ *
+ * Exported for test parity (mirrors `excludeAllSentinelJobsPredicate`):
+ * the unit suite exercises the same SQL the production listing uses.
+ */
+export const APPLE_PAY_EMPTY_JOB_GRACE_MS = 60_000;
+export const excludeStaleEmptyJobsPredicate = sql`(
+  EXISTS (
+    SELECT 1 FROM apple_pay_job_items i
+    WHERE i.job_id = ${applePayJobs.id}
+  )
+  OR ${applePayJobs.createdAt} > NOW() - INTERVAL '60 seconds'
+)`;
+
+/**
+ * Composite admin-listing filter (#606): hides all-sentinel jobs AND
+ * stranded item-less jobs. Used by `listApplePayJobs` and
+ * `countApplePayJobsNeedingAttention` so the page and the sidebar
+ * attention badge agree exactly on what is or isn't visible.
+ */
+const adminListingFilter = and(excludeAllSentinelJobs, excludeStaleEmptyJobsPredicate);
+
 export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
   return db
     .select()
     .from(applePayJobs)
-    .where(excludeAllSentinelJobs)
+    .where(adminListingFilter)
     .orderBy(desc(applePayJobs.createdAt))
     .limit(limit);
 }
@@ -120,8 +172,11 @@ export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
  * need no action, and a canceled job is the result of an explicit admin
  * decision so it would be noisy to keep nagging.
  *
- * Mirrors the listing filter so all-sentinel test-fixture jobs cannot
- * inflate the badge count either (#592).
+ * Mirrors the listing filter EXACTLY so all-sentinel test-fixture jobs
+ * (#592) AND stranded item-less jobs past the empty-grace window
+ * (#606) cannot inflate the badge count either. Reuses
+ * `adminListingFilter` so page rows and badge always agree on what is
+ * or isn't visible.
  */
 const ATTENTION_STATUSES: ApplePayJobStatus[] = [
   "pending",
@@ -134,7 +189,7 @@ export async function countApplePayJobsNeedingAttention(): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(applePayJobs)
-    .where(and(inArray(applePayJobs.status, ATTENTION_STATUSES), excludeAllSentinelJobs));
+    .where(and(inArray(applePayJobs.status, ATTENTION_STATUSES), adminListingFilter));
   return row?.count ?? 0;
 }
 

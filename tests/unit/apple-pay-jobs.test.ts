@@ -19,8 +19,10 @@ import { inArray, eq, and, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS, type ApplePayJobStatus } from "@shared/schema";
 import {
+  APPLE_PAY_EMPTY_JOB_GRACE_MS,
   APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX,
   excludeAllSentinelJobsPredicate,
+  excludeStaleEmptyJobsPredicate,
   createApplePayJob,
   claimNextApplePayJob,
   recoverInterruptedApplePayJobs,
@@ -1040,5 +1042,145 @@ describe("apple pay job storage — sentinel-domain listing filter (#592)", () =
 
     const jobs = await listApplePayJobs(100);
     expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+  });
+});
+
+/**
+ * Empty-grace listing filter (#606).
+ *
+ * The sentinel-TLD filter above intentionally lets jobs with ZERO items
+ * through to protect mid-enumeration production jobs. That carve-out is
+ * the leak shape `tests/unit/users-delete.test.ts` exposes when a worker
+ * crashes before its `afterEach` fires. The empty-grace window backstops
+ * it: a job with no items AND `created_at` older than
+ * `APPLE_PAY_EMPTY_JOB_GRACE_MS` is also hidden.
+ *
+ * These cases pin the four corners of that filter so we can't regress
+ * into either an over-match (hides real mid-enumeration jobs) or an
+ * under-match (lets stranded empty rows back through).
+ */
+describe("apple pay job storage — empty-grace listing filter (#606)", () => {
+  /**
+   * Move a job's `created_at` further into the past via direct SQL,
+   * so the test can pin the grace-window predicate without any
+   * wall-clock waiting. `ageMs` larger than `APPLE_PAY_EMPTY_JOB_GRACE_MS`
+   * pushes the row past the cutoff.
+   */
+  async function backdateJob(jobId: number, ageMs: number): Promise<void> {
+    await db.execute(
+      sql`UPDATE apple_pay_jobs
+            SET created_at = NOW() - (${Math.floor(ageMs / 1000)} || ' seconds')::interval
+          WHERE id = ${jobId}`,
+    );
+  }
+
+  it("(a) a fresh empty job within the grace window IS visible to listApplePayJobs", async () => {
+    // Mirrors the production mid-enumeration case: the row exists but
+    // items haven't been inserted yet. Must NOT be hidden — the admin
+    // page should still show real in-flight jobs.
+    const jobId = await makeJob();
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+
+    // Same assertion via the scoped predicate: race-free per-job check
+    // that the production SQL admits this job.
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(eq(applePayJobs.id, jobId), excludeStaleEmptyJobsPredicate));
+    expect(scoped?.count ?? 0).toBe(1);
+  });
+
+  it("(b) the same empty job, aged past the grace window, is NOT visible", async () => {
+    const jobId = await makeJob();
+    // Push it well past the cutoff (5x the grace window for cushion).
+    await backdateJob(jobId, APPLE_PAY_EMPTY_JOB_GRACE_MS * 5);
+
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeUndefined();
+
+    // And via the scoped predicate, race-free.
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(eq(applePayJobs.id, jobId), excludeStaleEmptyJobsPredicate));
+    expect(scoped?.count ?? 0).toBe(0);
+  });
+
+  it("(c) an aged job with any non-sentinel item attached becomes visible regardless of age", async () => {
+    // Defends against an over-match where the grace-window predicate
+    // hides a real production job that has been sitting in the queue
+    // for hours. As soon as it has at least one real-domain item it
+    // must be visible.
+    const jobId = await makeJob();
+    await backdateJob(jobId, APPLE_PAY_EMPTY_JOB_GRACE_MS * 5);
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "real.example.com" },
+    ]);
+
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+
+    // Clean up the real-domain item so the suite-level sentinel sweep
+    // can't reap this job (no sentinel item present).
+    await db.delete(applePayJobItems).where(eq(applePayJobItems.jobId, jobId));
+  });
+
+  it("(d) an aged job with ONLY a sentinel item attached stays hidden (sentinel filter still wins)", async () => {
+    // The empty-grace predicate says "has at least one item OR is fresh".
+    // The sentinel predicate says "has a non-sentinel item OR has no
+    // sentinel item". Together: an aged job whose only items are
+    // sentinel must remain hidden — the sentinel filter excludes it
+    // even though it has items, so the grace window is irrelevant.
+    const jobId = await makeJob();
+    await backdateJob(jobId, APPLE_PAY_EMPTY_JOB_GRACE_MS * 5);
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "grace-d.unit.vitest-fixture.invalid" },
+    ]);
+
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeUndefined();
+
+    // Race-free per-job check against the COMPOSITE predicate (both
+    // sentinel + grace) since that's what production listing uses.
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(
+        and(
+          eq(applePayJobs.id, jobId),
+          excludeAllSentinelJobsPredicate,
+          excludeStaleEmptyJobsPredicate,
+        ),
+      );
+    expect(scoped?.count ?? 0).toBe(0);
+  });
+
+  it("countApplePayJobsNeedingAttention applies the same empty-grace filter as listApplePayJobs (page/badge parity)", async () => {
+    // Locks the contract that the admin page list and the sidebar
+    // attention badge agree on what is or isn't visible. Without the
+    // composite filter being applied to the count query, an aged empty
+    // job past the 60s grace would still inflate the badge while being
+    // hidden from the list — which is exactly the user-visible bug the
+    // task is fixing.
+    const before = await countApplePayJobsNeedingAttention();
+
+    const jobId = await makeJob();
+    // Force an attention-counting status (without this, makeJob's
+    // default `pending` already counts; setting it here explicitly
+    // makes the test's intent obvious).
+    await db.update(applePayJobs).set({ status: "failed" }).where(eq(applePayJobs.id, jobId));
+    // Push past the empty-grace cutoff with no items attached — this
+    // is exactly the leaked-test-row shape the task is hiding.
+    await backdateJob(jobId, APPLE_PAY_EMPTY_JOB_GRACE_MS * 5);
+
+    const after = await countApplePayJobsNeedingAttention();
+    // ≤ rather than === because concurrent vitest workers may legitimately
+    // remove unrelated attention jobs between our two reads. Any inflation
+    // (after - before > 0) means our aged empty job leaked into the badge.
+    expect(
+      after - before,
+      `aged empty job must not contribute to attention count (delta=${after - before}, before=${before}, after=${after})`,
+    ).toBeLessThanOrEqual(0);
   });
 });

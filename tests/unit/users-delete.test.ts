@@ -10,12 +10,13 @@
  *
  * Hits the real test database; cleans up after itself.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { eq, inArray } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   users,
   applePayJobs,
+  applePayJobItems,
   deletionRequests,
   orphanCleanupAudits,
 } from '@shared/schema';
@@ -24,14 +25,74 @@ import {
   CannotDeleteAdminError,
   UserHasAuditTrailError,
 } from '../../server/storage/users';
-import { createApplePayJob } from '../../server/storage/apple-pay-jobs';
+import {
+  createApplePayJob,
+  insertApplePayJobItems,
+  APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX,
+} from '../../server/storage/apple-pay-jobs';
 import { hashPassword } from '../../server/lib/password';
 import { getBaselineOrgAId } from '../helpers';
+
+/**
+ * Sentinel sub-TLD used by THIS test file only (#606). Every
+ * `createApplePayJob` call below is paired with an
+ * `insertApplePayJobItems` row carrying this domain so a mid-test crash
+ * leaves a row that the production sentinel filter
+ * (`excludeAllSentinelJobsPredicate`) already hides from the admin
+ * page. Distinct sub-TLD per test file (`%.users-delete.<suffix>`) so
+ * the suite-level sweep below cannot race-delete in-flight rows from
+ * `tests/unit/apple-pay-jobs.test.ts` running in another vitest worker.
+ */
+const USERS_DELETE_SENTINEL_SUFFIX = `.users-delete${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+const USERS_DELETE_SENTINEL_PATTERN = `%${USERS_DELETE_SENTINEL_SUFFIX}`;
+
+async function createApplePayJobWithSentinel(userId: number | null) {
+  const job = await createApplePayJob(userId);
+  await insertApplePayJobItems(job.id, [
+    {
+      organizationId: null,
+      locationId: null,
+      domain: `job-${job.id}${USERS_DELETE_SENTINEL_SUFFIX}`,
+    },
+  ]);
+  return job;
+}
+
+/**
+ * Suite-level sweep (#606). Cleans two leak shapes:
+ *   1. Jobs with at least one item carrying our suite-specific sentinel
+ *      sub-TLD (`%.users-delete.vitest-fixture.invalid`). Scoped by
+ *      sub-TLD so we never touch `apple-pay-jobs.test.ts` rows.
+ *   2. The historical leak shape this file is known to produce: jobs
+ *      with ZERO items AND `created_by IS NULL`. Bounded by the same
+ *      60-second age threshold the production listing filter uses, so
+ *      this can never delete a fresh in-flight job from another worker.
+ */
+async function purgeUsersDeleteApplePayLeaks(): Promise<void> {
+  await db.delete(applePayJobs).where(
+    sql`EXISTS (
+      SELECT 1 FROM ${applePayJobItems} i
+      WHERE i.job_id = ${applePayJobs.id}
+        AND i.domain LIKE ${USERS_DELETE_SENTINEL_PATTERN}
+    )`,
+  );
+  await db.delete(applePayJobs).where(
+    sql`${isNull(applePayJobs.createdBy)}
+      AND NOT EXISTS (
+        SELECT 1 FROM ${applePayJobItems} i
+        WHERE i.job_id = ${applePayJobs.id}
+      )
+      AND ${applePayJobs.createdAt} < NOW() - INTERVAL '60 seconds'`,
+  );
+}
 
 const createdUserIds: number[] = [];
 const createdJobIds: number[] = [];
 const createdDeletionRequestIds: number[] = [];
 const createdAuditIds: number[] = [];
+
+beforeAll(purgeUsersDeleteApplePayLeaks);
+afterAll(purgeUsersDeleteApplePayLeaks);
 
 afterEach(async () => {
   if (createdAuditIds.length > 0) {
@@ -137,7 +198,10 @@ describe('deleteUser — storage', () => {
     const orgId = await makeOrg();
     const userId = await makeUser({ role: 'user', organizationId: orgId });
 
-    const job = await createApplePayJob(userId);
+    // Sentinel-attached so that even if this worker crashes mid-test
+    // before `afterEach` fires, the leaked job is hidden by the
+    // production sentinel filter (#606).
+    const job = await createApplePayJobWithSentinel(userId);
     createdJobIds.push(job.id);
     expect(job.createdBy).toBe(userId);
 
@@ -203,7 +267,7 @@ describe('deleteUser — storage', () => {
     const userId = await makeUser({ role: 'org_admin', organizationId: orgId });
     await makeUser({ role: 'org_admin', organizationId: orgId });
 
-    const job = await createApplePayJob(userId);
+    const job = await createApplePayJobWithSentinel(userId);
     createdJobIds.push(job.id);
 
     const [req] = await db
