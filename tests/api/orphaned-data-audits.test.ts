@@ -65,6 +65,21 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
   let nonOrphanLeagueId = 0;
   let nonOrphanUserId = 0;
 
+  // Append-only registry of every row id we insert in `beforeAll`,
+  // captured so `afterAll` cleanup is not blinded by test bodies that
+  // zero out their per-test variables (e.g. `userForDelete = 0`)
+  // after the route under test has already deleted the row. Without
+  // this, the matching audit row was leaked on every run because the
+  // cleanup loops below all guarded on `if (id)` and saw 0.
+  const inserted = {
+    leagues: [] as number[],
+    teams: [] as number[],
+    bowlerLeagues: [] as number[],
+    payments: [] as number[],
+    bowlers: [] as number[],
+    users: [] as number[],
+  };
+
   // High-water mark of the audit table at the start of every test, so we
   // can assert which audit rows (if any) were produced by the action
   // under test without depending on prior history.
@@ -123,6 +138,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         .insert(leagues)
         .values({ name, ...leagueDefaults, organizationId: null as unknown as number })
         .returning({ id: leagues.id });
+      inserted.leagues.push(row.id);
       return row.id;
     };
 
@@ -139,24 +155,28 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       })
       .returning({ id: leagues.id });
     nonOrphanLeagueId = ln.id;
+    inserted.leagues.push(nonOrphanLeagueId);
 
     const [bw] = await db
       .insert(bowlers)
       .values({ name: 'Vitest Audit Bowler', organizationId: targetOrgId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
+    inserted.bowlers.push(bowlerId);
 
     const [t1] = await db
       .insert(teams)
       .values({ name: 'Vitest Audit Orphan Team', number: 9981, leagueId: parentOrphanLeagueId })
       .returning({ id: teams.id });
     teamForDelete = t1.id;
+    inserted.teams.push(teamForDelete);
 
     const [bl1] = await db
       .insert(bowlerLeagues)
       .values({ bowlerId, leagueId: parentOrphanLeagueId, teamId: teamForDelete })
       .returning({ id: bowlerLeagues.id });
     bowlerLeagueForDelete = bl1.id;
+    inserted.bowlerLeagues.push(bowlerLeagueForDelete);
 
     const [p1] = await db
       .insert(payments)
@@ -169,6 +189,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       })
       .returning({ id: payments.id });
     paymentForDelete = p1.id;
+    inserted.payments.push(paymentForDelete);
 
     const pwd = await hashPassword('Throwaway-Password-123!');
     const stamp = Date.now();
@@ -180,6 +201,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       role: 'user',
     });
     userForReassign = u1.id;
+    inserted.users.push(userForReassign);
 
     const u2 = await insertOrphanUser({
       email: `vitest-audit-orphan-delete-${stamp}@example.com`,
@@ -188,6 +210,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       role: 'user',
     });
     userForDelete = u2.id;
+    inserted.users.push(userForDelete);
 
     const [u3] = await db
       .insert(users)
@@ -200,54 +223,90 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       })
       .returning({ id: users.id });
     nonOrphanUserId = u3.id;
+    inserted.users.push(nonOrphanUserId);
   });
 
   afterAll(async () => {
-    const tryRun = async (fn: () => Promise<unknown>) => {
-      try { await fn(); } catch { /* best effort */ }
+    // Cleanup contract:
+    //  - Every row this suite inserted in `beforeAll` must be deleted
+    //    here, OR have already been deleted by the route under test
+    //    (in which case the matching DELETE here is a no-op).
+    //  - Any failure to delete a row is loud — logged with table+id
+    //    context AND collected so the suite fails at the end. The
+    //    previous `catch { /* best effort */ }` silently leaked rows
+    //    (and FK errors) into the dev database on every run.
+    //  - All deletes are still attempted even when one fails, so a
+    //    single bad row doesn't block the rest of cleanup.
+    const failures: Array<{ label: string; error: unknown }> = [];
+    const tryRun = async (label: string, fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+      } catch (error) {
+        failures.push({ label, error });
+        // eslint-disable-next-line no-console
+        console.error(`[orphan-audits cleanup] ${label} failed:`, error);
+      }
     };
 
-    // Clear any audit rows we created so the table doesn't grow forever
-    // across repeated test runs against the same dev database.
-    for (const id of [
-      leagueForReassign, leagueForDelete, parentOrphanLeagueId, nonOrphanLeagueId,
-    ]) {
-      if (id) {
-        await tryRun(() =>
-          db.delete(orphanCleanupAudits).where(and(
-            eq(orphanCleanupAudits.resourceType, 'leagues'),
-            eq(orphanCleanupAudits.resourceId, id),
-          )),
-        );
-      }
-    }
-    for (const [type, id] of [
-      ['teams', teamForDelete],
-      ['bowlerLeagues', bowlerLeagueForDelete],
-      ['payments', paymentForDelete],
-      ['users', userForReassign],
-      ['users', userForDelete],
-      ['users', nonOrphanUserId],
-    ] as const) {
-      if (id) {
-        await tryRun(() =>
-          db.delete(orphanCleanupAudits).where(and(
-            eq(orphanCleanupAudits.resourceType, type),
-            eq(orphanCleanupAudits.resourceId, id),
-          )),
-        );
-      }
+    // Audit rows must go before the rows they reference, even though
+    // `orphan_cleanup_audits.resource_id` is a plain integer column
+    // (no FK), so that the audit table doesn't grow forever across
+    // repeated runs against the same dev database. We iterate the
+    // append-only `inserted` registry rather than the per-test
+    // variables — those get zeroed by the success-path tests
+    // (e.g. `userForDelete = 0`) and would otherwise hide their own
+    // audit rows from cleanup.
+    const auditTargets: Array<{ type: string; id: number }> = [
+      ...inserted.leagues.map((id) => ({ type: 'leagues', id })),
+      ...inserted.teams.map((id) => ({ type: 'teams', id })),
+      ...inserted.bowlerLeagues.map((id) => ({ type: 'bowlerLeagues', id })),
+      ...inserted.payments.map((id) => ({ type: 'payments', id })),
+      ...inserted.users.map((id) => ({ type: 'users', id })),
+    ];
+    for (const { type, id } of auditTargets) {
+      await tryRun(`orphan_cleanup_audits ${type}:${id}`, () =>
+        db.delete(orphanCleanupAudits).where(and(
+          eq(orphanCleanupAudits.resourceType, type),
+          eq(orphanCleanupAudits.resourceId, id),
+        )),
+      );
     }
 
-    for (const id of [userForReassign, userForDelete, nonOrphanUserId]) {
-      if (id) await tryRun(() => db.delete(users).where(eq(users.id, id)));
+    // Resource rows themselves. Children before parents:
+    // payments / bowler_leagues / teams cascade off `leagues`, but we
+    // delete them explicitly so a stray FK regression surfaces here
+    // with a clear label instead of being masked by the cascade.
+    // Users have no FK into the rows above, so order between users
+    // and the league/team tree doesn't matter — but the inserted
+    // user rows do need to go before the cleanup helpers in
+    // `tests/helpers.ts releaseFixtureOrg` would (they don't run for
+    // this suite; this is just a note for the next reader).
+    for (const id of inserted.users) {
+      await tryRun(`users:${id}`, () => db.delete(users).where(eq(users.id, id)));
     }
-    if (paymentForDelete) await tryRun(() => db.delete(payments).where(eq(payments.id, paymentForDelete)));
-    if (bowlerLeagueForDelete) await tryRun(() => db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, bowlerLeagueForDelete)));
-    if (teamForDelete) await tryRun(() => db.delete(teams).where(eq(teams.id, teamForDelete)));
-    if (bowlerId) await tryRun(() => db.delete(bowlers).where(eq(bowlers.id, bowlerId)));
-    for (const id of [leagueForReassign, leagueForDelete, parentOrphanLeagueId, nonOrphanLeagueId]) {
-      if (id) await tryRun(() => db.delete(leagues).where(eq(leagues.id, id)));
+    for (const id of inserted.payments) {
+      await tryRun(`payments:${id}`, () => db.delete(payments).where(eq(payments.id, id)));
+    }
+    for (const id of inserted.bowlerLeagues) {
+      await tryRun(`bowler_leagues:${id}`, () => db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)));
+    }
+    for (const id of inserted.teams) {
+      await tryRun(`teams:${id}`, () => db.delete(teams).where(eq(teams.id, id)));
+    }
+    for (const id of inserted.bowlers) {
+      await tryRun(`bowlers:${id}`, () => db.delete(bowlers).where(eq(bowlers.id, id)));
+    }
+    for (const id of inserted.leagues) {
+      await tryRun(`leagues:${id}`, () => db.delete(leagues).where(eq(leagues.id, id)));
+    }
+
+    if (failures.length > 0) {
+      const summary = failures
+        .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+        .join('\n');
+      throw new Error(
+        `orphan-audits afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+      );
     }
   });
 
