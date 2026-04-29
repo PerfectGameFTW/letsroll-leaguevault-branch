@@ -15,11 +15,12 @@
  *      were still `pending`.
  */
 import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { inArray, eq, sql } from "drizzle-orm";
+import { inArray, eq, and, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS, type ApplePayJobStatus } from "@shared/schema";
 import {
   APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX,
+  excludeAllSentinelJobsPredicate,
   createApplePayJob,
   claimNextApplePayJob,
   recoverInterruptedApplePayJobs,
@@ -53,7 +54,11 @@ import {
  * Tolerant of zero rows — never fails the suite if there is nothing to
  * sweep.
  */
-const SENTINEL_DOMAIN_PATTERN = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+// Suite-scoped purge pattern: this file ONLY plants `.unit.<suffix>`
+// rows, so the sweep MUST NOT match `.api.<suffix>` rows planted by
+// the sibling api test (#592 architect review). Cross-suite deletion
+// would race-delete in-flight rows from the other vitest worker.
+const SENTINEL_DOMAIN_PATTERN = `%.unit${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
 async function purgeSentinelApplePayJobs(): Promise<void> {
   await db.delete(applePayJobs).where(
     sql`EXISTS (
@@ -968,7 +973,7 @@ describe("apple pay job storage — sentinel-domain listing filter (#592)", () =
     // assertion is vacuous: a broken filter that counted the sentinel
     // would inflate both before and after equally and the test would
     // false-pass. Capturing baseline first means a regression that lets
-    // the sentinel through bumps `after` by 1 and the test fails.
+    // the sentinel through bumps `after` by ≥1 relative to the baseline.
     const before = await countApplePayJobsNeedingAttention();
 
     const jobId = await makeJob();
@@ -980,7 +985,32 @@ describe("apple pay job storage — sentinel-domain listing filter (#592)", () =
     ]);
 
     const after = await countApplePayJobsNeedingAttention();
-    expect(after).toBe(before);
+    // Use ≤ rather than === because vitest worker processes for OTHER
+    // test files share this DB and may legitimately remove unrelated
+    // attention jobs between our `before` and `after` queries (e.g. a
+    // concurrent test's afterEach cleanup, or apple-pay worker
+    // finalising a real job to `succeeded`).
+    expect(
+      after - before,
+      `sentinel job must not contribute to attention count (delta=${after - before}, before=${before}, after=${after})`,
+    ).toBeLessThanOrEqual(0);
+
+    // DETERMINISTIC complement (architect review fix #592):
+    // The global delta above can in principle be masked if a regression
+    // adds +1 (sentinel leaks in) at the same instant unrelated workers
+    // remove ≥1 attention jobs. So additionally verify the SAME
+    // production predicate against ONLY our jobId — a query restricted
+    // to a single id is completely insulated from concurrent activity
+    // on other jobs. If the predicate regresses to admit our sentinel,
+    // this scoped count will be 1 and the assertion fails loudly.
+    const [scopedRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(eq(applePayJobs.id, jobId), excludeAllSentinelJobsPredicate));
+    expect(
+      scopedRow?.count ?? 0,
+      "the sentinel job MUST be excluded by the production predicate (race-free per-job check)",
+    ).toBe(0);
   });
 
   it("listApplePayJobs INCLUDES jobs with mixed real + sentinel items (no over-match)", async () => {

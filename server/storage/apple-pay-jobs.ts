@@ -56,7 +56,16 @@ export const APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX = ".vitest-fixture.invalid";
  * so this filter cannot suppress legitimate data.
  */
 const sentinelDomainPattern = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
-const excludeAllSentinelJobs = sql`(
+/**
+ * EXPORTED for the unit test (#592) so the test can run a scoped
+ * version of the same predicate against a single jobId. That gives a
+ * race-free per-job assertion (concurrent vitest workers cannot affect
+ * a query restricted to one id), independent of the global count delta.
+ *
+ * Not intended for production callers — use `listApplePayJobs` /
+ * `countApplePayJobsNeedingAttention` which compose this internally.
+ */
+export const excludeAllSentinelJobsPredicate = sql`(
   EXISTS (
     SELECT 1 FROM apple_pay_job_items i
     WHERE i.job_id = ${applePayJobs.id}
@@ -68,6 +77,7 @@ const excludeAllSentinelJobs = sql`(
       AND i.domain LIKE ${sentinelDomainPattern}
   )
 )`;
+const excludeAllSentinelJobs = excludeAllSentinelJobsPredicate;
 
 export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
   return db

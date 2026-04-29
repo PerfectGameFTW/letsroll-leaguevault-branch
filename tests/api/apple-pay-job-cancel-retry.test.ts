@@ -43,7 +43,11 @@ import {
  * job that has at least one item whose domain ends in the sentinel
  * `.api.vitest-fixture.invalid` TLD. Tolerant of zero rows.
  */
-const SENTINEL_DOMAIN_PATTERN = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+// Suite-scoped purge pattern: this file ONLY plants `.api.<suffix>`
+// rows, so the sweep MUST NOT match `.unit.<suffix>` rows planted by
+// the sibling unit test (#592 architect review). Cross-suite deletion
+// would race-delete in-flight rows from the other vitest worker.
+const SENTINEL_DOMAIN_PATTERN = `%.api${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
 async function purgeSentinelApplePayJobs(): Promise<void> {
   await db.delete(applePayJobs).where(
     sql`EXISTS (
