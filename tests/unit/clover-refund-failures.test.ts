@@ -185,15 +185,16 @@ describe('POST /api/payments/:id/refund — Clover failure paths (Task #594)', (
 
     expect(res.status).toBe(500);
     const body = await res.json();
-    // The route's catch-all wraps any non-ProviderNotConfiguredError
-    // failure in a friendly admin-facing sentence; the typed
-    // userMessage is intentionally not surfaced (admins reading the
-    // server logs get the typed detail). What matters here is that
-    // (a) the response stays human-readable, and
-    // (b) the upstream raw `detail` never leaks to the client.
+    // Task #598: the route now mirrors the charge route and surfaces
+    // the typed PaymentProviderError's `userMessage` + `code` directly
+    // so admins see the actionable reason. The raw upstream `detail`
+    // stays server-side only.
     expect(body).toMatchObject({
       success: false,
-      error: { message: 'Failed to process refund' },
+      error: {
+        message: 'Invalid payment information. Please check your card details.',
+        code: 'INVALID_REQUEST',
+      },
     });
     expect(body.error.message).not.toContain('refund_amount_exceeds_charge');
     // Critically: the local payment row is NOT marked refunded when
@@ -214,7 +215,7 @@ describe('POST /api/payments/:id/refund — Clover failure paths (Task #594)', (
     });
   });
 
-  it('keeps the friendly fallback when the provider hits a transport/timeout failure', async () => {
+  it('surfaces the typed REFUND_FAILED message when the provider hits a transport/timeout failure', async () => {
     mockStorage.getPaymentById.mockResolvedValue(PAID_CLOVER_ROW);
     // mapApiError wraps a non-CloverApiError throw (fetch TypeError,
     // socket timeout, DNS, etc.) in PaymentProviderError(REFUND_FAILED)
@@ -231,9 +232,15 @@ describe('POST /api/payments/:id/refund — Clover failure paths (Task #594)', (
 
     expect(res.status).toBe(500);
     const body = await res.json();
+    // Task #598: typed REFUND_FAILED makes it through to the admin
+    // toast so they know it's a "try again" condition rather than a
+    // declined card.
     expect(body).toMatchObject({
       success: false,
-      error: { message: 'Failed to process refund' },
+      error: {
+        message: 'Refund could not be processed.',
+        code: 'REFUND_FAILED',
+      },
     });
     // Transport detail stays server-side only.
     expect(body.error.message).not.toContain('ETIMEDOUT');
@@ -262,9 +269,12 @@ describe('POST /api/payments/:id/refund — Clover failure paths (Task #594)', (
 
     expect(res.status).toBe(500);
     const body = await res.json();
+    // Untyped errors fall through to the legacy "Failed to process
+    // refund" fallback (with the REFUND_ERROR code) — guaranteeing
+    // no stack-trace text from `error.message` ever leaks out.
     expect(body).toMatchObject({
       success: false,
-      error: { message: 'Failed to process refund' },
+      error: { message: 'Failed to process refund', code: 'REFUND_ERROR' },
     });
     expect(body.error.message).not.toContain('boom');
     expect(body.error.message).not.toContain('clover.ts');

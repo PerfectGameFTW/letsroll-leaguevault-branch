@@ -364,14 +364,54 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       };
     } catch (error) {
       log.error('Refund error:', error);
-      if (error instanceof SquareError && error.errors?.length) {
-        const messages = error.errors
-          .map((e) => e.detail)
-          .filter((d): d is string => Boolean(d))
-          .join(', ');
-        throw new Error(`Square refund failed: ${messages}`);
+      // Re-throw already-typed errors verbatim so the route's catch
+      // sees the original `userMessage`/`code` (and the PNCE from
+      // getSquareClient never gets re-wrapped into REFUND_FAILED).
+      if (
+        error instanceof PaymentProviderError ||
+        error instanceof ProviderNotConfiguredError
+      ) {
+        throw error;
       }
-      throw error;
+
+      // Parity with processPayment / createOrderWithPayment above and
+      // CloverPaymentProvider.refundPayment below: collapse any Square
+      // SDK error shape into a typed PaymentProviderError so the refund
+      // route can show admins the actionable reason (declined card,
+      // validation error, system error) instead of a generic wall.
+      // v40+ flat-client SDK exposes structured errors directly on the
+      // SquareError instance (`.errors[]`, `.statusCode`); the legacy
+      // `.result.errors[]` wrapper is gone. Raw Square `detail` is
+      // captured for logs only — never forwarded as the user-facing
+      // `userMessage` (task #514).
+      const apiErr = error instanceof SquareError ? error : null;
+      const detail = apiErr?.errors?.[0]?.detail;
+      if (apiErr?.statusCode === 401 || apiErr?.statusCode === 403) {
+        throw new PaymentProviderError(
+          'Payment system is temporarily unavailable. Please try again later.',
+          'SYSTEM_ERROR',
+          detail,
+        );
+      }
+      if (apiErr?.statusCode === 402) {
+        throw new PaymentProviderError(
+          'Your payment was declined. Please try a different card.',
+          'PAYMENT_DECLINED',
+          detail,
+        );
+      }
+      if (typeof apiErr?.statusCode === 'number' && apiErr.statusCode >= 400 && apiErr.statusCode < 500) {
+        throw new PaymentProviderError(
+          'Invalid payment information. Please check your card details.',
+          'INVALID_REQUEST',
+          detail,
+        );
+      }
+      throw new PaymentProviderError(
+        'Refund could not be processed.',
+        'REFUND_FAILED',
+        detail,
+      );
     }
   }
 

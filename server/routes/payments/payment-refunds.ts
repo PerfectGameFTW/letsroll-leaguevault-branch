@@ -8,7 +8,12 @@ import { Router } from 'express';
 import { storage } from '../../storage';
 import { isCardPaymentType } from "@shared/schema/constants";
 import { sendSuccess, sendError, sanitizePayment } from '../../utils/api.js';
-import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
+import {
+  getPaymentProvider,
+  ProviderNotConfiguredError,
+  PaymentProviderError,
+  sanitizePaymentUserMessage,
+} from '../../services/payment-provider-factory';
 import { hasAccessToPayment } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
@@ -71,7 +76,23 @@ router.post("/:id/refund", paymentWriteLimiter, async (req, res) => {
       return sendError(res, 'Payment provider not available for refund processing', 422, 'PROVIDER_NOT_CONFIGURED');
     }
     log.error('Refund error:', error);
-    sendError(res, 'Failed to process refund');
+
+    // Mirror the charge route (server/routes/payments-provider/charges.ts):
+    // surface the provider's typed `userMessage` + `code` so admins see
+    // the actionable reason ("Your payment was declined…", "Refund could
+    // not be processed.", etc.) instead of the generic "Failed to process
+    // refund" wall. Anything not wrapped in PaymentProviderError still
+    // falls through to that legacy fallback so a stray bare `Error` —
+    // which may carry stack-trace text in `.message` — never leaks out.
+    let userMessage = 'Failed to process refund';
+    let userCode = 'REFUND_ERROR';
+    if (error instanceof PaymentProviderError) {
+      userMessage = error.userMessage;
+      userCode = error.code;
+    }
+    userMessage = sanitizePaymentUserMessage(userMessage);
+
+    sendError(res, userMessage, 500, userCode);
   }
 });
 

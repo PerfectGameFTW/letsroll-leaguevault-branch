@@ -14,6 +14,7 @@ import {
   isProviderNotConfiguredError,
   providerNotConfiguredToast,
 } from "@/lib/provider-not-configured";
+import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -118,7 +119,16 @@ export default function PaymentsPage() {
         toast(providerNotConfiguredToast({ navigate, locationId }));
         return;
       }
-      toast({ title: "Refund Failed", description: error.message, variant: "destructive" });
+      // Task #598: surface the typed PaymentProviderError userMessage
+      // (e.g. "Your payment was declined. Please try a different card.")
+      // straight to the admin instead of the old generic "Failed to
+      // process refund" wall. The sanitizer is the same belt-and-braces
+      // guard the charge-side toasts use.
+      toast({
+        title: "Refund Failed",
+        description: sanitizePaymentErrorMessage(error, "Failed to process refund"),
+        variant: "destructive",
+      });
     },
   });
 
