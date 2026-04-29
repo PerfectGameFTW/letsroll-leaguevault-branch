@@ -31,6 +31,12 @@ interface PaymentHistoryTableProps {
   isDeletePending: boolean;
   isAdmin?: boolean;
   bowlerHrefSuffix?: string;
+  /**
+   * Owning location for these payments. Forwarded to the receipt
+   * buttons / dialog so the PROVIDER_NOT_CONFIGURED toast deep-links
+   * to that location's settings card.
+   */
+  locationId?: number | null;
 }
 
 export const PaymentHistoryTable = memo(function PaymentHistoryTable({
@@ -42,6 +48,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   isDeletePending,
   isAdmin = false,
   bowlerHrefSuffix = "",
+  locationId,
 }: PaymentHistoryTableProps) {
   const showTeamColumn = !!bowlerTeamMap;
   // admin "Resend receipt" entry-point on the weekly
@@ -101,7 +108,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                     ${(payment.amount / 100).toFixed(2)}
                   </TableCell>
                   <TableCell>
-                    <ViewReceiptButton payment={payment} />
+                    <ViewReceiptButton payment={payment} locationId={locationId} />
                     {isAdmin
                       && payment.status === 'paid'
                       && (payment.type === 'square' || payment.type === 'credit_card') && (
@@ -149,6 +156,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
         payment={resendTarget}
         defaultEmail={resendBowler?.email ?? ""}
         onClose={() => setResendTarget(null)}
+        locationId={locationId}
       />
     </div>
   );

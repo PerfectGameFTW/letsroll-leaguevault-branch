@@ -13,6 +13,8 @@ import type { Payment } from "@shared/schema";
 interface Props {
   payment: Payment;
   variant?: "icon" | "link";
+  /** Owning location used to deep-link the PROVIDER_NOT_CONFIGURED toast. */
+  locationId?: number | null;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  * provider and caches the URL on the row. Renders nothing for
  * rows without a receipt or backfill source.
  */
-export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
+export function ViewReceiptButton({ payment, variant = "icon", locationId }: Props) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [isFetching, setIsFetching] = useState(false);
@@ -57,7 +59,7 @@ export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
       if (!response.ok) {
         const code = data?.error?.code;
         if (code === PROVIDER_NOT_CONFIGURED) {
-          toast(providerNotConfiguredToast({ navigate }));
+          toast(providerNotConfiguredToast({ navigate, locationId: locationId ?? null }));
           return;
         }
         const msg =

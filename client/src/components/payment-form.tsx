@@ -408,6 +408,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     onClose,
     isClover,
     buyerEmail: !bowlerHasEmail ? receiptEmail : undefined,
+    locationId: leagueInfo?.locationId ?? null,
   });
 
   return (

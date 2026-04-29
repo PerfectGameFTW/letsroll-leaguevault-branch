@@ -89,7 +89,11 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
                   </div>
                   <div className="flex items-center gap-3">
                     {/* View receipt entry-point for paid Square/credit_card rows. */}
-                    <ViewReceiptButton payment={payment} variant="link" />
+                    <ViewReceiptButton
+                      payment={payment}
+                      variant="link"
+                      locationId={league?.locationId ?? null}
+                    />
                     <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(payment.status)}`}>
                       {getStatusLabel(payment.status)}
                     </span>

@@ -25,9 +25,11 @@ interface Props {
   payment: Payment | null;
   defaultEmail?: string;
   onClose: () => void;
+  /** Owning location used to deep-link the PROVIDER_NOT_CONFIGURED toast. */
+  locationId?: number | null;
 }
 
-export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
+export function ResendReceiptDialog({ payment, defaultEmail, onClose, locationId }: Props) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [email, setEmail] = useState(defaultEmail ?? "");
@@ -74,7 +76,7 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
       onClose();
     } catch (error) {
       if (isProviderNotConfiguredError(error)) {
-        toast(providerNotConfiguredToast({ navigate }));
+        toast(providerNotConfiguredToast({ navigate, locationId: locationId ?? null }));
       } else {
         toast({
           title: "Error",

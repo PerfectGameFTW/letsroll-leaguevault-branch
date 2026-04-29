@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { isCardPaymentType } from "@shared/schema/constants";
 import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
 import { ViewReceiptButton } from "@/components/view-receipt-button";
-import type { Payment, Bowler } from "@shared/schema";
+import type { Payment, Bowler, League } from "@shared/schema";
 
 function paymentTypeLabel(payment: Payment): string {
   switch (payment.type) {
@@ -36,6 +36,12 @@ interface Props {
   onDelete: (id: number) => void;
   isRefundPending: boolean;
   isDeletePending: boolean;
+  /**
+   * Used to resolve each payment's owning location (via leagueId) so
+   * the PROVIDER_NOT_CONFIGURED toast raised by the receipt buttons
+   * deep-links to that location's settings card.
+   */
+  leagues?: League[];
 }
 
 export function PaymentsTable({
@@ -47,8 +53,16 @@ export function PaymentsTable({
   onDelete,
   isRefundPending,
   isDeletePending,
+  leagues = [],
 }: Props) {
   const [resendTarget, setResendTarget] = useState<Payment | null>(null);
+  const leagueLocationMap = new Map<number, number | null>();
+  for (const league of leagues) {
+    leagueLocationMap.set(league.id, league.locationId ?? null);
+  }
+  const resendTargetLocationId = resendTarget
+    ? leagueLocationMap.get(resendTarget.leagueId) ?? null
+    : null;
   return (
     <div className="rounded-md border">
       <Table>
@@ -103,7 +117,10 @@ export function PaymentsTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <ViewReceiptButton payment={payment} />
+                      <ViewReceiptButton
+                        payment={payment}
+                        locationId={leagueLocationMap.get(payment.leagueId) ?? null}
+                      />
                       {canResend && (
                         <Button
                           size="icon"
@@ -157,6 +174,7 @@ export function PaymentsTable({
             : ""
         }
         onClose={() => setResendTarget(null)}
+        locationId={resendTargetLocationId}
       />
     </div>
   );

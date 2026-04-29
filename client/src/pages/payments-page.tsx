@@ -192,6 +192,7 @@ export default function PaymentsPage() {
             onDelete={setPaymentToDelete}
             isRefundPending={refundPaymentMutation.isPending}
             isDeletePending={deletePaymentMutation.isPending}
+            leagues={leagues}
           />
 
           {pagination && (

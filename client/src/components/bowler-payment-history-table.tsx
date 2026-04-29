@@ -7,9 +7,11 @@ import type { Payment } from "@shared/schema";
 
 interface Props {
   payments: Payment[];
+  /** Owning location used to deep-link the PROVIDER_NOT_CONFIGURED toast. */
+  locationId?: number | null;
 }
 
-export function BowlerPaymentHistoryTable({ payments }: Props) {
+export function BowlerPaymentHistoryTable({ payments, locationId }: Props) {
   return (
     <div className="rounded-md border">
       <Table>
@@ -60,7 +62,11 @@ export function BowlerPaymentHistoryTable({ payments }: Props) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <ViewReceiptButton payment={payment} variant="link" />
+                  <ViewReceiptButton
+                    payment={payment}
+                    variant="link"
+                    locationId={locationId}
+                  />
                 </TableCell>
               </TableRow>
             ))

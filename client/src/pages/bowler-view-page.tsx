@@ -213,7 +213,10 @@ export default function BowlerViewPage() {
       </div>
 
       <ErrorBoundary level="section">
-        <BowlerPaymentHistoryTable payments={payments} />
+        <BowlerPaymentHistoryTable
+          payments={payments}
+          locationId={league?.locationId ?? null}
+        />
       </ErrorBoundary>
     </Layout>
   );

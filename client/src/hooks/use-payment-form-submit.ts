@@ -27,6 +27,8 @@ interface UsePaymentFormSubmitOptions {
   // bowler has none on file — threaded to /payments-provider/payments
   // as `buyerEmail` so Square's hosted receipt still fires.
   buyerEmail?: string;
+  /** Owning location used to deep-link the PROVIDER_NOT_CONFIGURED toast. */
+  locationId?: number | null;
 }
 
 export function usePaymentFormSubmit({
@@ -38,6 +40,7 @@ export function usePaymentFormSubmit({
   onClose,
   isClover = false,
   buyerEmail,
+  locationId,
 }: UsePaymentFormSubmitOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -152,7 +155,7 @@ export function usePaymentFormSubmit({
       onClose();
     } catch (error) {
       if (isProviderNotConfiguredError(error)) {
-        const props = providerNotConfiguredToast({ navigate });
+        const props = providerNotConfiguredToast({ navigate, locationId: locationId ?? null });
         setPaymentError(props.title);
         toast(props);
         return;

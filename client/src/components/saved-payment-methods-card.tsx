@@ -23,7 +23,13 @@ import {
 } from "@/lib/provider-not-configured";
 import type { SavedCard } from "@shared/schema";
 
-export function SavedPaymentMethodsCard({ bowlerId }: { bowlerId: number }) {
+interface SavedPaymentMethodsCardProps {
+  bowlerId: number;
+  /** Owning location used to deep-link the PROVIDER_NOT_CONFIGURED toast. */
+  locationId?: number | null;
+}
+
+export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMethodsCardProps) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [cardToDelete, setCardToDelete] = useState<SavedCard | null>(null);
@@ -52,7 +58,7 @@ export function SavedPaymentMethodsCard({ bowlerId }: { bowlerId: number }) {
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (err) {
       if (isProviderNotConfiguredError(err)) {
-        toast(providerNotConfiguredToast({ navigate }));
+        toast(providerNotConfiguredToast({ navigate, locationId: locationId ?? null }));
       } else {
         const message = err instanceof Error ? err.message : "Failed to remove card";
         toast({ title: "Error", description: message, variant: "destructive" });

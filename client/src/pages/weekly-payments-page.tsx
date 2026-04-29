@@ -295,6 +295,7 @@ export default function WeeklyPaymentsPage() {
                         isDeletePending={deletePaymentMutation.isPending}
                         isAdmin={isAdmin}
                         bowlerHrefSuffix={`?from=weekly-payments&fromLeagueId=${leagueId}`}
+                        locationId={league?.locationId ?? null}
                       />
                     </div>
                   )}
