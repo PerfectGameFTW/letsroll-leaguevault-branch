@@ -65,8 +65,26 @@ afterAll(async () => {
   );
 });
 
+// The webhook route's signature-verifier escape hatch fires only when
+// `NODE_ENV === 'test'`. Vitest sets that by default, but only if the
+// var isn't already set — a wrapper script that exports
+// `NODE_ENV=development` ahead of `npm test` silently disables the
+// escape hatch and the route returns 503 WEBHOOK_NOT_CONFIGURED for
+// every request, surfacing as `expected 503 to be 200` on every case
+// in this file. Force it explicitly so the suite is robust regardless
+// of how the runner is invoked.
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+beforeAll(() => {
+  process.env.NODE_ENV = 'test';
+});
+afterAll(() => {
+  if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+});
+
 beforeEach(() => {
   for (const fn of Object.values(mockStorage)) (fn as ReturnType<typeof vi.fn>).mockReset();
+  process.env.NODE_ENV = 'test';
   delete process.env.CLOVER_WEBHOOK_SIGNING_SECRET;
 });
 
