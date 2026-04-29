@@ -243,28 +243,33 @@ const LeaguesDropdownContent = () => {
               {locationName}
             </div>
             {locationLeagues.map((league: League) => (
-              <Link key={league.id} href={`/leagues/${league.id}`}>
-                <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
-                  {league.name}
-                </button>
+              <Link
+                key={league.id}
+                href={`/leagues/${league.id}`}
+                className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors no-underline text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {league.name}
               </Link>
             ))}
           </div>
         ))
       ) : (
         leagues.map((league: League) => (
-          <Link key={league.id} href={`/leagues/${league.id}`}>
-            <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
-              {league.name}
-            </button>
+          <Link
+            key={league.id}
+            href={`/leagues/${league.id}`}
+            className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors no-underline text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {league.name}
           </Link>
         ))
       )}
       <div className="border-t mt-2 pt-2">
-        <Link href="/leagues">
-          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors font-medium">
-            View All Leagues
-          </button>
+        <Link
+          href="/leagues"
+          className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors font-medium no-underline text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          View All Leagues
         </Link>
       </div>
     </div>
@@ -307,6 +312,11 @@ function getBadgeCount(item: NavItem, badgeCounts: Record<string, number>): numb
 
 // Flat leaf nav row used both at the top level and inside the
 // Super Admin dropdown (in the nested-list and popover variants).
+//
+// Rendered as a single `<a>` (wouter's `<Link>` produces an anchor by
+// default) so middle-click / cmd-click open the route in a new tab and
+// screen readers announce the row as one link instead of a button
+// nested inside a link (#596).
 function NavLeafRow({
   item,
   isActive,
@@ -329,39 +339,40 @@ function NavLeafRow({
   const isPopover = variant === 'popover';
   const effectiveCollapsed = isPopover ? false : isCollapsed;
   return (
-    <Link href={item.href}>
-      <button
-        onClick={onNavigate}
-        data-testid={`nav-link-${item.href}`}
-        aria-label={effectiveCollapsed ? item.label : undefined}
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      data-testid={`nav-link-${item.href}`}
+      aria-label={effectiveCollapsed ? item.label : undefined}
+      aria-current={isActive ? "page" : undefined}
+      title={effectiveCollapsed ? item.label : undefined}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-md transition-all duration-200 group no-underline",
+        "focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]",
+        effectiveCollapsed
+          ? "relative justify-center p-2.5"
+          : isSub
+            ? "pl-9 pr-3 py-2"
+            : "px-3 py-2.5",
+        isActive
+          ? "bg-indigo-500/10 text-indigo-400"
+          : "text-slate-300 hover:bg-slate-800 hover:text-white"
+      )}
+    >
+      <item.icon
         className={cn(
-          "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
-          effectiveCollapsed
-            ? "relative justify-center p-2.5"
-            : isSub
-              ? "pl-9 pr-3 py-2"
-              : "px-3 py-2.5",
-          isActive
-            ? "bg-indigo-500/10 text-indigo-400"
-            : "text-slate-300 hover:bg-slate-800 hover:text-white"
+          "w-5 h-5 shrink-0",
+          isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
         )}
-        title={effectiveCollapsed ? item.label : undefined}
-      >
-        <item.icon
-          className={cn(
-            "w-5 h-5 shrink-0",
-            isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
-          )}
-        />
-        {!effectiveCollapsed && (
-          <span className={cn("font-medium", isSub ? "text-[13px]" : "text-sm")}>
-            {item.label}
-          </span>
-        )}
-        {item.badgeQueryKey && (
-          <NavBadge count={badgeCount} isCollapsed={effectiveCollapsed} />
-        )}
-      </button>
+      />
+      {!effectiveCollapsed && (
+        <span className={cn("font-medium", isSub ? "text-[13px]" : "text-sm")}>
+          {item.label}
+        </span>
+      )}
+      {item.badgeQueryKey && (
+        <NavBadge count={badgeCount} isCollapsed={effectiveCollapsed} />
+      )}
     </Link>
   );
 }
@@ -408,11 +419,13 @@ function NavSubMenu({
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <button
+            type="button"
             data-testid={`nav-submenu-trigger-${item.href}`}
             aria-label={item.label}
             aria-haspopup="menu"
             className={cn(
               "flex w-full items-center gap-3 rounded-md transition-all duration-200 group relative justify-center p-2.5",
+              "focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]",
               childActive
                 ? "bg-indigo-500/10 text-indigo-400"
                 : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -463,9 +476,12 @@ function NavSubMenu({
     <Collapsible open={userOpen} onOpenChange={setUserOpen}>
       <CollapsibleTrigger asChild>
         <button
+          type="button"
           data-testid={`nav-submenu-trigger-${item.href}`}
+          aria-expanded={userOpen}
           className={cn(
             "flex w-full items-center gap-3 rounded-md transition-all duration-200 group px-3 py-2.5",
+            "focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]",
             childActive
               ? "bg-indigo-500/10 text-indigo-400"
               : "text-slate-300 hover:bg-slate-800 hover:text-white"

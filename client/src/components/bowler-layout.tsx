@@ -110,11 +110,12 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 pb-4">
           {isSystemAdmin && (
-            <Link href="/">
-              <button className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors mb-4">
-                <ArrowLeft className="w-4 h-4 mr-1" />
-                Back to Admin Dashboard
-              </button>
+            <Link
+              href="/"
+              className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors mb-4 no-underline focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-sm"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back to Admin Dashboard
             </Link>
           )}
           <ErrorBoundary level="section" onReset={() => window.location.reload()}>
@@ -130,24 +131,26 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
-              <Link key={item.baseHref} href={item.href}>
-                <button
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 w-16",
-                    isActive ? "text-indigo-600" : "text-slate-400 active:text-slate-600"
-                  )}
-                >
-                  <div className={cn(
-                    "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
-                    isActive ? "bg-indigo-50" : "bg-transparent"
-                  )}>
-                    <item.icon className="w-7 h-7" />
-                  </div>
-                  <span className={cn(
-                    "text-[10px] tracking-wide",
-                    isActive ? "font-bold" : "font-medium"
-                  )}>{item.label}</span>
-                </button>
+              <Link
+                key={item.baseHref}
+                href={item.href}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-0.5 w-16 no-underline rounded-md focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                  isActive ? "text-indigo-600" : "text-slate-400 active:text-slate-600"
+                )}
+              >
+                <div className={cn(
+                  "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
+                  isActive ? "bg-indigo-50" : "bg-transparent"
+                )}>
+                  <item.icon className="w-7 h-7" />
+                </div>
+                <span className={cn(
+                  "text-[10px] tracking-wide",
+                  isActive ? "font-bold" : "font-medium"
+                )}>{item.label}</span>
               </Link>
             );
           })}
