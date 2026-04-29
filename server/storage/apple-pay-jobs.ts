@@ -42,6 +42,28 @@ export async function getApplePayJob(id: number): Promise<ApplePayJob | undefine
 export const APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX = ".vitest-fixture.invalid";
 
 /**
+ * Subdomain prefixes used by individual test files under the single
+ * sentinel TLD above. See task #592 architect review.
+ *
+ * The reason both prefixes (and not a single shared marker) exist:
+ * each test file's `beforeAll`/`afterAll` purge sweep deletes rows
+ * matching its OWN prefix only. Without per-file prefixes, the unit
+ * file's afterAll could race-delete the api file's in-flight rows
+ * when both files run in parallel vitest workers, breaking the
+ * sibling suite. The TLD remains a single canonical sentinel; only
+ * the subdomain layer is suite-specific.
+ *
+ * Convention:
+ *   - tests/unit/apple-pay-jobs.test.ts            → `*.unit.vitest-fixture.invalid`
+ *   - tests/api/apple-pay-job-cancel-retry.test.ts → `*.api.vitest-fixture.invalid`
+ *
+ * The production filter (`excludeAllSentinelJobsPredicate`) matches
+ * `%.vitest-fixture.invalid` so it covers BOTH variants uniformly.
+ */
+export const APPLE_PAY_UNIT_TEST_DOMAIN_SUFFIX = `.unit${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+export const APPLE_PAY_API_TEST_DOMAIN_SUFFIX = `.api${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+
+/**
  * SQL predicate that EXCLUDES jobs whose items are entirely sentinel
  * test-fixture rows. Two-armed so we are conservative on edge cases:
  *   - A job with NO items at all (e.g. a real production job that is
