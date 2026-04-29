@@ -14,16 +14,19 @@
  *      revives `running` jobs and the worker only re-processes items that
  *      were still `pending`.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { inArray, eq } from "drizzle-orm";
+import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
+import { inArray, eq, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS, type ApplePayJobStatus } from "@shared/schema";
 import {
+  APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX,
   createApplePayJob,
   claimNextApplePayJob,
   recoverInterruptedApplePayJobs,
   insertApplePayJobItems,
   countApplePayJobItems,
+  countApplePayJobsNeedingAttention,
+  listApplePayJobs,
   getPendingApplePayJobItems,
   getApplePayJobItems,
   claimAndCompleteApplePayJobItem,
@@ -38,6 +41,28 @@ import {
   reopenApplePayJobForRetry,
   finalizeApplePayJob,
 } from "../../server/storage/apple-pay-jobs";
+
+/**
+ * Belt-and-suspenders sweep used by both the suite-level
+ * `beforeAll`/`afterAll` and the route-test suite (#592). Removes any
+ * job that has at least one item carrying the sentinel
+ * `.unit.vitest-fixture.invalid` TLD. The per-test `afterEach` is still the
+ * primary cleanup path; this exists to mop up rows left by a Vitest
+ * worker that crashed mid-test before its `afterEach` could fire.
+ *
+ * Tolerant of zero rows — never fails the suite if there is nothing to
+ * sweep.
+ */
+const SENTINEL_DOMAIN_PATTERN = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+async function purgeSentinelApplePayJobs(): Promise<void> {
+  await db.delete(applePayJobs).where(
+    sql`EXISTS (
+      SELECT 1 FROM ${applePayJobItems}
+      WHERE ${applePayJobItems.jobId} = ${applePayJobs.id}
+        AND ${applePayJobItems.domain} LIKE ${SENTINEL_DOMAIN_PATTERN}
+    )`,
+  );
+}
 
 const createdJobIds: number[] = [];
 
@@ -67,6 +92,13 @@ afterEach(async () => {
   await db.delete(applePayJobs).where(inArray(applePayJobs.id, createdJobIds));
   createdJobIds.length = 0;
 });
+
+// Suite-level safety net (#592): if a Vitest worker crashed during a
+// previous run before its `afterEach` could fire, leftover sentinel rows
+// would otherwise pollute the Apple Pay Jobs admin page. Sweep on entry
+// and on exit so the DB is clean both ways.
+beforeAll(purgeSentinelApplePayJobs);
+afterAll(purgeSentinelApplePayJobs);
 
 describe("apple pay job storage — concurrency invariants", () => {
   it("claimNextApplePayJob gives the same pending job to exactly one of two concurrent workers", async () => {
@@ -111,7 +143,7 @@ describe("apple pay job storage — concurrency invariants", () => {
   it("claimAndCompleteApplePayJobItem only succeeds for the first caller", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "example.test" },
+      { organizationId: null, locationId: null, domain: "example.unit.vitest-fixture.invalid" },
     ]);
     const [item] = await getPendingApplePayJobItems(jobId);
     expect(item).toBeDefined();
@@ -146,9 +178,9 @@ describe("apple pay job storage — concurrency invariants", () => {
   it("insertApplePayJobItems is idempotent for the same enumeration", async () => {
     const jobId = await makeJob();
     const enumeration = [
-      { organizationId: null, locationId: null, domain: "a.test" },
-      { organizationId: null, locationId: null, domain: "b.test" },
-      { organizationId: null, locationId: null, domain: "c.test" },
+      { organizationId: null, locationId: null, domain: "a.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "b.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "c.unit.vitest-fixture.invalid" },
     ];
 
     await insertApplePayJobItems(jobId, enumeration);
@@ -161,7 +193,7 @@ describe("apple pay job storage — concurrency invariants", () => {
     // Even when the duplicate insert and a brand-new row are mixed.
     await insertApplePayJobItems(jobId, [
       ...enumeration,
-      { organizationId: null, locationId: null, domain: "d.test" },
+      { organizationId: null, locationId: null, domain: "d.unit.vitest-fixture.invalid" },
     ]);
     expect(await countApplePayJobItems(jobId)).toBe(4);
   });
@@ -169,12 +201,12 @@ describe("apple pay job storage — concurrency invariants", () => {
   it("insertApplePayJobItems is idempotent under concurrent inserts of overlapping batches", async () => {
     const jobId = await makeJob();
     const overlap = [
-      { organizationId: null, locationId: null, domain: "x.test" },
-      { organizationId: null, locationId: null, domain: "y.test" },
-      { organizationId: null, locationId: null, domain: "z.test" },
+      { organizationId: null, locationId: null, domain: "x.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "y.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "z.unit.vitest-fixture.invalid" },
     ];
-    const extraA = { organizationId: null, locationId: null, domain: "only-a.test" };
-    const extraB = { organizationId: null, locationId: null, domain: "only-b.test" };
+    const extraA = { organizationId: null, locationId: null, domain: "only-a.unit.vitest-fixture.invalid" };
+    const extraB = { organizationId: null, locationId: null, domain: "only-b.unit.vitest-fixture.invalid" };
 
     // Two enumerators race on the same job. The unique index + ON CONFLICT
     // DO NOTHING must keep the final cardinality at exactly the union size.
@@ -186,11 +218,11 @@ describe("apple pay job storage — concurrency invariants", () => {
     expect(await countApplePayJobItems(jobId)).toBe(5);
     const domains = (await getApplePayJobItems(jobId)).map((it) => it.domain).sort();
     expect(domains).toEqual([
-      "only-a.test",
-      "only-b.test",
-      "x.test",
-      "y.test",
-      "z.test",
+      "only-a.unit.vitest-fixture.invalid",
+      "only-b.unit.vitest-fixture.invalid",
+      "x.unit.vitest-fixture.invalid",
+      "y.unit.vitest-fixture.invalid",
+      "z.unit.vitest-fixture.invalid",
     ]);
   });
 
@@ -202,10 +234,10 @@ describe("apple pay job storage — concurrency invariants", () => {
     // (status -> running), finish a few items, then "crash" leaving the
     // rest pending and the job stuck in running.
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "done-1.test" },
-      { organizationId: null, locationId: null, domain: "done-2.test" },
-      { organizationId: null, locationId: null, domain: "todo-1.test" },
-      { organizationId: null, locationId: null, domain: "todo-2.test" },
+      { organizationId: null, locationId: null, domain: "done-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "done-2.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "todo-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "todo-2.unit.vitest-fixture.invalid" },
     ]);
     const claimed = await claimNextApplePayJob(scope);
     expect(claimed?.id).toBe(jobId);
@@ -226,10 +258,10 @@ describe("apple pay job storage — concurrency invariants", () => {
     // Re-running enumeration on resume must NOT duplicate the existing rows
     // and must NOT reset already-finished items back to pending.
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "done-1.test" },
-      { organizationId: null, locationId: null, domain: "done-2.test" },
-      { organizationId: null, locationId: null, domain: "todo-1.test" },
-      { organizationId: null, locationId: null, domain: "todo-2.test" },
+      { organizationId: null, locationId: null, domain: "done-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "done-2.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "todo-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "todo-2.unit.vitest-fixture.invalid" },
     ]);
     expect(await countApplePayJobItems(jobId)).toBe(4);
 
@@ -240,15 +272,15 @@ describe("apple pay job storage — concurrency invariants", () => {
     // …and only the previously-pending items show up for processing.
     const stillPending = await getPendingApplePayJobItems(jobId);
     expect(stillPending.map((it) => it.domain).sort()).toEqual([
-      "todo-1.test",
-      "todo-2.test",
+      "todo-1.unit.vitest-fixture.invalid",
+      "todo-2.unit.vitest-fixture.invalid",
     ]);
   });
 
   it("claimApplePayJobItemForProcessing only lets one of N concurrent workers issue the provider call", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "race.test" },
+      { organizationId: null, locationId: null, domain: "race.unit.vitest-fixture.invalid" },
     ]);
     const [item] = await getPendingApplePayJobItems(jobId);
     expect(item).toBeDefined();
@@ -287,14 +319,14 @@ describe("apple pay job storage — concurrency invariants", () => {
   it("recoverInterruptedApplePayJobs revives items whose pre-call lease has EXPIRED, leaves fresh leases alone", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "expired-1.test" },
-      { organizationId: null, locationId: null, domain: "expired-2.test" },
-      { organizationId: null, locationId: null, domain: "done.test" },
+      { organizationId: null, locationId: null, domain: "expired-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "expired-2.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "done.unit.vitest-fixture.invalid" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const expired1 = items.find((it) => it.domain === "expired-1.test")!;
-    const expired2 = items.find((it) => it.domain === "expired-2.test")!;
-    const done = items.find((it) => it.domain === "done.test")!;
+    const expired1 = items.find((it) => it.domain === "expired-1.unit.vitest-fixture.invalid")!;
+    const expired2 = items.find((it) => it.domain === "expired-2.unit.vitest-fixture.invalid")!;
+    const done = items.find((it) => it.domain === "done.unit.vitest-fixture.invalid")!;
 
     // Two items get pre-claimed but the worker crashed before writing
     // their terminal state, AND enough wall time has passed that the
@@ -323,8 +355,8 @@ describe("apple pay job storage — concurrency invariants", () => {
 
     const reloaded = await getApplePayJobItems(jobId);
     const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it.status]));
-    expect(byDomain["expired-1.test"]).toBe("pending");
-    expect(byDomain["expired-2.test"]).toBe("pending");
+    expect(byDomain["expired-1.unit.vitest-fixture.invalid"]).toBe("pending");
+    expect(byDomain["expired-2.unit.vitest-fixture.invalid"]).toBe("pending");
 
     // #270: recovered_count must be incremented on each revived item so
     // the per-job aggregate stays accurate across multiple recovery sweeps.
@@ -335,7 +367,7 @@ describe("apple pay job storage — concurrency invariants", () => {
     const doneRow = reloaded.find((it) => it.id === done.id)!;
     expect(doneRow.recoveredCount).toBe(0);
     // Already-terminal items must not be touched by the recovery sweep.
-    expect(byDomain["done.test"]).toBe("succeeded");
+    expect(byDomain["done.unit.vitest-fixture.invalid"]).toBe("succeeded");
 
     // Recovery must also clear the lease so subsequent recoveries don't
     // immediately treat a fresh re-claim as already expired.
@@ -345,8 +377,8 @@ describe("apple pay job storage — concurrency invariants", () => {
     // The next worker pass must see exactly the two revived items as pending.
     const pending = await getPendingApplePayJobItems(jobId);
     expect(pending.map((it) => it.domain).sort()).toEqual([
-      "expired-1.test",
-      "expired-2.test",
+      "expired-1.unit.vitest-fixture.invalid",
+      "expired-2.unit.vitest-fixture.invalid",
     ]);
   });
 
@@ -357,12 +389,12 @@ describe("apple pay job storage — concurrency invariants", () => {
     // the provider call before A's call returns.
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "live.test" },
-      { organizationId: null, locationId: null, domain: "expired.test" },
+      { organizationId: null, locationId: null, domain: "live.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "expired.unit.vitest-fixture.invalid" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const live = items.find((it) => it.domain === "live.test")!;
-    const expired = items.find((it) => it.domain === "expired.test")!;
+    const live = items.find((it) => it.domain === "live.unit.vitest-fixture.invalid")!;
+    const expired = items.find((it) => it.domain === "expired.unit.vitest-fixture.invalid")!;
 
     // Both items get pre-claimed.
     expect(await claimApplePayJobItemForProcessing(live.id)).toBe(true);
@@ -393,7 +425,7 @@ describe("apple pay job storage — concurrency invariants", () => {
     expect(expiredAfter.claimedAt).toBeNull();
 
     const pending = await getPendingApplePayJobItems(jobId);
-    expect(pending.map((it) => it.domain)).toEqual(["expired.test"]);
+    expect(pending.map((it) => it.domain)).toEqual(["expired.unit.vitest-fixture.invalid"]);
 
     // And the live sibling can still successfully complete its terminal
     // write — terminal write must not be blocked by a parallel recovery
@@ -485,8 +517,8 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     const jobId = await makeJob();
     const scope = { onlyJobIds: [jobId] };
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "resume-1.test" },
-      { organizationId: null, locationId: null, domain: "resume-2.test" },
+      { organizationId: null, locationId: null, domain: "resume-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "resume-2.unit.vitest-fixture.invalid" },
     ]);
     const claimed = await claimNextApplePayJob(scope);
     expect(claimed?.id).toBe(jobId);
@@ -500,7 +532,7 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     const reclaimed = await claimNextApplePayJob(scope);
     expect(reclaimed?.id).toBe(jobId);
     const stillPending = await getPendingApplePayJobItems(jobId);
-    expect(stillPending.map((i) => i.domain).sort()).toEqual(["resume-1.test", "resume-2.test"]);
+    expect(stillPending.map((i) => i.domain).sort()).toEqual(["resume-1.unit.vitest-fixture.invalid", "resume-2.unit.vitest-fixture.invalid"]);
   });
 
   it("after the bounded recovery sequence, finalize counts match the items table exactly", async () => {
@@ -509,12 +541,12 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     // processes it; the job's final counts equal the items table.
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "crash-done.test" },
-      { organizationId: null, locationId: null, domain: "crash-stranded.test" },
+      { organizationId: null, locationId: null, domain: "crash-done.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "crash-stranded.unit.vitest-fixture.invalid" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const done = mustFind(items, (i) => i.domain === "crash-done.test", "crash-done.test item");
-    const stranded = mustFind(items, (i) => i.domain === "crash-stranded.test", "crash-stranded.test item");
+    const done = mustFind(items, (i) => i.domain === "crash-done.unit.vitest-fixture.invalid", "crash-done item");
+    const stranded = mustFind(items, (i) => i.domain === "crash-stranded.unit.vitest-fixture.invalid", "crash-stranded item");
 
     // Pretend the worker claimed both items mid-call before crashing.
     expect(await claimApplePayJobItemForProcessing(done.id)).toBe(true);
@@ -654,8 +686,8 @@ describe("apple pay job storage — delete guards", () => {
     for (const terminal of ["succeeded", "failed", "partial", "canceled"] as const) {
       const jobId = await makeJob();
       await insertApplePayJobItems(jobId, [
-        { organizationId: null, locationId: null, domain: `del-${terminal}-1.test` },
-        { organizationId: null, locationId: null, domain: `del-${terminal}-2.test` },
+        { organizationId: null, locationId: null, domain: `del-${terminal}-1.unit.vitest-fixture.invalid` },
+        { organizationId: null, locationId: null, domain: `del-${terminal}-2.unit.vitest-fixture.invalid` },
       ]);
       await db.update(applePayJobs).set({ status: terminal }).where(eq(applePayJobs.id, jobId));
 
@@ -703,9 +735,9 @@ describe("apple pay job storage — retry job guards", () => {
     for (const terminal of ["failed", "partial", "canceled"] as const) {
       const jobId = await makeJob();
       await insertApplePayJobItems(jobId, [
-        { organizationId: null, locationId: null, domain: `succeeded-${terminal}.test` },
-        { organizationId: null, locationId: null, domain: `failed-1-${terminal}.test` },
-        { organizationId: null, locationId: null, domain: `failed-2-${terminal}.test` },
+        { organizationId: null, locationId: null, domain: `succeeded-${terminal}.unit.vitest-fixture.invalid` },
+        { organizationId: null, locationId: null, domain: `failed-1-${terminal}.unit.vitest-fixture.invalid` },
+        { organizationId: null, locationId: null, domain: `failed-2-${terminal}.unit.vitest-fixture.invalid` },
       ]);
       const items = await getApplePayJobItems(jobId);
       const succeeded = items.find((i) => i.domain.startsWith("succeeded"))!;
@@ -732,11 +764,11 @@ describe("apple pay job storage — retry job guards", () => {
       // Failed items are reset; the succeeded item is untouched.
       const reloaded = await getApplePayJobItems(jobId);
       const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it]));
-      expect(byDomain[`succeeded-${terminal}.test`].status).toBe("succeeded");
-      expect(byDomain[`failed-1-${terminal}.test`].status).toBe("pending");
-      expect(byDomain[`failed-1-${terminal}.test`].message).toBeNull();
-      expect(byDomain[`failed-1-${terminal}.test`].processedAt).toBeNull();
-      expect(byDomain[`failed-2-${terminal}.test`].status).toBe("pending");
+      expect(byDomain[`succeeded-${terminal}.unit.vitest-fixture.invalid`].status).toBe("succeeded");
+      expect(byDomain[`failed-1-${terminal}.unit.vitest-fixture.invalid`].status).toBe("pending");
+      expect(byDomain[`failed-1-${terminal}.unit.vitest-fixture.invalid`].message).toBeNull();
+      expect(byDomain[`failed-1-${terminal}.unit.vitest-fixture.invalid`].processedAt).toBeNull();
+      expect(byDomain[`failed-2-${terminal}.unit.vitest-fixture.invalid`].status).toBe("pending");
     }
   });
 
@@ -744,7 +776,7 @@ describe("apple pay job storage — retry job guards", () => {
     for (const ineligible of ["pending", "running"] as const) {
       const jobId = await makeJob();
       await insertApplePayJobItems(jobId, [
-        { organizationId: null, locationId: null, domain: `f-${ineligible}.test` },
+        { organizationId: null, locationId: null, domain: `f-${ineligible}.unit.vitest-fixture.invalid` },
       ]);
       const [item] = await getApplePayJobItems(jobId);
       await claimAndCompleteApplePayJobItem(item.id, { status: "failed", message: "no" });
@@ -763,7 +795,7 @@ describe("apple pay job storage — retry job guards", () => {
   it("returns undefined for a fully-succeeded terminal job", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "ok.test" },
+      { organizationId: null, locationId: null, domain: "ok.unit.vitest-fixture.invalid" },
     ]);
     const [item] = await getApplePayJobItems(jobId);
     await claimAndCompleteApplePayJobItem(item.id, { status: "succeeded" });
@@ -776,7 +808,7 @@ describe("apple pay job storage — retry job guards", () => {
   it("returns undefined for a terminal job with no failed items (e.g. all skipped)", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "skip.test" },
+      { organizationId: null, locationId: null, domain: "skip.unit.vitest-fixture.invalid" },
     ]);
     const [item] = await getApplePayJobItems(jobId);
     await claimAndCompleteApplePayJobItem(item.id, { status: "skipped", message: "no loc" });
@@ -801,8 +833,8 @@ describe("apple pay job storage — retry single-item guards", () => {
     for (const terminal of ["failed", "partial", "canceled"] as const) {
       const jobId = await makeJob();
       await insertApplePayJobItems(jobId, [
-        { organizationId: null, locationId: null, domain: `keep-${terminal}.test` },
-        { organizationId: null, locationId: null, domain: `retry-${terminal}.test` },
+        { organizationId: null, locationId: null, domain: `keep-${terminal}.unit.vitest-fixture.invalid` },
+        { organizationId: null, locationId: null, domain: `retry-${terminal}.unit.vitest-fixture.invalid` },
       ]);
       const items = await getApplePayJobItems(jobId);
       const keep = items.find((i) => i.domain.startsWith("keep"))!;
@@ -833,7 +865,7 @@ describe("apple pay job storage — retry single-item guards", () => {
     // worker's already-loaded pending queue, breaking final accounting.
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "running.test" },
+      { organizationId: null, locationId: null, domain: "running.unit.vitest-fixture.invalid" },
     ]);
     const [item] = await getApplePayJobItems(jobId);
     await claimAndCompleteApplePayJobItem(item.id, { status: "failed", message: "x" });
@@ -848,14 +880,14 @@ describe("apple pay job storage — retry single-item guards", () => {
   it("refuses to retry a non-failed item (e.g. succeeded or skipped) on a terminal job", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "ok.test" },
-      { organizationId: null, locationId: null, domain: "skip.test" },
-      { organizationId: null, locationId: null, domain: "fail.test" },
+      { organizationId: null, locationId: null, domain: "ok.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "skip.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "fail.unit.vitest-fixture.invalid" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const ok = items.find((i) => i.domain === "ok.test")!;
-    const skip = items.find((i) => i.domain === "skip.test")!;
-    const fail = items.find((i) => i.domain === "fail.test")!;
+    const ok = items.find((i) => i.domain === "ok.unit.vitest-fixture.invalid")!;
+    const skip = items.find((i) => i.domain === "skip.unit.vitest-fixture.invalid")!;
+    const fail = items.find((i) => i.domain === "fail.unit.vitest-fixture.invalid")!;
     await claimAndCompleteApplePayJobItem(ok.id, { status: "succeeded" });
     await claimAndCompleteApplePayJobItem(skip.id, { status: "skipped", message: "n/a" });
     await claimAndCompleteApplePayJobItem(fail.id, { status: "failed", message: "boom" });
@@ -872,10 +904,10 @@ describe("apple pay job storage — retry single-item guards", () => {
     const jobAId = await makeJob();
     const jobBId = await makeJob();
     await insertApplePayJobItems(jobAId, [
-      { organizationId: null, locationId: null, domain: "a.test" },
+      { organizationId: null, locationId: null, domain: "a.unit.vitest-fixture.invalid" },
     ]);
     await insertApplePayJobItems(jobBId, [
-      { organizationId: null, locationId: null, domain: "b.test" },
+      { organizationId: null, locationId: null, domain: "b.unit.vitest-fixture.invalid" },
     ]);
     const [itemA] = await getApplePayJobItems(jobAId);
     await claimAndCompleteApplePayJobItem(itemA.id, { status: "failed", message: "x" });
@@ -901,5 +933,82 @@ describe("apple pay job storage — retry single-item guards", () => {
     const jobId = await makeJob();
     await setJobStatus(jobId, "failed");
     expect(await retryApplePayJobItem(jobId, 2_147_483_003)).toBeUndefined();
+  });
+});
+
+/**
+ * Test-fixture filter on the admin listing + attention badge (#592).
+ *
+ * Vitest workers occasionally crash mid-test before their `afterEach`
+ * runs, leaking rows into `apple_pay_jobs` that then show up on the
+ * Apple Pay Jobs admin page and inflate the sidebar badge. The
+ * defensive filter on `listApplePayJobs` and
+ * `countApplePayJobsNeedingAttention` hides any job whose items are
+ * ENTIRELY sentinel-domain (`*.unit.vitest-fixture.invalid`). These tests
+ * pin the filter's three cases so we cannot regress it into either an
+ * over-match (hides real jobs) or an under-match (lets pollution
+ * through).
+ */
+describe("apple pay job storage — sentinel-domain listing filter (#592)", () => {
+  it("listApplePayJobs excludes a job whose items are ALL sentinel", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "filter-1.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "filter-2.unit.vitest-fixture.invalid" },
+    ]);
+
+    // Pull a generous slice — the filtered job must be absent from the
+    // entire returned page, not just from the first row.
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeUndefined();
+  });
+
+  it("countApplePayJobsNeedingAttention excludes the same all-sentinel jobs", async () => {
+    // Take the baseline BEFORE creating any sentinel data — otherwise the
+    // assertion is vacuous: a broken filter that counted the sentinel
+    // would inflate both before and after equally and the test would
+    // false-pass. Capturing baseline first means a regression that lets
+    // the sentinel through bumps `after` by 1 and the test fails.
+    const before = await countApplePayJobsNeedingAttention();
+
+    const jobId = await makeJob();
+    // Force a status that would otherwise count toward the badge.
+    await db.update(applePayJobs).set({ status: "failed" }).where(eq(applePayJobs.id, jobId));
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "badge.unit.vitest-fixture.invalid" },
+      { organizationId: null, locationId: null, domain: "badge-2.unit.vitest-fixture.invalid" },
+    ]);
+
+    const after = await countApplePayJobsNeedingAttention();
+    expect(after).toBe(before);
+  });
+
+  it("listApplePayJobs INCLUDES jobs with mixed real + sentinel items (no over-match)", async () => {
+    // Defensive guard: no real test currently produces this shape, but
+    // the filter must never hide a job that has even one real-domain
+    // item — that would risk suppressing a legitimate production job
+    // that somehow acquired a sentinel item from data corruption.
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "real.example.com" },
+      { organizationId: null, locationId: null, domain: "mixed.unit.vitest-fixture.invalid" },
+    ]);
+
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+
+    // Clean up the real-domain item so the suite-level sentinel sweep
+    // also reaps this job (its sentinel item makes it eligible).
+    await db.delete(applePayJobItems).where(eq(applePayJobItems.jobId, jobId));
+  });
+
+  it("listApplePayJobs INCLUDES jobs with NO items at all (mid-enumeration production case)", async () => {
+    // Real production jobs are created BEFORE their items are
+    // enumerated. The filter must not hide a freshly-created pending
+    // job whose items table is still empty.
+    const jobId = await makeJob();
+
+    const jobs = await listApplePayJobs(100);
+    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
   });
 });

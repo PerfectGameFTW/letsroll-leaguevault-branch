@@ -18,14 +18,15 @@
  * Storage-level transitions are covered by tests/unit/apple-pay-jobs.test.ts;
  * here we only assert the HTTP contract the admin UI relies on.
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../server/db";
 import {
   applePayJobs,
   applePayJobItems,
   type ApplePayJobStatus,
 } from "@shared/schema";
+import { APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX } from "../../server/storage/apple-pay-jobs";
 import {
   apiDelete,
   apiPost,
@@ -35,6 +36,23 @@ import {
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
 } from "../helpers";
+
+/**
+ * Belt-and-suspenders sweep (#592) — see
+ * `tests/unit/apple-pay-jobs.test.ts` for the rationale. Removes any
+ * job that has at least one item whose domain ends in the sentinel
+ * `.api.vitest-fixture.invalid` TLD. Tolerant of zero rows.
+ */
+const SENTINEL_DOMAIN_PATTERN = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+async function purgeSentinelApplePayJobs(): Promise<void> {
+  await db.delete(applePayJobs).where(
+    sql`EXISTS (
+      SELECT 1 FROM ${applePayJobItems}
+      WHERE ${applePayJobItems.jobId} = ${applePayJobs.id}
+        AND ${applePayJobItems.domain} LIKE ${SENTINEL_DOMAIN_PATTERN}
+    )`,
+  );
+}
 
 const createdJobIds: number[] = [];
 
@@ -65,7 +83,7 @@ async function makeJob(opts: {
           jobId: job.id,
           organizationId: null,
           locationId: null,
-          domain: `route-test-${job.id}-${i}.test`,
+          domain: `route-test-${job.id}-${i}.api.vitest-fixture.invalid`,
           status: it.status,
           message: it.message ?? null,
           processedAt: it.status === "pending" ? null : new Date().toISOString(),
@@ -87,6 +105,11 @@ afterEach(async () => {
     createdJobIds.length = 0;
   }
 });
+
+// Suite-level safety net (#592) — sweep any sentinel rows leaked by a
+// crashed prior worker so the Apple Pay Jobs admin page stays clean.
+beforeAll(purgeSentinelApplePayJobs);
+afterAll(purgeSentinelApplePayJobs);
 
 const cancelPath = (id: number | string) =>
   `/api/payments-provider/apple-pay/jobs/${id}/cancel`;

@@ -23,10 +23,57 @@ export async function getApplePayJob(id: number): Promise<ApplePayJob | undefine
   return row;
 }
 
+/**
+ * Sentinel TLD used by the Vitest suite for synthetic Apple Pay items
+ * (task #592). Real Apple Pay domains can never end in
+ * `.vitest-fixture.invalid` because `.invalid` is reserved by RFC 2606
+ * for non-resolvable use, so any item carrying this suffix is
+ * unambiguously test-fixture data.
+ *
+ * Two consumers:
+ *   1. The `excludeAllSentinelJobs` predicate below hides jobs whose
+ *      items are ENTIRELY sentinel from the admin listing + the
+ *      attention-count badge — protects the Apple Pay Jobs page from
+ *      Vitest workers that crash mid-test before `afterEach` runs.
+ *   2. Test-suite `beforeAll`/`afterAll` hooks use it as the cleanup
+ *      discriminator to sweep any leftover sentinel rows from prior
+ *      crashed runs.
+ */
+export const APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX = ".vitest-fixture.invalid";
+
+/**
+ * SQL predicate that EXCLUDES jobs whose items are entirely sentinel
+ * test-fixture rows. Two-armed so we are conservative on edge cases:
+ *   - A job with NO items at all (e.g. a real production job that is
+ *     freshly created and still mid-enumeration) passes — `EXISTS
+ *     non-sentinel` is false but `NOT EXISTS sentinel` is true.
+ *   - A job with at least one real-domain item passes — `EXISTS
+ *     non-sentinel` is true.
+ *   - A job whose every item is sentinel is filtered out — both arms
+ *     are false.
+ *
+ * Real production jobs never carry a `.vitest-fixture.invalid` domain,
+ * so this filter cannot suppress legitimate data.
+ */
+const sentinelDomainPattern = `%${APPLE_PAY_TEST_FIXTURE_DOMAIN_SUFFIX}`;
+const excludeAllSentinelJobs = sql`(
+  EXISTS (
+    SELECT 1 FROM apple_pay_job_items i
+    WHERE i.job_id = ${applePayJobs.id}
+      AND i.domain NOT LIKE ${sentinelDomainPattern}
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM apple_pay_job_items i
+    WHERE i.job_id = ${applePayJobs.id}
+      AND i.domain LIKE ${sentinelDomainPattern}
+  )
+)`;
+
 export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
   return db
     .select()
     .from(applePayJobs)
+    .where(excludeAllSentinelJobs)
     .orderBy(desc(applePayJobs.createdAt))
     .limit(limit);
 }
@@ -40,6 +87,9 @@ export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
  * `succeeded` and `canceled` are intentionally excluded — succeeded jobs
  * need no action, and a canceled job is the result of an explicit admin
  * decision so it would be noisy to keep nagging.
+ *
+ * Mirrors the listing filter so all-sentinel test-fixture jobs cannot
+ * inflate the badge count either (#592).
  */
 const ATTENTION_STATUSES: ApplePayJobStatus[] = [
   "pending",
@@ -52,7 +102,7 @@ export async function countApplePayJobsNeedingAttention(): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(applePayJobs)
-    .where(inArray(applePayJobs.status, ATTENTION_STATUSES));
+    .where(and(inArray(applePayJobs.status, ATTENTION_STATUSES), excludeAllSentinelJobs));
   return row?.count ?? 0;
 }
 
