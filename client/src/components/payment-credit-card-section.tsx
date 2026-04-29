@@ -92,11 +92,21 @@ export function PaymentCreditCardSection({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        {applePayAvailable && !applePayTokenizeOnly && (
+        {/*
+         * Always-mounted Apple Pay container. Square's `applePay.attach()`
+         * runs against the same DOM node both before and after the
+         * `applePayAvailable` flag flips, so the rendered Apple Pay button
+         * isn't unmounted out from under us. (The previous pattern split
+         * the ref across a hidden placeholder div and a separate visible
+         * div — when the visible one took over, Square's attached
+         * button was destroyed and admins saw an empty clickable area.)
+         */}
+        {!applePayTokenizeOnly && (
           <div
             ref={applePayRef}
-            className="min-h-[40px]"
-            onClick={onApplePayClick}
+            className={applePayAvailable ? "min-h-[40px]" : undefined}
+            style={applePayAvailable ? undefined : { display: 'none' }}
+            onClick={applePayAvailable ? onApplePayClick : undefined}
           />
         )}
         {applePayAvailable && applePayTokenizeOnly && (
@@ -133,18 +143,24 @@ export function PaymentCreditCardSection({
             }}>Pay</span>
           </button>
         )}
-        {!applePayAvailable && (
-          <div ref={applePayRef} style={{ display: 'none' }} />
-        )}
-        {googlePayAvailable && !googlePayTokenizeOnly && (
+        {/*
+         * Always-mounted Google Pay container — same reasoning as the
+         * Apple Pay block above. Square's `googlePay.attach()` injects
+         * the Google Pay button image into this node while it's still
+         * `display:none`; once `googlePayAvailable` flips, the same
+         * node simply becomes visible and the button shows up
+         * immediately. Splitting this across two divs (visible + hidden
+         * placeholder) caused the Google Pay button to render into the
+         * placeholder, then disappear when the placeholder unmounted —
+         * leaving an empty clickable area instead of a button.
+         */}
+        {!googlePayTokenizeOnly && (
           <div
             ref={googlePayRef}
-            className="min-h-[40px]"
-            onClick={onGooglePayClick}
+            className={googlePayAvailable ? "min-h-[40px]" : undefined}
+            style={googlePayAvailable ? undefined : { display: 'none' }}
+            onClick={googlePayAvailable ? onGooglePayClick : undefined}
           />
-        )}
-        {!googlePayAvailable && (
-          <div ref={googlePayRef} style={{ display: 'none' }} />
         )}
         {isWalletProcessing && (
           <div className="flex items-center justify-center py-2">

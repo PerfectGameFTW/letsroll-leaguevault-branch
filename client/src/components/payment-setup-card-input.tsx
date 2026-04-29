@@ -71,11 +71,21 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
         </p>
       </div>
 
-      {applePayAvailable && !applePayTokenizeOnly && (
+      {/*
+       * Always-mounted Apple Pay container. Square's `applePay.attach()`
+       * runs against this exact node before `applePayAvailable`
+       * flips, so the rendered button isn't unmounted out from under
+       * us. The previous pattern split the ref across a visible div
+       * and a hidden placeholder; when the placeholder unmounted,
+       * Square's attached button was destroyed and users saw an
+       * empty clickable area instead of a button.
+       */}
+      {!applePayTokenizeOnly && (
         <div
           ref={applePayRef}
-          onClick={onApplePayClick}
-          className="min-h-[48px] cursor-pointer"
+          onClick={applePayAvailable ? onApplePayClick : undefined}
+          className={applePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
+          style={applePayAvailable ? undefined : { display: 'none' }}
         />
       )}
       {applePayAvailable && applePayTokenizeOnly && (
@@ -112,18 +122,20 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           }}>Pay</span>
         </button>
       )}
-      {!applePayAvailable && (
-        <div ref={applePayRef} style={{ display: 'none' }} />
-      )}
-      {googlePayAvailable && !googlePayTokenizeOnly && (
+      {/*
+       * Always-mounted Google Pay container — same reasoning as the
+       * Apple Pay block above. Splitting the ref across two sibling
+       * divs caused Google Pay's button to render into a hidden
+       * placeholder, then disappear when that placeholder unmounted,
+       * leaving an empty clickable area.
+       */}
+      {!googlePayTokenizeOnly && (
         <div
           ref={googlePayRef}
-          onClick={onGooglePayClick}
-          className="min-h-[48px] cursor-pointer"
+          onClick={googlePayAvailable ? onGooglePayClick : undefined}
+          className={googlePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
+          style={googlePayAvailable ? undefined : { display: 'none' }}
         />
-      )}
-      {!googlePayAvailable && (
-        <div ref={googlePayRef} style={{ display: 'none' }} />
       )}
       {isWalletProcessing && (
         <div className="flex items-center justify-center gap-2 py-2">
