@@ -260,7 +260,7 @@
   },
   "server/services/square-custom-attributes.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 1
     },
     "no-restricted-syntax": {
       "count": 1

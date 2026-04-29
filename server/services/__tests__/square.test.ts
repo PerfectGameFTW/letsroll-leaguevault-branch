@@ -1,27 +1,52 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// v40+ flat-client SDK shape (task #603 / Phase 2 of #600). Resources
+// live under singular lowercase getters (`customers`, `payments`, ...)
+// and methods return the response body directly with no `.result`
+// wrapper. The mock here mirrors that shape so the SquarePaymentProvider
+// under test consumes the same fields it will see in production.
 const mocks = vi.hoisted(() => {
   return {
-    customersApi: {
-      searchCustomers: vi.fn(),
-      updateCustomer: vi.fn(),
-      createCustomer: vi.fn(),
+    customers: {
+      search: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
     },
-    paymentsApi: {
-      createPayment: vi.fn(),
+    payments: {
+      create: vi.fn(),
     },
     getLocationSquareConfig: vi.fn(),
   };
 });
 
 vi.mock('square', () => ({
-  Client: function () {
+  SquareClient: function () {
     return {
-      customersApi: mocks.customersApi,
-      paymentsApi: mocks.paymentsApi,
+      customers: mocks.customers,
+      payments: mocks.payments,
     };
   },
-  Environment: { Production: 'production', Sandbox: 'sandbox' },
+  SquareEnvironment: { Production: 'production', Sandbox: 'sandbox' },
+  // Provide a constructable SquareError so production code's
+  // `error instanceof SquareError` narrowing path can be exercised by
+  // tests that want to simulate a Square-side failure.
+  SquareError: class SquareError extends Error {
+    statusCode?: number;
+    body?: unknown;
+    errors?: Array<{ category?: string; code?: string; detail?: string; field?: string }>;
+    constructor(args: {
+      message?: string;
+      statusCode?: number;
+      body?: unknown;
+      errors?: Array<{ category?: string; code?: string; detail?: string; field?: string }>;
+    } = {}) {
+      super(args.message ?? 'SquareError');
+      this.name = 'SquareError';
+      this.statusCode = args.statusCode;
+      this.body = args.body;
+      this.errors = args.errors;
+    }
+  },
 }));
 
 vi.mock('../../storage', () => ({
@@ -56,18 +81,16 @@ describe('Square Service', () => {
 
   describe('createOrUpdateCustomer', () => {
     it('should create a new customer when one does not exist', async () => {
-      mocks.customersApi.searchCustomers.mockResolvedValueOnce({
-        result: { customers: [] },
+      mocks.customers.search.mockResolvedValueOnce({
+        customers: [],
       });
 
-      mocks.customersApi.createCustomer.mockResolvedValueOnce({
-        result: {
-          customer: {
-            id: 'test-customer-id',
-            givenName: 'John',
-            familyName: 'Doe',
-            emailAddress: 'john@example.com',
-          },
+      mocks.customers.create.mockResolvedValueOnce({
+        customer: {
+          id: 'test-customer-id',
+          givenName: 'John',
+          familyName: 'Doe',
+          emailAddress: 'john@example.com',
         },
       });
 
@@ -79,7 +102,7 @@ describe('Square Service', () => {
         email: 'john@example.com',
       });
 
-      expect(mocks.customersApi.createCustomer).toHaveBeenCalledWith(
+      expect(mocks.customers.create).toHaveBeenCalledWith(
         expect.objectContaining({
           givenName: 'John',
           familyName: 'Doe',
@@ -89,27 +112,23 @@ describe('Square Service', () => {
     });
 
     it('should update an existing customer', async () => {
-      mocks.customersApi.searchCustomers.mockResolvedValueOnce({
-        result: {
-          customers: [
-            {
-              id: 'existing-customer-id',
-              givenName: 'John',
-              familyName: 'Doe',
-              emailAddress: 'john@example.com',
-            },
-          ],
-        },
-      });
-
-      mocks.customersApi.updateCustomer.mockResolvedValueOnce({
-        result: {
-          customer: {
+      mocks.customers.search.mockResolvedValueOnce({
+        customers: [
+          {
             id: 'existing-customer-id',
             givenName: 'John',
             familyName: 'Doe',
             emailAddress: 'john@example.com',
           },
+        ],
+      });
+
+      mocks.customers.update.mockResolvedValueOnce({
+        customer: {
+          id: 'existing-customer-id',
+          givenName: 'John',
+          familyName: 'Doe',
+          emailAddress: 'john@example.com',
         },
       });
 
@@ -121,9 +140,11 @@ describe('Square Service', () => {
         email: 'john@example.com',
       });
 
-      expect(mocks.customersApi.updateCustomer).toHaveBeenCalledWith(
-        'existing-customer-id',
-        expect.any(Object),
+      // v40+ folds customerId into the request body (no positional arg).
+      expect(mocks.customers.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerId: 'existing-customer-id',
+        }),
       );
     });
 
@@ -140,7 +161,7 @@ describe('Square Service', () => {
     });
 
     it('should handle API errors', async () => {
-      mocks.customersApi.searchCustomers.mockRejectedValueOnce(new Error('API Error'));
+      mocks.customers.search.mockRejectedValueOnce(new Error('API Error'));
 
       await expect(
         provider.createOrUpdateCustomer('John Doe', 'john@example.com', null),
@@ -150,16 +171,14 @@ describe('Square Service', () => {
 
   describe('processPayment', () => {
     it('should process payment successfully', async () => {
-      mocks.paymentsApi.createPayment.mockResolvedValueOnce({
-        result: {
-          payment: {
-            id: 'payment-id',
-            status: 'COMPLETED',
-            cardDetails: {
-              card: {
-                last4: '1234',
-                cardBrand: 'VISA',
-              },
+      mocks.payments.create.mockResolvedValueOnce({
+        payment: {
+          id: 'payment-id',
+          status: 'COMPLETED',
+          cardDetails: {
+            card: {
+              last4: '1234',
+              cardBrand: 'VISA',
             },
           },
         },
@@ -176,7 +195,7 @@ describe('Square Service', () => {
         },
       });
 
-      expect(mocks.paymentsApi.createPayment).toHaveBeenCalledWith(
+      expect(mocks.payments.create).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceId: 'source-id',
           amountMoney: {

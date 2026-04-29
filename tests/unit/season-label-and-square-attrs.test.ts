@@ -18,6 +18,7 @@
  * not need any storage / Express / Square mocks.
  */
 import { describe, expect, it } from 'vitest';
+import { SquareError } from 'square';
 import { getSeasonLabel } from '../../shared/season-utils';
 import { isAlreadyExistsError } from '../../server/services/square-custom-attributes';
 
@@ -94,28 +95,36 @@ describe('isAlreadyExistsError', () => {
   });
 
   it('classifies HTTP 409 as already-exists', () => {
-    // Modern Square shape: bare statusCode on the ApiError. This is
-    // the path the SDK takes today; pinning it makes sure a future
-    // SDK upgrade that drops the legacy 400+detail shape still
+    // Modern Square shape: bare statusCode on the SquareError. This
+    // is the path the v44+ SDK takes today; pinning it makes sure a
+    // future SDK upgrade that drops the legacy 400+detail shape still
     // keeps cold-start bootstrap idempotent.
-    expect(isAlreadyExistsError({ statusCode: 409 })).toBe(true);
+    expect(isAlreadyExistsError(new SquareError({ statusCode: 409 }))).toBe(true);
   });
 
   it('classifies an errors[].code === CONFLICT as already-exists', () => {
+    // v44 flat-client shape: structured errors live directly on the
+    // SquareError (no `.result.errors` wrapper). Constructed here by
+    // passing `body: { errors: [...] }` to the SquareError ctor —
+    // see node_modules/square/errors/SquareError.js.
     expect(
-      isAlreadyExistsError({
-        statusCode: 400,
-        result: { errors: [{ code: 'CONFLICT', detail: 'definition exists' }] },
-      }),
+      isAlreadyExistsError(
+        new SquareError({
+          statusCode: 400,
+          body: { errors: [{ code: 'CONFLICT', detail: 'definition exists' }] },
+        }),
+      ),
     ).toBe(true);
   });
 
   it('classifies an errors[].code === ALREADY_EXISTS as already-exists', () => {
     expect(
-      isAlreadyExistsError({
-        statusCode: 400,
-        result: { errors: [{ code: 'ALREADY_EXISTS' }] },
-      }),
+      isAlreadyExistsError(
+        new SquareError({
+          statusCode: 400,
+          body: { errors: [{ code: 'ALREADY_EXISTS' }] },
+        }),
+      ),
     ).toBe(true);
   });
 
@@ -125,17 +134,19 @@ describe('isAlreadyExistsError', () => {
     // every cold start logs a bogus bootstrap failure for sellers
     // whose definitions were created before the SDK was upgraded.
     expect(
-      isAlreadyExistsError({
-        statusCode: 400,
-        result: {
-          errors: [
-            {
-              code: 'BAD_REQUEST',
-              detail: 'A custom attribute definition with that key already exists.',
-            },
-          ],
-        },
-      }),
+      isAlreadyExistsError(
+        new SquareError({
+          statusCode: 400,
+          body: {
+            errors: [
+              {
+                code: 'BAD_REQUEST',
+                detail: 'A custom attribute definition with that key already exists.',
+              },
+            ],
+          },
+        }),
+      ),
     ).toBe(true);
   });
 
@@ -144,16 +155,20 @@ describe('isAlreadyExistsError', () => {
     // schema, missing field) returns BAD_REQUEST too. We must NOT
     // swallow it as success — that would mask a true bootstrap bug.
     expect(
-      isAlreadyExistsError({
-        statusCode: 400,
-        result: {
-          errors: [{ code: 'BAD_REQUEST', detail: 'Schema is invalid: missing $ref.' }],
-        },
-      }),
+      isAlreadyExistsError(
+        new SquareError({
+          statusCode: 400,
+          body: {
+            errors: [{ code: 'BAD_REQUEST', detail: 'Schema is invalid: missing $ref.' }],
+          },
+        }),
+      ),
     ).toBe(false);
   });
 
   it('does NOT classify an empty errors array as already-exists', () => {
-    expect(isAlreadyExistsError({ statusCode: 400, result: { errors: [] } })).toBe(false);
+    expect(
+      isAlreadyExistsError(new SquareError({ statusCode: 400, body: { errors: [] } })),
+    ).toBe(false);
   });
 });

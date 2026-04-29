@@ -31,7 +31,8 @@
  * `square-provider.ts`. Per-seller bootstrap caching lives on the
  * provider where the locationId is naturally available.
  */
-import type { Client, ApiError } from 'square';
+import type { SquareClient } from 'square';
+import { SquareError } from 'square';
 import { createHash } from 'node:crypto';
 import { createLogger } from '../logger';
 
@@ -79,12 +80,12 @@ const DEFINITIONS: DefinitionSpec[] = [
  * Both are SUCCESS for our idempotent bootstrap.
  */
 export function isAlreadyExistsError(err: unknown): boolean {
-  const apiErr = err as ApiError | undefined;
-  if (!apiErr) return false;
-  if (apiErr.statusCode === 409) return true;
-  const errors = (apiErr.result as
-    | { errors?: Array<{ code?: string; detail?: string; field?: string }> }
-    | undefined)?.errors;
+  if (!(err instanceof SquareError)) return false;
+  if (err.statusCode === 409) return true;
+  // v40+ flat-client SDK exposes structured errors directly on the
+  // SquareError instance; the legacy `.result.errors[]` wrapper is
+  // gone. Same `category` / `code` / `detail` / `field` fields.
+  const errors = err.errors;
   if (!errors?.length) return false;
   return errors.some((e) => {
     const code = (e.code ?? '').toUpperCase();
@@ -95,11 +96,13 @@ export function isAlreadyExistsError(err: unknown): boolean {
 }
 
 async function createDefinition(
-  client: Client,
+  client: SquareClient,
   spec: DefinitionSpec,
 ): Promise<'created' | 'exists' | 'failed'> {
   try {
-    await client.customerCustomAttributesApi.createCustomerCustomAttributeDefinition({
+    // v40+ flat-client SDK nests the customer custom attribute
+    // definition resource under `customers.customAttributeDefinitions`.
+    await client.customers.customAttributeDefinitions.create({
       customAttributeDefinition: {
         key: spec.key,
         name: spec.name,
@@ -107,9 +110,11 @@ async function createDefinition(
         visibility: 'VISIBILITY_READ_ONLY',
         schema: STRING_SCHEMA as unknown as Record<string, unknown>,
       },
-      // Hash-free idempotency key: per-seller bootstrap is rare and
-      // re-running the create with the same key is exactly what the
-      // "already exists" branch was designed for.
+      // Idempotency-key shape preserved across the v40 SDK upgrade so
+      // a retry post-deploy still dedupes against any in-flight pre-
+      // upgrade definition-create on Square's side. Per-seller
+      // bootstrap is rare and re-running the create with the same key
+      // is exactly what the "already exists" branch was designed for.
       idempotencyKey: `leaguevault-${spec.key}-def-v1`,
     });
     log.info('Created Square customer custom attribute definition', { key: spec.key });
@@ -135,7 +140,7 @@ async function createDefinition(
  * pre-existing). Returns false on hard API failure — the caller must
  * treat false as NON-FATAL and continue with the customer write.
  */
-export async function ensureDefinitions(client: Client): Promise<boolean> {
+export async function ensureDefinitions(client: SquareClient): Promise<boolean> {
   let allOk = true;
   for (const spec of DEFINITIONS) {
     const status = await createDefinition(client, spec);
@@ -152,11 +157,11 @@ export async function ensureDefinitions(client: Client): Promise<boolean> {
  * retry the upsert once.
  */
 export function isDefinitionMissingError(err: unknown): boolean {
-  const apiErr = err as ApiError | undefined;
-  if (!apiErr) return false;
-  const errors = (apiErr.result as
-    | { errors?: Array<{ code?: string; detail?: string; field?: string }> }
-    | undefined)?.errors;
+  if (!(err instanceof SquareError)) return false;
+  // v40+ flat-client SDK exposes structured errors directly on the
+  // SquareError instance (`.errors[]`, `.statusCode`, `.body`); the
+  // legacy `.result.errors[]` wrapper is gone.
+  const errors = err.errors;
   if (errors?.length) {
     for (const e of errors) {
       const code = (e.code ?? '').toUpperCase();
@@ -169,7 +174,7 @@ export function isDefinitionMissingError(err: unknown): boolean {
   // Some surfaces return a bare 404 without per-error detail. Treat a
   // 404 on the upsert path as definition-missing too — the customer
   // record was already verified by the caller before we got here.
-  return apiErr.statusCode === 404;
+  return err.statusCode === 404;
 }
 
 export type UpsertAttributeResult =
@@ -185,7 +190,7 @@ export type UpsertAttributeResult =
  * background retry sweep).
  */
 export async function upsertCustomerStringAttribute(
-  client: Client,
+  client: SquareClient,
   customerId: string,
   key: string,
   value: string,
@@ -202,9 +207,16 @@ export async function upsertCustomerStringAttribute(
     //     dedupe-with-stale-result or reject as a conflict.
     // Square's idempotency-key limit is 45 chars; a 12-hex-char SHA-
     // 1 prefix gives 2^48 collision space per (bowler,key) which is
-    // far beyond anything we'd hit in practice.
+    // far beyond anything we'd hit in practice. Shape preserved across
+    // the v40 SDK upgrade so post-deploy retries dedupe against any
+    // pre-upgrade upsert still in flight on Square's side.
     const valueHash = createHash('sha1').update(value).digest('hex').slice(0, 12);
-    await client.customerCustomAttributesApi.upsertCustomerCustomAttribute(customerId, key, {
+    // v40+ flat-client SDK nests the customer custom attribute resource
+    // under `customers.customAttributes` and folds (customerId, key)
+    // into the request body itself.
+    await client.customers.customAttributes.upsert({
+      customerId,
+      key,
       customAttribute: {
         value,
       },

@@ -31,7 +31,7 @@
  *   SQUARE_ACCESS_TOKEN=<location_token> npx tsx server/scripts/create-square-customers.ts \
  *     --organizationId=<id> --locationId=<id>
  */
-import { Client, Environment } from "square";
+import { SquareClient, SquareEnvironment } from "square";
 import { db, cleanup as closeDbPool } from "../db";
 import { bowlers, locations, organizations } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -90,12 +90,15 @@ interface SquareCustomerCreateInput {
   emailAddress: string;
   referenceId: string;
 }
+// v40+ flat-client SDK: customers.create returns the response body
+// directly (no `.result` wrapper) and the resource lives under
+// `customers` rather than `customersApi`.
 interface SquareCustomerCreateResponse {
-  result: { customer?: { id?: string } };
+  customer?: { id?: string };
 }
 interface SquareClientLike {
-  customersApi: {
-    createCustomer(input: SquareCustomerCreateInput): Promise<SquareCustomerCreateResponse>;
+  customers: {
+    create(input: SquareCustomerCreateInput): Promise<SquareCustomerCreateResponse>;
   };
 }
 
@@ -130,9 +133,13 @@ async function buildSquareClient(): Promise<SquareClientLike> {
     }
     return (factory as () => SquareClientLike)();
   }
-  return new Client({
-    accessToken,
-    environment: isProductionToken ? Environment.Production : Environment.Sandbox,
+  // v40+ flat-client SDK shape (task #603 / Phase 2 of #600). Note the
+  // option key is `token` now, not `accessToken`, and the environment
+  // values are URLs from the SquareEnvironment record (Production /
+  // Sandbox), not the legacy `Environment` enum.
+  return new SquareClient({
+    token: accessToken,
+    environment: isProductionToken ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
   });
 }
 
@@ -215,7 +222,7 @@ async function createSquareCustomers() {
           continue;
         }
 
-        const response = await squareClient.customersApi.createCustomer({
+        const response = await squareClient.customers.create({
           idempotencyKey: `bowler_${bowler.id}_${Date.now()}`,
           givenName: bowler.name.split(' ')[0],
           familyName: bowler.name.split(' ').slice(1).join(' ') || '.',
@@ -223,11 +230,13 @@ async function createSquareCustomers() {
           referenceId: bowler.id.toString(),
         });
 
-        if (response.result.customer?.id) {
+        // v40+ flat-client SDK returns the response body directly
+        // (no `.result` wrapper).
+        if (response.customer?.id) {
           await db
             .update(bowlers)
             .set({
-              paymentCustomerId: response.result.customer.id,
+              paymentCustomerId: response.customer.id,
               // Stamp the originating location alongside the saved-card
               // id so account-deletion can target exactly this processor
               // for cleanup later. See task #346 (interactive paths) and
@@ -243,7 +252,7 @@ async function createSquareCustomers() {
               eq(bowlers.organizationId, organizationIdFlag),
             ));
 
-          log.info(`Created Square Customer for ${bowler.name} (ID: ${response.result.customer.id}, locationId: ${locationIdFlag})`);
+          log.info(`Created Square Customer for ${bowler.name} (ID: ${response.customer.id}, locationId: ${locationIdFlag})`);
           successCount++;
         }
 

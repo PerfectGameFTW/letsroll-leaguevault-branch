@@ -64,7 +64,7 @@ const RULE_CEILINGS: Record<string, number> = {
   // Ratcheted 92 → 91 in task #572 to match the live count after the
   // same CI green-up pass paid down one cast without lowering this
   // ceiling at the time.
-  '@typescript-eslint/no-unnecessary-type-assertion': 91,
+  '@typescript-eslint/no-unnecessary-type-assertion': 89,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -99,7 +99,7 @@ const RULE_CEILINGS: Record<string, number> = {
 // from 38 → 35 in tests/unit/apple-pay-jobs.test.ts and the
 // matching downward ratchets on no-unnecessary-type-assertion
 // (92 → 91) and no-restricted-syntax (159 → 154).
-const TOTAL_CEILING = 527;
+const TOTAL_CEILING = 525;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

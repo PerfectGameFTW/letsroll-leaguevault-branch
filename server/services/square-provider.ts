@@ -1,5 +1,5 @@
-import { Client, Environment } from 'square';
-import type { ApiError, CreatePaymentRequest, CatalogObject } from 'square';
+import { SquareClient, SquareEnvironment, SquareError } from 'square';
+import type { CreatePaymentRequest, CatalogObject } from 'square';
 import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
@@ -27,12 +27,16 @@ import type {
 
 const log = createLogger("SquareService");
 
-function buildSquareClient(accessToken: string, appId?: string): Client {
+function buildSquareClient(accessToken: string, appId?: string): SquareClient {
   const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
   const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
   const isProductionToken = cleanToken.startsWith('EAAAEv') || cleanToken.startsWith('EAAAl7');
-  const environment = (isProductionAppId || isProductionToken) ? Environment.Production : Environment.Sandbox;
-  return new Client({ accessToken: cleanToken, environment });
+  const environment = (isProductionAppId || isProductionToken) ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
+  // v40+ flat-client SDK shape (task #603 / Phase 2 of #600). Note the
+  // option key is `token` now, not `accessToken`, and the environment
+  // values are URLs from the SquareEnvironment record (Production /
+  // Sandbox), not the legacy `Environment` enum.
+  return new SquareClient({ token: cleanToken, environment });
 }
 
 export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, WalletProvider {
@@ -43,7 +47,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     this.locationId = locationId;
   }
 
-  private async getSquareClient(): Promise<Client | null> {
+  private async getSquareClient(): Promise<SquareClient | null> {
     try {
       const creds = await storage.getLocationSquareConfig(this.locationId);
       if (creds?.accessToken && creds.accessToken.trim().length > 0) {
@@ -121,16 +125,16 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         paymentRequest.buyerEmailAddress = buyerEmail;
       }
 
-      const response = await client.paymentsApi.createPayment(paymentRequest);
+      const response = await client.payments.create(paymentRequest);
 
-      if (!response?.result?.payment) {
+      if (!response?.payment) {
         throw new PaymentProviderError(
           'Unable to process payment',
           'INVALID_RESPONSE',
         );
       }
 
-      const payment = response.result.payment;
+      const payment = response.payment;
       const cardDetails = payment.cardDetails?.card;
 
       return {
@@ -157,16 +161,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       ) {
         throw error;
       }
-      const apiErr = error as ApiError;
-      // Square sometimes attaches a parsed body with structured errors
-      // on the ApiError instance — capture the first `detail` for our
-      // server-side logs only. Never forwarded to the user.
-      const detail = (() => {
-        const result = (apiErr as ApiError & {
-          result?: { errors?: Array<{ detail?: string }> };
-        })?.result;
-        return result?.errors?.[0]?.detail;
-      })();
+      // v40+ flat-client SDK exposes structured errors directly on the
+      // SquareError instance (`.errors[]`, `.statusCode`, `.body`); the
+      // legacy `.result.errors[]` wrapper is gone. We capture the first
+      // `detail` for server-side logs only — never forwarded to the user.
+      const apiErr = error instanceof SquareError ? error : null;
+      const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 400) {
         throw new PaymentProviderError(
           'Invalid payment information. Please check your card details.',
@@ -227,7 +227,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
     try {
       const locationId = squareLocationId;
-      const orderResponse = await client.ordersApi.createOrder({
+      const orderResponse = await client.orders.create({
         order: {
           locationId,
           lineItems,
@@ -235,7 +235,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         idempotencyKey: idempotencyKey ? `${idempotencyKey}-order` : `order-${Date.now()}-${Math.random()}`,
       });
 
-      const order = orderResponse.result.order;
+      const order = orderResponse.order;
       if (!order?.id) {
         throw new Error('Failed to create order');
       }
@@ -262,16 +262,16 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         paymentRequest.buyerEmailAddress = buyerEmail;
       }
 
-      const paymentResponse = await client.paymentsApi.createPayment(paymentRequest);
+      const paymentResponse = await client.payments.create(paymentRequest);
 
-      if (!paymentResponse?.result?.payment) {
+      if (!paymentResponse?.payment) {
         throw new PaymentProviderError(
           'Unable to process payment',
           'INVALID_RESPONSE',
         );
       }
 
-      const payment = paymentResponse.result.payment;
+      const payment = paymentResponse.payment;
       const cardDetails = payment.cardDetails?.card;
 
       return {
@@ -297,13 +297,8 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       ) {
         throw error;
       }
-      const apiErr = error as ApiError;
-      const detail = (() => {
-        const result = (apiErr as ApiError & {
-          result?: { errors?: Array<{ detail?: string }> };
-        })?.result;
-        return result?.errors?.[0]?.detail;
-      })();
+      const apiErr = error instanceof SquareError ? error : null;
+      const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 402) {
         throw new PaymentProviderError(
           'Your payment was declined. Please try a different card.',
@@ -347,7 +342,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     try {
       const idempotencyKey = `refund-${paymentId}-${Date.now()}`;
 
-      const response = await client.refundsApi.refundPayment({
+      const response = await client.refunds.refundPayment({
         idempotencyKey,
         paymentId,
         amountMoney: {
@@ -357,7 +352,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         reason: reason || 'Refund processed via LeagueVault',
       });
 
-      const refund = response.result.refund;
+      const refund = response.refund;
       if (!refund || !refund.id) {
         throw new Error('Refund response missing refund data');
       }
@@ -369,10 +364,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       };
     } catch (error) {
       log.error('Refund error:', error);
-      const apiError = error as ApiError;
-      if (apiError.errors) {
-        const messages = apiError.errors
-          .map((e: { detail?: string }) => e.detail)
+      if (error instanceof SquareError && error.errors?.length) {
+        const messages = error.errors
+          .map((e) => e.detail)
+          .filter((d): d is string => Boolean(d))
           .join(', ');
         throw new Error(`Square refund failed: ${messages}`);
       }
@@ -399,7 +394,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
     try {
       if (isDev) log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
-      const response = await client.cardsApi.createCard({
+      const response = await client.cards.create({
+        // Idempotency key shape preserved across the v40 SDK upgrade
+        // so post-deploy retries dedupe against any pre-upgrade
+        // saveCardOnFile request still in flight on Square's side.
         idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex'),
         sourceId,
         card: {
@@ -407,7 +405,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         },
       });
 
-      const card = response.result.card;
+      const card = response.card;
       if (card?.id) {
         return { id: card.id, last4: card.last4 ?? '', brand: card.cardBrand ?? '' };
       }
@@ -432,8 +430,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      const response = await client.cardsApi.listCards(undefined, customerId);
-      const cards = response.result.cards || [];
+      // v40+ flat-client `cards.list` returns a Page<Card>. We're only
+      // interested in the first page (Square caps the response at 25
+      // cards per the API docs, which is well below any single bowler's
+      // realistic saved-card count).
+      const page = await client.cards.list({ customerId });
+      const cards = page.data ?? [];
       return cards
         .filter(c => c.enabled)
         .map(c => ({
@@ -463,14 +465,14 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       );
     }
 
-    const listResponse = await client.cardsApi.listCards(undefined, customerId);
-    const cards = listResponse.result.cards || [];
+    const listPage = await client.cards.list({ customerId });
+    const cards = listPage.data ?? [];
     const cardBelongsToCustomer = cards.some(c => c.id === cardId);
     if (!cardBelongsToCustomer) {
       throw new Error('Card does not belong to this customer');
     }
 
-    await client.cardsApi.disableCard(cardId);
+    await client.cards.disable({ cardId });
   }
 
   async createOrUpdateCustomer(
@@ -498,7 +500,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
     try {
       if (isDev) log.info('Searching for customer with email:', email);
-      const searchResponse = await client.customersApi.searchCustomers({
+      const searchResponse = await client.customers.search({
         query: {
           filter: {
             emailAddress: {
@@ -508,7 +510,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         }
       });
 
-      if (!searchResponse?.result) {
+      // v40+ flat-client returns the response body directly (no
+      // `.result` wrapper). An undefined response means a transport-
+      // level oddity rather than a Square-rejected request — surface
+      // it so the catch below maps it to our generic error.
+      if (!searchResponse) {
         throw new Error('API Error: Invalid search response');
       }
 
@@ -525,10 +531,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           ? { referenceId: referenceId.trim() }
           : {};
 
-      if (searchResponse.result.customers?.[0]?.id) {
+      if (searchResponse.customers?.[0]?.id) {
         if (isDev) log.info('Found existing customer, updating...');
-        customerId = searchResponse.result.customers[0].id;
-        const updateResponse = await client.customersApi.updateCustomer(customerId, {
+        customerId = searchResponse.customers[0].id;
+        // v40+ folds the customerId into the request body itself.
+        const updateResponse = await client.customers.update({
+          customerId,
           givenName: firstName,
           familyName: lastName || '',
           emailAddress: email.toLowerCase(),
@@ -536,14 +544,17 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           ...referenceIdField,
         });
 
-        if (!updateResponse?.result?.customer) {
+        if (!updateResponse?.customer) {
           throw new Error('API Error: Invalid update response');
         }
 
-        if (isDev) log.info('Customer updated successfully:', updateResponse.result.customer.id);
+        if (isDev) log.info('Customer updated successfully:', updateResponse.customer.id);
       } else {
         if (isDev) log.info('No existing customer found, creating new...');
-        const customerResponse = await client.customersApi.createCustomer({
+        const customerResponse = await client.customers.create({
+          // Idempotency key shape preserved across the v40 SDK upgrade
+          // so a retry post-deploy still dedupes against the in-flight
+          // pre-upgrade request on Square's side.
           idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex'),
           givenName: firstName,
           familyName: lastName || '',
@@ -552,11 +563,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           ...referenceIdField,
         });
 
-        if (!customerResponse?.result?.customer?.id) {
+        if (!customerResponse?.customer?.id) {
           throw new Error('API Error: Invalid create response');
         }
 
-        customerId = customerResponse.result.customer.id;
+        customerId = customerResponse.customer.id;
         if (isDev) log.info('New customer created successfully:', customerId);
       }
 
@@ -600,7 +611,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     SquarePaymentProvider.definitionsBootstrapped.clear();
   }
 
-  private async ensureDefinitionsOnce(client: Client): Promise<boolean> {
+  private async ensureDefinitionsOnce(client: SquareClient): Promise<boolean> {
     if (SquarePaymentProvider.definitionsBootstrapped.get(this.locationId)) {
       return true;
     }
@@ -621,7 +632,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
    * path retries on next use.
    */
   async ensureCustomAttributeDefinitions(): Promise<boolean> {
-    let client: Client | null;
+    let client: SquareClient | null;
     try {
       client = await this.getSquareClient();
     } catch {
@@ -658,7 +669,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     bowlerId: number,
     attributes: { leagueName: string; leagueSeason: string },
   ): Promise<{ ok: boolean }> {
-    let client: Client | null;
+    let client: SquareClient | null;
     try {
       client = await this.getSquareClient();
     } catch (err) {
@@ -758,7 +769,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       );
     }
     try {
-      await client.customersApi.deleteCustomer(customerId);
+      await client.customers.delete({ customerId });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (/NOT_FOUND|not found/i.test(msg)) {
@@ -785,8 +796,8 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      const response = await client.paymentsApi.getPayment(paymentId);
-      const payment = response.result.payment;
+      const response = await client.payments.get({ paymentId });
+      const payment = response.payment;
       if (!payment) return null;
 
       return {
@@ -833,17 +844,25 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       const allObjects: CatalogObject[] = [];
       let cursor: string | undefined;
       do {
-        const response = await client.catalogApi.listCatalog(cursor, 'CATEGORY');
-        const objects = response.result.objects || [];
+        // v40+ flat-client `catalog.list` returns a Page<CatalogObject>;
+        // we walk the cursor manually so the existing per-page accumulation
+        // semantics are preserved verbatim.
+        const page = await client.catalog.list({ cursor, types: 'CATEGORY' });
+        const objects = page.data ?? [];
         allObjects.push(...objects);
-        cursor = response.result.cursor || undefined;
+        cursor = page.response?.cursor || undefined;
       } while (cursor);
 
+      // v40+ CatalogObject is a discriminated union via `type`. Narrow
+      // to the CATEGORY variant so `categoryData` is reachable, and
+      // drop any object missing an id (now `string | undefined` on the
+      // SDK side — in practice always present for persisted objects).
       const seen = new Set<string>();
       const deduped = allObjects
-        .filter((cat) => !cat.isDeleted)
+        .filter((cat): cat is CatalogObject & { type: 'CATEGORY' } => cat.type === 'CATEGORY')
+        .filter((cat) => !cat.isDeleted && cat.id)
         .map((cat) => ({
-          id: cat.id,
+          id: cat.id ?? '',
           name: cat.categoryData?.name || 'Unnamed Category',
         }))
         .filter((cat) => {
@@ -870,15 +889,25 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      if (categoryId) {
-        const response = await client.catalogApi.searchCatalogItems({
-          categoryIds: [categoryId],
-        });
-        const items = response.result.items || [];
-
-        return items.map((item) => {
-          const variations = (item.itemData?.variations || []).map((v) => ({
-            id: v.id,
+      // The mapper is identical for both branches (search-by-category
+      // and the unscoped first-page list). Pulled out so the
+      // discriminated-union narrowing on `type === 'ITEM'` lives in
+      // one place, and so a future tweak to the consumer-facing
+      // CatalogItem shape only has to be made once.
+      type ItemObject = CatalogObject & { type: 'ITEM' };
+      type VariationObject = CatalogObject & { type: 'ITEM_VARIATION' };
+      const isItemObject = (obj: CatalogObject): obj is ItemObject => obj.type === 'ITEM';
+      const isVariationObject = (obj: CatalogObject): obj is VariationObject =>
+        obj.type === 'ITEM_VARIATION';
+      const toCatalogItem = (item: ItemObject): CatalogItem => {
+        // CatalogItem.variations is itself a CatalogObject[] (the
+        // discriminated wrapper, not CatalogItemVariation directly), so
+        // narrow each entry to the ITEM_VARIATION variant before reading
+        // `itemVariationData`.
+        const variations = (item.itemData?.variations ?? [])
+          .filter(isVariationObject)
+          .map((v) => ({
+            id: v.id ?? '',
             name: v.itemVariationData?.name || 'Default',
             price: v.itemVariationData?.priceMoney?.amount
               ? Number(v.itemVariationData.priceMoney.amount)
@@ -886,35 +915,31 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
             currency: v.itemVariationData?.priceMoney?.currency || 'USD',
           }));
 
-          return {
-            id: item.id,
-            name: item.itemData?.name || 'Unnamed Item',
-            description: item.itemData?.description || '',
-            variations,
-          };
-        });
-      }
-
-      const response = await client.catalogApi.listCatalog(undefined, 'ITEM');
-      const objects = response.result.objects || [];
-
-      return objects.map((item) => {
-        const variations = (item.itemData?.variations || []).map((v) => ({
-          id: v.id,
-          name: v.itemVariationData?.name || 'Default',
-          price: v.itemVariationData?.priceMoney?.amount
-            ? Number(v.itemVariationData.priceMoney.amount)
-            : null,
-          currency: v.itemVariationData?.priceMoney?.currency || 'USD',
-        }));
-
         return {
-          id: item.id,
+          id: item.id ?? '',
           name: item.itemData?.name || 'Unnamed Item',
           description: item.itemData?.description || '',
           variations,
         };
-      });
+      };
+
+      if (categoryId) {
+        const response = await client.catalog.searchItems({
+          categoryIds: [categoryId],
+        });
+        const items = response.items ?? [];
+        // `searchItems` returns CatalogObject[] in v40+; narrow to the
+        // ITEM variant so `itemData` is reachable on the union.
+        return items.filter(isItemObject).map(toCatalogItem);
+      }
+
+      // Single-page fetch retains the legacy "first page only" behavior;
+      // operators with >1000 catalog items see the same first-page slice
+      // they did pre-upgrade. Pagination is the responsibility of
+      // categoryId-scoped lookups above.
+      const page = await client.catalog.list({ types: 'ITEM' });
+      const objects = page.data ?? [];
+      return objects.filter(isItemObject).map(toCatalogItem);
     } catch (error) {
       log.error('Catalog list error:', error);
       throw new Error('Failed to fetch catalog items: ' + (error instanceof Error ? error.message : String(error)));
@@ -937,18 +962,15 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      await client.applePayApi.registerDomain({ domainName: domain });
+      await client.applePay.registerDomain({ domainName: domain });
       log.info(`Apple Pay domain registered: ${domain}`);
       return { success: true, message: `Domain ${domain} registered for Apple Pay` };
     } catch (error) {
-      // Square's `ApiError` exposes the parsed body via a `result` field that
-      // isn't on the SDK type. Narrow to a structural type instead of casting
-      // through `any`, so we can still safely read `result.errors[0].detail`.
-      type SquareApiErrorWithResult = ApiError & {
-        result?: { errors?: Array<{ detail?: string }> };
-      };
-      const apiError = error as SquareApiErrorWithResult;
-      const detail = apiError?.result?.errors?.[0]?.detail;
+      // v40+ flat-client SDK exposes structured errors directly on the
+      // SquareError instance — no `.result` wrapper. We read the first
+      // `detail` for the operator-facing message.
+      const detail =
+        error instanceof SquareError ? error.errors?.[0]?.detail : undefined;
       log.error('Apple Pay domain registration error:', detail || error);
       return { success: false, message: detail || 'Failed to register domain for Apple Pay' };
     }

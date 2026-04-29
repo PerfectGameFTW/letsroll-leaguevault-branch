@@ -14,8 +14,13 @@ let counter = 0;
 
 export function createSquareClient() {
   return {
-    customersApi: {
-      async createCustomer(input: {
+    // v40+ flat-client SDK: the resource lives under `customers` (not
+    // `customersApi`) and `customers.create` returns the response body
+    // directly (no `.result` wrapper). Mirrors the real SquareClient
+    // shape so the script under test consumes the same fields it will
+    // see in production.
+    customers: {
+      async create(input: {
         idempotencyKey: string;
         givenName: string;
         familyName: string;
@@ -24,10 +29,8 @@ export function createSquareClient() {
       }) {
         counter += 1;
         return {
-          result: {
-            customer: {
-              id: `vitest-fake-cust-${input.referenceId}-${counter}`,
-            },
+          customer: {
+            id: `vitest-fake-cust-${input.referenceId}-${counter}`,
           },
         };
       },
