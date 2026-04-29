@@ -230,9 +230,9 @@ export const BowlerDashboardPage: FC = () => {
           <p className="text-muted-foreground">
             You need to be logged in to access your bowler dashboard.
           </p>
-          <Link href="/login">
-            <Button className="w-full">Log In</Button>
-          </Link>
+          <Button asChild className="w-full">
+            <Link href="/login">Log In</Link>
+          </Button>
         </CardContent>
       </Card>
     );
@@ -293,12 +293,12 @@ export const BowlerDashboardPage: FC = () => {
     >
       {isSystemAdmin && (
         <div className="mb-6">
-          <Link href="/">
-            <Button variant="outline" className="flex items-center gap-2">
+          <Button asChild variant="outline" className="flex items-center gap-2">
+            <Link href="/">
               <ArrowRight className="h-4 w-4 rotate-180" />
               Back to Dashboard
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       )}
       

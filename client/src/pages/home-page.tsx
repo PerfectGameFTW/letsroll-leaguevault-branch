@@ -183,10 +183,11 @@ export default function HomePage() {
                 Here's what's happening with your leagues today.
               </p>
             </div>
-            <Link href="/reports">
-              <button className="hidden md:inline-flex px-4 py-2 bg-[#0f172a] text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors shadow-sm">
-                Generate Report
-              </button>
+            <Link
+              href="/reports"
+              className="hidden md:inline-flex items-center px-4 py-2 bg-[#0f172a] text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors shadow-sm no-underline focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+            >
+              Generate Report
             </Link>
           </div>
 

@@ -58,9 +58,9 @@ export const ProfileSettingsPage: FC = () => {
           <CardDescription>Please log in to view your profile settings</CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/login">
-            <Button className="w-full">Log In</Button>
-          </Link>
+          <Button asChild className="w-full">
+            <Link href="/login">Log In</Link>
+          </Button>
         </CardContent>
       </Card>
     );
@@ -73,12 +73,12 @@ export const ProfileSettingsPage: FC = () => {
       <ErrorBoundary level="section">
         {isSystemAdmin && (
           <div className="mb-6">
-            <Link href="/">
-              <Button variant="outline" className="flex items-center gap-2">
+            <Button asChild variant="outline" className="flex items-center gap-2">
+              <Link href="/">
                 <ArrowRight className="h-4 w-4 rotate-180" />
                 Back to Dashboard
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         )}
 
@@ -121,12 +121,12 @@ export const ProfileSettingsPage: FC = () => {
               <CardDescription className="mt-1.5">Permanently delete your account and all associated data</CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href="/delete-account">
-                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive/10 flex items-center gap-2">
+              <Button asChild variant="outline" className="text-destructive border-destructive hover:bg-destructive/10 flex items-center gap-2">
+                <Link href="/delete-account">
                   <Trash2 className="h-4 w-4" />
                   Request Account Deletion
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
