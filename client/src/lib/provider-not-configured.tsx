@@ -1,6 +1,12 @@
 import { ToastAction } from "@/components/ui/toast";
+import type { PaymentProviderType } from "@shared/schema";
 
 export const PROVIDER_NOT_CONFIGURED = "PROVIDER_NOT_CONFIGURED";
+
+const PROVIDER_LABELS: Record<PaymentProviderType, string> = {
+  square: "Square",
+  clover: "Clover",
+};
 
 export type ApiErrorBody = {
   error?: { message?: string; code?: string } | string;
@@ -69,6 +75,13 @@ export interface ProviderNotConfiguredToastOptions {
    * pages where the visitor can't fix the misconfiguration.
    */
   description?: string;
+  /**
+   * Active payment provider for the location, when known. The toast
+   * title and (default) body name this provider so admins know which
+   * integration to fix instead of always reading "Square". Defaults
+   * to 'square' for legacy callers that don't yet pass it. (Task #599.)
+   */
+  provider?: PaymentProviderType;
 }
 
 export function providerNotConfiguredToast(
@@ -79,18 +92,19 @@ export function providerNotConfiguredToast(
   variant: "destructive";
   action?: React.ReactElement;
 } {
-  const { navigate, locationId, description } = options;
+  const { navigate, locationId, description, provider = "square" } = options;
   const settingsPath = locationId
     ? `/integrations?location=${locationId}`
     : "/integrations";
+  const providerLabel = PROVIDER_LABELS[provider];
   const finalDescription =
     description ??
     (navigate
-      ? "Connect this location's Square account from Settings, then try again."
-      : "Please ask your league admin to connect Square in Settings, then try again.");
+      ? `Connect this location's ${providerLabel} account from Settings, then try again.`
+      : `Please ask your league admin to connect ${providerLabel} in Settings, then try again.`);
 
   return {
-    title: "Square isn't connected for this location",
+    title: `${providerLabel} isn't connected for this location`,
     description: finalDescription,
     variant: "destructive" as const,
     action: navigate

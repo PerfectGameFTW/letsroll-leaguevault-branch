@@ -155,7 +155,11 @@ export function usePaymentFormSubmit({
       onClose();
     } catch (error) {
       if (isProviderNotConfiguredError(error)) {
-        const props = providerNotConfiguredToast({ navigate, locationId: locationId ?? null });
+        const props = providerNotConfiguredToast({
+          navigate,
+          locationId: locationId ?? null,
+          provider: isClover ? "clover" : "square",
+        });
         setPaymentError(props.title);
         toast(props);
         return;

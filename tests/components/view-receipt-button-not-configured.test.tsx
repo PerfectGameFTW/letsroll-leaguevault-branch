@@ -21,9 +21,10 @@
  * can't silently drop the location id and revert to the generic
  * link.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { clearProviderConfigCache } from '@/hooks/use-payment-provider';
 
 // Several Radix primitives reach for ResizeObserver via
 // `react-use-size` — jsdom doesn't ship one, so polyfill a no-op
@@ -101,9 +102,34 @@ const PAYMENT: Payment = {
   createdAt: '2025-01-06T00:00:00.000Z',
 };
 
+// Capture the original global fetch so per-test overrides for the
+// `usePaymentProvider` config endpoint can be torn down cleanly.
+const originalFetch = global.fetch;
+
+function mockProviderConfigFetch(provider: 'square' | 'clover') {
+  global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/payments-provider/config')) {
+      return new Response(
+        JSON.stringify({ paymentProvider: provider, providerConfigured: false }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response('{}', { status: 200 });
+  });
+}
+
 beforeEach(() => {
   csrfFetchMock.mockReset();
   navigateMock.mockReset();
+  // The `usePaymentProvider` cache is module-level; without a clear
+  // a Clover-mocked test could be poisoned by a prior Square fetch
+  // (or vice versa).
+  clearProviderConfigCache();
+});
+
+afterEach(() => {
+  global.fetch = originalFetch;
 });
 
 describe('<ViewReceiptButton /> — PROVIDER_NOT_CONFIGURED branch (#595)', () => {
@@ -147,6 +173,40 @@ describe('<ViewReceiptButton /> — PROVIDER_NOT_CONFIGURED branch (#595)', () =
     // bare integrations index.
     expect(navigateMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith('/integrations?location=42');
+  });
+
+  // Task #599: when the location runs Clover, the toast must name
+  // "Clover" — not the legacy hardcoded "Square" — so the admin
+  // doesn't go hunting in the wrong section of Settings.
+  it('names the Clover provider when usePaymentProvider returns clover', async () => {
+    mockProviderConfigFetch('clover');
+    csrfFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Clover not connected' },
+        }),
+        { status: 422, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <>
+        <ViewReceiptButton payment={PAYMENT} variant="link" locationId={42} />
+        <Toaster />
+      </>,
+    );
+
+    // Wait for the provider config fetch to settle so the
+    // Clover signal is in place by the time we click.
+    await screen.findByRole('button', { name: /look up/i });
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+
+    expect(
+      await screen.findByText(/Clover isn't connected for this location/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Square isn't connected/i)).not.toBeInTheDocument();
   });
 
   it('falls back to /integrations when no locationId prop is supplied', async () => {

@@ -21,6 +21,7 @@ import {
   providerNotConfiguredToast,
   makeApiError,
 } from "@/lib/provider-not-configured";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import type { SavedCard } from "@shared/schema";
 
 interface SavedPaymentMethodsCardProps {
@@ -34,6 +35,10 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
   const [, navigate] = useLocation();
   const [cardToDelete, setCardToDelete] = useState<SavedCard | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Resolve the active provider for this card's owning location so
+  // the PROVIDER_NOT_CONFIGURED toast names "Square" or "Clover"
+  // accurately. (Task #599.)
+  const { isClover } = usePaymentProvider(locationId ?? null);
 
   const { data: savedCardsResponse, isLoading } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowlerId}`],
@@ -58,7 +63,13 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (err) {
       if (isProviderNotConfiguredError(err)) {
-        toast(providerNotConfiguredToast({ navigate, locationId: locationId ?? null }));
+        toast(
+          providerNotConfiguredToast({
+            navigate,
+            locationId: locationId ?? null,
+            provider: isClover ? "clover" : "square",
+          }),
+        );
       } else {
         const message = err instanceof Error ? err.message : "Failed to remove card";
         toast({ title: "Error", description: message, variant: "destructive" });

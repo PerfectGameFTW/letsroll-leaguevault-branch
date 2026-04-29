@@ -8,6 +8,7 @@ import {
   PROVIDER_NOT_CONFIGURED,
   providerNotConfiguredToast,
 } from "@/lib/provider-not-configured";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import type { Payment } from "@shared/schema";
 
 interface Props {
@@ -28,6 +29,11 @@ export function ViewReceiptButton({ payment, variant = "icon", locationId }: Pro
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [isFetching, setIsFetching] = useState(false);
+  // Resolve the active provider for this row's location so the
+  // PROVIDER_NOT_CONFIGURED toast names "Square" or "Clover"
+  // accurately. The hook caches per-locationId so a 50-row table
+  // with one league only fetches the config once. (Task #599.)
+  const { isClover } = usePaymentProvider(locationId ?? null);
 
   // Show the button for any paid card row that either has a cached
   // receipt URL or a provider payment id we can fetch by. Provider
@@ -59,7 +65,13 @@ export function ViewReceiptButton({ payment, variant = "icon", locationId }: Pro
       if (!response.ok) {
         const code = data?.error?.code;
         if (code === PROVIDER_NOT_CONFIGURED) {
-          toast(providerNotConfiguredToast({ navigate, locationId: locationId ?? null }));
+          toast(
+            providerNotConfiguredToast({
+              navigate,
+              locationId: locationId ?? null,
+              provider: isClover ? "clover" : "square",
+            }),
+          );
           return;
         }
         const msg =

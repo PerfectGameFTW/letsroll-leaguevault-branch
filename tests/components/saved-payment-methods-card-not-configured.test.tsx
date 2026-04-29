@@ -17,10 +17,11 @@
  * `saved-payment-methods-card.tsx` -> helper wiring so a future
  * refactor can't silently drop the location id.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { clearProviderConfigCache } from '@/hooks/use-payment-provider';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   class NoopResizeObserver {
@@ -101,9 +102,33 @@ function renderCard(opts: { locationId?: number | null } = {}) {
   );
 }
 
+// Capture the original global fetch so per-test overrides for the
+// `usePaymentProvider` config endpoint can be torn down cleanly.
+const originalFetch = global.fetch;
+
+function mockProviderConfigFetch(provider: 'square' | 'clover') {
+  global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/payments-provider/config')) {
+      return new Response(
+        JSON.stringify({ paymentProvider: provider, providerConfigured: false }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response('{}', { status: 200 });
+  });
+}
+
 beforeEach(() => {
   csrfFetchMock.mockReset();
   navigateMock.mockReset();
+  // Module-level cache in `usePaymentProvider` would otherwise let
+  // a Square-mocked test leak into the Clover assertion.
+  clearProviderConfigCache();
+});
+
+afterEach(() => {
+  global.fetch = originalFetch;
 });
 
 describe('<SavedPaymentMethodsCard /> — PROVIDER_NOT_CONFIGURED branch (#595)', () => {
@@ -142,6 +167,37 @@ describe('<SavedPaymentMethodsCard /> — PROVIDER_NOT_CONFIGURED branch (#595)'
 
     expect(navigateMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith('/integrations?location=42');
+  });
+
+  // Task #599: Clover-misconfigured locations were getting a Square
+  // toast — pin the corrected wiring so it doesn't regress.
+  it('names the Clover provider when usePaymentProvider returns clover', async () => {
+    mockProviderConfigFetch('clover');
+    csrfFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Clover not connected' },
+        }),
+        { status: 422, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderCard({ locationId: 42 });
+
+    // Wait for the card row + provider config to settle so the
+    // Clover signal is in place by the time we click.
+    await screen.findByRole('button', { name: /remove/i });
+    await user.click(screen.getByRole('button', { name: /remove/i }));
+    await user.click(
+      await screen.findByRole('button', { name: /remove card/i }),
+    );
+
+    expect(
+      await screen.findByText(/Clover isn't connected for this location/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Square isn't connected/i)).not.toBeInTheDocument();
   });
 
   it('falls back to /integrations when no locationId prop is supplied', async () => {

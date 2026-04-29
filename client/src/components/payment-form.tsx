@@ -358,6 +358,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         const props = providerNotConfiguredToast({
           navigate,
           locationId: leagueInfo?.locationId ?? null,
+          provider: isClover ? "clover" : "square",
         });
         setPaymentError(props.title);
         toast(props);
