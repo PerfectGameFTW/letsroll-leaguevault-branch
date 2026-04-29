@@ -80,6 +80,13 @@ export const securityHeaders: RequestHandler = helmet({
   frameguard: isDev ? false : { action: 'sameorigin' },
   strictTransportSecurity: false,
   crossOriginEmbedderPolicy: false,
+  // Wallet payment popups (Google Pay) need to postMessage their token back
+  // to this page after the user authorises payment. Helmet's default COOP of
+  // 'same-origin' isolates the popup and breaks that handshake (Google Pay
+  // surfaces it as error code OR_BIBED_15 / "pop-ups may be turned off").
+  // 'same-origin-allow-popups' keeps cross-origin isolation for our own page
+  // while letting wallet / OAuth-style popups talk back to the opener.
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 });
 
 function getAllowedOrigins(): string[] {
