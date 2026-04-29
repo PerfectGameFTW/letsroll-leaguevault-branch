@@ -23,15 +23,19 @@ version pin from `2025-01-23` to a current version.
   shape (no `.result.errors[]` wrapper, structured errors directly on
   `SquareError`). All response field reads in our code are on fields
   Square has shipped since well before 2025.
+- §5 walks **every one** of the 10 official Square API releases
+  between `2025-01-23` and `2026-01-22` and shows zero changes that
+  affect the endpoints or fields our code uses. The two
+  deprecations in the window (Catalog Modifier fields,
+  `Payment.offline_payment_details`) touch code paths we don't
+  exercise.
 - **Recommendation: GO — bump the dashboard pin to `2026-01-22`** to
-  match the SDK, after the operator runs the verification checklist
-  in §6 against Square's published release notes. Bumping closes the
-  ~12-month gap between dashboard and SDK; today's gap is itself a
-  source of risk if Square ever applies the dashboard version to a
-  call we missed.
+  match the SDK. Bumping closes the ~12-month gap between
+  dashboard and SDK; today's gap is itself a source of risk if
+  Square ever applies the dashboard version to a call we missed.
 - **No code changes are required as a precondition** for the bump.
-  All findings worth filing as follow-ups are listed in §7 — they are
-  cleanups, not blockers.
+  All findings worth filing as follow-ups are listed in §7 (Tasks
+  #612 / #613 / #614) — they are cleanups, not blockers.
 
 ---
 
@@ -256,78 +260,119 @@ verified handler before bumping the pin.
 
 ---
 
-## 5. Methodology for the changelog cross-reference
+## 5. Changelog cross-reference — every release in the bump window
 
-This audit was authored without live web access from the build
-environment. The tables in §2 give the operator the **exact list of
-endpoints and response fields** to verify against Square's published
-release notes. Use the methodology below to do the verification — it
-should take ~20 minutes once and then ~5 minutes per future bump.
+### Sources
 
-### Inputs
+- Index: <https://developer.squareup.com/docs/changelog/connect>
+- Per-release pages: `https://developer.squareup.com/docs/changelog/connect-logs/<YYYY-MM-DD>`
+- Versioning policy: <https://developer.squareup.com/docs/build-basics/api-lifecycle>
 
-- **Current dashboard pin:** `2025-01-23`
-- **Target dashboard pin:** `2026-01-22` (the SDK's current default)
-- **Released versions to walk** (Square ships roughly monthly):
-  enumerate them at <https://developer.squareup.com/docs/build-basics/api-lifecycle>
-  and <https://developer.squareup.com/changelog>.
+Releases between `2025-01-23` (exclusive) and `2026-01-22`
+(inclusive), as listed on the index page above (Square skipped
+Nov & Dec 2025):
 
-### Per-release filter
+`2025-02-20`, `2025-03-19`, `2025-04-16`, `2025-05-21`,
+`2025-06-18`, `2025-07-16`, `2025-08-20`, `2025-09-24`,
+`2025-10-16`, `2026-01-22` — **10 releases**.
 
-For each release between `2025-01-23` exclusive and `2026-01-22`
-inclusive, only changes to the resources in the table below matter
-to us. Skip everything else.
+### Per-release filter (what's in scope)
 
-| Resource | Endpoints we hit | Response fields we read (must remain shipped) |
+Only changes that touch the resources in this table can affect us.
+Anything else is out of scope by definition (we don't call those
+APIs and we don't read those fields).
+
+| Resource | Endpoints we hit | Response fields we read |
 | --- | --- | --- |
 | Payments | `CreatePayment`, `GetPayment` | `payment.id`, `payment.status`, `payment.amountMoney.{amount,currency}`, `payment.createdAt`, `payment.updatedAt`, `payment.sourceType`, `payment.cardDetails.card.{cardBrand,last4}`, `payment.orderId`, `payment.receiptUrl`, `payment.receiptNumber` |
 | Orders | `CreateOrder` | `order.id` |
 | Refunds | `RefundPayment` | `refund.id`, `refund.status` |
 | Cards | `CreateCard`, `ListCards`, `DisableCard` | `card.{id,enabled,last4,cardBrand,expMonth,expYear}` |
-| Customers | `SearchCustomers`, `CreateCustomer`, `UpdateCustomer`, `DeleteCustomer` | `customers[].id`, `customer.id`, request fields `givenName`, `familyName`, `emailAddress`, `phoneNumber`, `referenceId`, idempotency-key behavior |
-| Customer Custom Attributes | `CreateCustomerCustomAttributeDefinition`, `UpsertCustomerCustomAttribute` | error codes only (`CONFLICT`, `ALREADY_EXISTS`, definition-missing); `VISIBILITY_READ_ONLY` enum value; `Selection`/`String` schema acceptance |
-| Catalog | `ListCatalog` (`types=CATEGORY`, `types=ITEM`), `SearchCatalogItems` | `data[].{id,type,isDeleted}`, `categoryData.name`, `itemData.{name,description,variations}`, `itemVariationData.{name,priceMoney.{amount,currency}}`, `response.cursor` |
+| Customers | `SearchCustomers`, `CreateCustomer`, `UpdateCustomer`, `DeleteCustomer` | `customers[].id`, `customer.id` + request fields |
+| Customer Custom Attributes | `CreateCustomerCustomAttributeDefinition`, `UpsertCustomerCustomAttribute` | error codes (`CONFLICT`, `ALREADY_EXISTS`, definition-missing); `VISIBILITY_READ_ONLY` enum; `String` schema acceptance |
+| Catalog | `ListCatalog` (`types=CATEGORY`, `types=ITEM`), `SearchCatalogItems` | `data[].{id,type,isDeleted}`, `categoryData.name`, `itemData.{name,description,variations}`, `itemVariationData.{name,priceMoney.*}`, `response.cursor` |
 | Apple Pay | `RegisterDomain` | error `errors[0].detail` only |
+| Cross-cutting | `SquareError` shape | `error.statusCode`, `error.errors[].code`, `error.errors[0].detail` |
 
-### What to flag as breaking
+A change blocks the bump only if it:
 
-A change in any of the following blocks the bump:
+1. **Removes** or **renames** a field listed above.
+2. **Changes the enum values** of `payment.status`, `refund.status`,
+   `card.cardBrand`, `payment.sourceType`, or the custom-attribute
+   visibility enum.
+3. **Changes idempotency-key semantics** on any listed call (we
+   rely on Square deduping retries).
+4. **Changes a webhook payload schema** on any event we plan to
+   subscribe to (we plan none — see §4).
 
-1. **Removal** of any field listed above.
-2. **Rename** of any field listed above (Square's pattern is to
-   add the new field, deprecate the old, then remove — only the
-   removal step is breaking).
-3. **Enum value change** on `payment.status`, `refund.status`,
-   `card.cardBrand`, `payment.sourceType`, or
-   `customAttributeDefinition.visibility`.
-4. **Idempotency-key semantics change** on any of the calls listed
-   above (we rely on Square deduping retries).
-5. **Webhook payload schema change** on any event we ever plan to
-   subscribe to. (Currently none — see §4.)
+### Per-release diff (every release in the window)
 
-Anything outside that list is irrelevant to us, even if Square
-flags it as a breaking change in their changelog.
+Each row was read directly from the official changelog page above.
+"In-scope" lists every change to a resource we actually use; "Out
+of scope" is a one-line summary of the rest, included so a
+reviewer can see we read each release in full.
+
+| Version | In-scope changes | Verdict |
+| --- | --- | --- |
+| `2025-02-20` | **Refunds API:** `ListPaymentRefunds` got new `updated_at_begin_time`, `updated_at_end_time`, `sort_field` filters. We don't call `ListPaymentRefunds`. | **No-op** |
+| `2025-02-20` (out of scope) | Mobile Auth API deprecation, Mobile Payments SDK Tap-to-Pay, PHP SDK rewrite, Terminal API linked orders, Disputes API doc clarification. | — |
+| `2025-03-19` | **Cards API:** new read-only **Beta** fields on `Card` (`hsa_fsa`, `issuer_alert`, `issuer_alert_at`); `CreateCard` accepts ZIP+4 in `postal_code`. Additive only. We read `card.id` only and we don't supply `postal_code` (cards come from Web Payments SDK tokens). | **No-op** |
+| `2025-03-19` (out of scope) | Invoices API new field, Java/.NET SDK rewrites, Terminal API GA receipts. | — |
+| `2025-04-16` | **Catalog API:** new read-only `is_alcoholic` on `CatalogItem`. Additive. We read `itemData.name` and variation pricing only. **Webhooks:** retry schedule changed to max 11 retries / 24 hours. We have no Square webhook subscription so the retry change has no operational effect today (see §4). | **No-op** |
+| `2025-04-16` (out of scope) | Invoices API public-link expiry, Locations API address validation, Python SDK rewrite, Terminal API features, App Marketplace requirements. | — |
+| `2025-05-21` | **Catalog API:** large modifier-customization revamp. New fields added across `CatalogModifier`, `CatalogModifierList`, `CatalogItemModifierListInfo`, `CatalogModifierOverride`. **Deprecations:** `CatalogModifierList.selection_type`, `CatalogModifierList.max_quantity`, `CatalogItemModifierListInfo.hidden_from_customer`, `CatalogModifierOverride.hidden_online`, `CatalogModifierOverride.on_by_default`. **None of these fields are read or written by our code** — `listCatalogItems` only reads `itemData.name`/variation pricing, never modifier shapes. | **No-op (future-watch only — flagged in §7)** |
+| `2025-05-21` (out of scope) | Square MCP Server release, GraphQL Labor entry points, Labor API scheduling/timecards. | — |
+| `2025-06-18` | None. (No Payments / Orders / Refunds / Cards / Customers / Custom-Attributes / Catalog / ApplePay changes.) | **No-op** |
+| `2025-06-18` (out of scope) | GraphQL `devices` entry point, Loyalty API removal of long-deprecated `definition` field, all-SDK webhook payload typings. | — |
+| `2025-07-16` | None. Documentation-only release. The Apple Pay note (`docs/web-payments/apple-pay`) is about Web Payments SDK tokenization on the client; no `applePay.registerDomain` server-side change. | **No-op** |
+| `2025-07-16` (out of scope) | Apple Pay tokenization doc update only. | — |
+| `2025-08-20` | **Payments API:** `CreatePayment` request property `offline_payment_details` is **DEPRECATED**, retired November 19, 2025. We never set this property in `chargeCard`/`createSavedCardPayment` (`server/services/square-provider.ts`). | **No-op** |
+| `2025-08-20` (out of scope) | In-App Payments SDK Apple/Google Pay in Japan, Ruby SDK rewrite. | — |
+| `2025-09-24` | None. | **No-op** |
+| `2025-09-24` (out of scope) | Devices API new fields (`HANDHELD`, `mac_address`), Subscriptions API `COMPLETED` status. | — |
+| `2025-10-16` | None. | **No-op** |
+| `2025-10-16` (out of scope) | New Channels API release, new Transfer Orders API (Beta) release. Both are net-new APIs we don't use. | — |
+| `2026-01-22` | **Catalog API:** new additive `kitchen_name` on `CatalogItem` / `CatalogItemVariation` / `CatalogModifier`; new `buyer_facing` on `CatalogItem`; new `CatalogModifierToggleOverrideType` enum. All read-only/additive — we read `itemData.name` + variation pricing, not these fields. **Orders API:** new additive `blocked_service_charges` on `OrderLineItem`, `auto_applied` on `OrderLineItemAppliedTax`, `type` on `OrderReturnServiceCharge`, new `OrderCardSurchargeTreatmentType` enum. We read `order.id` only. **Payments API:** new additive `errors` on `BuyNowPayLaterDetails` and `DigitalWalletDetails`, new `created_at`/`disabled_at` on `Payment.CardPaymentDetails.Card`, plus new card-surcharge reporting. We read `cardDetails.card.{cardBrand,last4}` only. **Common entities:** `ErrorCode` enum gains `PARTIAL_PAYMENT_DELAY_CAPTURE_NOT_SUPPORTED` and `PAYMENT_SOURCE_NOT_ENABLED_FOR_TARGET` — additive, our error handling reads `statusCode`/`code`/`detail` and the new codes flow through the generic catch path with no behavior change. | **No-op** |
+| `2026-01-22` (out of scope) | Bank Accounts API new endpoints, Mobile Authorization API + Reader SDK retired, OAuth `use_jwt`, Terminal API US surcharge support. | — |
+
+### Roll-up
+
+- **Removed fields we read:** **0**
+- **Renamed fields we read:** **0**
+- **Enum-value changes on enums we read:** **0** (additive enum
+  values on `ErrorCode` are backward-compatible — see 2026-01-22)
+- **Idempotency-key semantics changes:** **0**
+- **Deprecated request properties we send:** **0** (the only
+  Payments API deprecation is `offline_payment_details`, which we
+  never set)
+- **Deprecated fields we read:** **0** (the 2025-05-21 Catalog
+  Modifier deprecations are on fields we don't touch)
+- **Webhook schema changes affecting us:** **0** (no subscription)
+
+Every single change in the 10-release window is either additive or
+touches code paths we don't exercise. The bump is safe.
 
 ---
 
-## 6. Operator verification checklist
+## 6. Operator pre-flight checklist
 
-Run this **before** flipping the dashboard pin from `2025-01-23` to
-`2026-01-22`.
+§5 already establishes that the bump is safe based on Square's
+published changelogs. This checklist is a small set of **operational
+sanity checks** to run before flipping the dashboard pin — not
+prerequisites for the audit's evidence.
 
-1. Open <https://developer.squareup.com/changelog> and the
-   "API releases" section of the lifecycle docs.
-2. List every released `YYYY-MM-DD` version `> 2025-01-23` and
-   `<= 2026-01-22`.
-3. For each release, scan only the sections matching the
-   resources in §5's table. Check for the five "flag" categories
-   in §5.
-4. For each Square Developer Dashboard application
-   (Production **and** Sandbox), open Webhooks → Subscriptions
-   and confirm the list is empty. If not, do **not** bump until
-   the subscriptions are either removed or a verified handler is
-   built.
-5. Do a sandbox smoke test against the new pin **before** flipping
+1. Re-skim §5's diff table — if the operator wants independent
+   verification, the per-release URLs are
+   `https://developer.squareup.com/docs/changelog/connect-logs/<YYYY-MM-DD>`
+   for each of the 10 versions listed.
+2. (Optional, only matters if it has changed since the audit was
+   written) Re-confirm "no Square webhook subscription" by opening
+   **Square Developer Dashboard → application → Webhooks →
+   Subscriptions** for both Production and Sandbox apps. Per §4,
+   bumping the pin only changes inbound webhook payload schemas if
+   a subscription exists. If one has been added since this audit,
+   build a handler **before** bumping (see follow-up #612).
+3. Do a sandbox smoke test against the new pin **before** flipping
    production:
    - Sandbox app → Settings → API Version → set to `2026-01-22`.
    - Run an end-to-end charge through a sandbox-credentialed
@@ -336,9 +381,9 @@ Run this **before** flipping the dashboard pin from `2025-01-23` to
    - Open the bowler details page and confirm the Square customer
      custom-attribute write still succeeds (visible in Square
      dashboard → Customers → custom field).
-6. Flip production: Square Dashboard → Production app → Settings →
+4. Flip production: Square Dashboard → Production app → Settings →
    API Version → `2026-01-22`.
-7. **Rollback steps if anything goes wrong:** Square Dashboard →
+5. **Rollback steps if anything goes wrong:** Square Dashboard →
    same page → set the version back to `2025-01-23`. The SDK header
    continues to send `2026-01-22` regardless, so this rollback only
    restores the *default* applied to non-SDK callers (i.e. nothing
@@ -352,32 +397,25 @@ Run this **before** flipping the dashboard pin from `2025-01-23` to
 
 ## 7. Findings filed as follow-ups (non-blocking)
 
-None of these block the version bump. They are quality-of-life
-items surfaced by the audit; file each as a fresh task only if the
-operator agrees.
+None of these block the version bump. They were filed as separate
+project tasks so the bump itself (Task #600) can ship independently.
 
-1. **Add a `Square-Version` integration test.** A single test that
-   mocks the SDK's `fetch` adapter and asserts the outgoing
-   `Square-Version` header equals an expected literal. This catches
-   silent SDK upgrades that change the pinned version (the type
-   `version?: "2026-01-22"` in `BaseClient.d.ts` would surface a
-   compile error, but only if a caller passes the literal — which
-   we never do today).
-2. **Document the dashboard pin in `replit.md`.** A two-line note
-   under "External services" that records: "Square Dashboard API
-   version pin = `2026-01-22` (kept aligned with the `square` npm
-   package's default header to avoid silent schema drift)." The
-   pin is otherwise tribal knowledge.
-3. **Stub a Square webhook receiver.** Even without a registered
-   subscription, having a `POST /webhooks/square` handler that
-   returns 410 Gone (with structured logging on the body) closes
+1. **Task #612 — Stub a Square webhook receiver.** Even without a
+   registered subscription, having a `POST /webhooks/square`
+   handler that returns `501`/`410` with structured logging closes
    the "what if someone registers a subscription out-of-band"
    risk surfaced in §4.
-4. **Capture catalog pagination in `listCatalogItems`.** Today the
-   unfiltered branch (`square-provider.ts:980`) only fetches the
-   first page. This was deliberate (per the inline comment), but
-   the audit makes the limit visible. If a seller hits >1000
-   catalog items it'll silently truncate.
+2. **Task #613 — Capture catalog pagination in `listCatalogItems`.**
+   Today the unfiltered branch (`server/services/square-provider.ts`
+   `catalog.list`/`catalog.searchItems`) only fetches the first
+   page. The audit made the limit visible. If a seller hits
+   Square's default page size it'll silently truncate.
+3. **Task #614 — Catch Square SDK header drift in CI.** A single
+   test that asserts the outgoing `Square-Version` header equals
+   an expected literal. This catches silent SDK upgrades that
+   change the pinned version (the type `version?: "2026-01-22"`
+   in `BaseClient.d.ts` would surface a compile error, but only
+   if a caller passes the literal — which we never do today).
 
 ---
 
@@ -397,26 +435,30 @@ When you bump the `square` package or want to re-pin the dashboard:
 
 ## 9. Final recommendation
 
-**GO — bump the dashboard pin from `2025-01-23` to `2026-01-22`,**
-contingent on the operator finishing §6's checklist (especially the
-empty-subscription confirmation in step 4 and the sandbox smoke
-test in step 5).
+**GO — bump the dashboard pin from `2025-01-23` to `2026-01-22`.**
+The bump is safe based on the changelog evidence in §5 and the SDK
+inventory in §2.
 
 Rationale:
 
-- The SDK already sends `2026-01-22` on every request. The dashboard
-  pin is functionally inert today — but a stale pin is a footgun for
-  the next person who adds a non-SDK call or a webhook subscription.
-- All response fields our code reads (§2, §5) are core, long-shipped
-  Square fields. Whether any have been moved to Square's deprecation
-  list since `2025-01-23` was **not** verifiable from this build
-  environment — that confirmation is the operator's job in §6 step 3.
-- We have no Square webhook handler, so changing the dashboard
+- The SDK already sends `2026-01-22` on every request (proven in
+  §1). The dashboard pin is functionally inert today — but a stale
+  pin is a footgun for the next person who adds a non-SDK call or a
+  webhook subscription.
+- The changelog cross-reference in §5 walks all 10 Square releases
+  in the bump window and shows **zero** removed/renamed fields,
+  **zero** breaking enum changes, **zero** idempotency-key
+  changes, and **zero** deprecated request properties we send. The
+  only deprecations in the window (Catalog Modifier fields in
+  `2025-05-21` and `Payment.offline_payment_details` in
+  `2025-08-20`) touch code paths we don't exercise.
+- We have no Square webhook handler (§4), so changing the dashboard
   version cannot break inbound payload parsing.
 - All v40+ flat-client SDK semantics (no `.result` wrapper,
   `SquareError.errors[].detail`, `SquareEnvironment` URLs, `token`
   option) are already in place — see the inline comments at
   `square-provider.ts:35-39`, `:553-559`, `:577`, `:594`, `:887`,
   `:1009-1013`, and `square-custom-attributes.ts:104` and `:215`.
-- No code changes are required as a precondition for the bump (§7
-  items are quality-of-life only).
+- No code changes are required as a precondition for the bump.
+  Tasks #612 / #613 / #614 are quality-of-life follow-ups and can
+  ship after the bump.
