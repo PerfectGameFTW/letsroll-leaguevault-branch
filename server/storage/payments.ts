@@ -179,6 +179,11 @@ export async function getPaymentByCloverChargeId(chargeId: string): Promise<Paym
   return result;
 }
 
+export async function getPaymentByDisputeId(disputeId: string): Promise<Payment | undefined> {
+  const [result] = await db.select().from(payments).where(eq(payments.disputeId, disputeId)).limit(1);
+  return result;
+}
+
 export async function getPaymentByProviderPaymentId(providerPaymentId: string): Promise<Payment | undefined> {
   const [result] = await db.select().from(payments).where(eq(payments.providerPaymentId, providerPaymentId)).limit(1);
   return result;
@@ -206,6 +211,19 @@ export async function refundPayment(id: number, providerRefundId?: string, reaso
       squareRefundId: providerRefundId || null,
       refundReason: reason || null,
       refundedAt: new Date().toISOString(),
+    })
+    .where(eq(payments.id, id))
+    .returning();
+  return result;
+}
+
+export async function openDispute(id: number, disputeId: string): Promise<Payment> {
+  const [result] = await db
+    .update(payments)
+    .set({
+      status: 'disputed',
+      disputeId,
+      disputedAt: new Date().toISOString(),
     })
     .where(eq(payments.id, id))
     .returning();

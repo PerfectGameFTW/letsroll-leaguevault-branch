@@ -24,12 +24,18 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const SCHEDULE_FREQUENCIES = ["weekly", "monthly", "upfront"] as const;
 export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
 
-export const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded"] as const;
+export const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded", "disputed"] as const;
 export const PaymentStatus = {
   PAID: PAYMENT_STATUSES[0],
   PENDING: PAYMENT_STATUSES[1],
   FAILED: PAYMENT_STATUSES[2],
   REFUNDED: PAYMENT_STATUSES[3],
+  // Cardholder opened a dispute / chargeback. Set by the Clover
+  // webhook receiver (task #577) and may be set by the Square
+  // receiver in a follow-up. Distinct from `refunded` because the
+  // funds aren't necessarily moved yet — the dispute could still be
+  // won.
+  DISPUTED: PAYMENT_STATUSES[4],
 } as const;
 
 export const PAYMENT_TYPES = ["cash", "check", "credit_card", "square", "clover"] as const;

@@ -23,6 +23,16 @@ import { requestTracker, registerShutdownHandlers } from './lib/shutdown';
 import manifestRouter from './routes/manifest';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 
+declare module 'express-serve-static-core' {
+  interface Request {
+    // Captured by the verify hook on the global express.json() so that
+    // signature-verifying webhook receivers (Clover today; possibly
+    // Square next — see task #577 follow-ups) can hash the exact bytes
+    // the processor signed instead of a re-stringified copy.
+    rawBody?: Buffer;
+  }
+}
+
 const log = createLogger("Server");
 
 const app = express();
@@ -42,7 +52,17 @@ app.use(subdomainDetection);
 app.use(compression());
 app.use(securityHeaders);
 
-app.use(express.json({ limit: '10mb' }));
+// Capture the raw request bytes alongside the parsed JSON. The Clover
+// webhook receiver (server/routes/payments-provider/webhooks.ts) needs
+// the unmodified bytes to verify the HMAC signature header — once
+// express.json() has parsed the body, re-stringifying it would change
+// key order / whitespace and break the signature check.
+app.use(express.json({
+  limit: '10mb',
+  verify: (req: Request, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 await setupAuth(app);
 app.use(orgSessionGuard);

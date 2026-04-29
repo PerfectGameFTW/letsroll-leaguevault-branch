@@ -10,6 +10,7 @@ import bowlerLeaguesRouter from './bowler-leagues.js';
 import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
 import paymentRoutesRouter from './payments-provider/index.js';
+import paymentProviderWebhooksRouter from './payments-provider/webhooks.js';
 import adminRouter from './admin.js';
 import organizationsRouter from './organizations.js';
 import organizationsPublicRouter from './organizations-public.js';
@@ -116,6 +117,13 @@ export function registerRoutes(app: Express): void {
   app.use('/api/payments', requireAuth, paymentsRouter);
   app.use('/api/scores', requireAuth, scoresRouter);
   app.use('/api/games', requireAuth, gamesRouter);
+  // Clover webhooks (task #577) — must be registered BEFORE the
+  // session-auth-protected `/api/payments-provider` mount below.
+  // Real Clover traffic has no browser session, so this path is
+  // intentionally unauthenticated. Per-request HMAC verification
+  // happens inside the router (see `./payments-provider/webhooks.ts`)
+  // and the path is in CSRF EXEMPT_PATHS in `server/middleware/csrf.ts`.
+  app.use('/api/payments-provider/webhooks', paymentProviderWebhooksRouter);
   app.use('/api/payments-provider', requireAuth, paymentRoutesRouter);
   app.use('/api/admin', requireOrgAdmin, adminRouter);
   app.use('/api/organizations', requireAuth, organizationsRouter);

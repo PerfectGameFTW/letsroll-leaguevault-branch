@@ -339,6 +339,12 @@ const SAFE_PAYMENT_FIELDS = [
   'squareRefundId',
   'refundReason',
   'refundedAt',
+  // Dispute / chargeback bookkeeping (task #577). `disputeId` is the
+  // provider-side dispute reference; `disputedAt` is when our webhook
+  // receiver processed the event. Operational, surfaced in the admin
+  // payment-history table.
+  'disputeId',
+  'disputedAt',
   // Square hosted-receipt cache (task #503). receiptUrl /
   // receiptNumber are the public hosted-receipt link Square emails
   // to the buyer; receiptEmailMissing drives the "no receipt sent"

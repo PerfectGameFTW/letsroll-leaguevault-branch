@@ -26,6 +26,16 @@ export const payments = pgTable("payments", {
   squareRefundId: text("square_refund_id"),
   refundReason: text("refund_reason"),
   refundedAt: timestamp("refunded_at", { mode: "string" }),
+  // Provider-side dispute / chargeback identifier (Clover dispute id
+  // today, Square dispute id in a future follow-up). Persisted by the
+  // webhook receiver in `server/routes/payments-provider/webhooks.ts`
+  // so the admin UI can correlate the row back to the dispute on the
+  // provider dashboard. Distinct from `squareRefundId` because a
+  // dispute and a refund are independent provider artifacts.
+  disputeId: text("dispute_id"),
+  // Wall-clock timestamp the dispute webhook was processed. Renders
+  // alongside `refundedAt` in the payment-history timeline.
+  disputedAt: timestamp("disputed_at", { mode: "string" }),
   // Square auto-emails a hosted receipt to `buyerEmailAddress` whenever a
   // CreatePayment / RefundPayment includes one. We persist the URL +
   // human-readable receipt number Square returns so we can render a
@@ -117,6 +127,8 @@ export const updatePaymentSchema = z.object({
   squareRefundId: z.string().nullable(),
   refundReason: z.string().nullable(),
   refundedAt: dateSchema.nullable(),
+  disputeId: z.string().nullable(),
+  disputedAt: dateSchema.nullable(),
   receiptUrl: z.string().nullable(),
   receiptNumber: z.string().nullable(),
   receiptEmailMissing: z.boolean(),

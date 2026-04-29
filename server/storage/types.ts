@@ -87,10 +87,12 @@ export interface IPaymentStorage {
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   getPaymentByCloverChargeId(chargeId: string): Promise<Payment | undefined>;
+  getPaymentByDisputeId(disputeId: string): Promise<Payment | undefined>;
   getPaymentByProviderPaymentId(providerPaymentId: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: UpdatePayment): Promise<Payment>;
   refundPayment(id: number, providerRefundId?: string, reason?: string): Promise<Payment>;
+  openDispute(id: number, disputeId: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;

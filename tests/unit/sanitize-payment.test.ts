@@ -36,6 +36,8 @@ function makeFullyPopulatedPayment(): Payment {
     squareRefundId: null,
     refundReason: null,
     refundedAt: null,
+    disputeId: null,
+    disputedAt: null,
     receiptUrl: 'https://squareup.com/receipt/preview/abc',
     receiptNumber: 'rcpt-123',
     receiptEmailMissing: false,

@@ -66,10 +66,12 @@ export class DatabaseStorage implements IStorage {
   getPaymentById!: IStorage["getPaymentById"];
   getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
   getPaymentByCloverChargeId!: IStorage["getPaymentByCloverChargeId"];
+  getPaymentByDisputeId!: IStorage["getPaymentByDisputeId"];
   getPaymentByProviderPaymentId!: IStorage["getPaymentByProviderPaymentId"];
   createPayment!: IStorage["createPayment"];
   updatePayment!: IStorage["updatePayment"];
   refundPayment!: IStorage["refundPayment"];
+  openDispute!: IStorage["openDispute"];
   deletePayment!: IStorage["deletePayment"];
   createPaymentSchedule!: IStorage["createPaymentSchedule"];
   getPaymentSchedule!: IStorage["getPaymentSchedule"];
