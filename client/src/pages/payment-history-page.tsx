@@ -256,6 +256,7 @@ export default function PaymentHistoryPage() {
         toast(providerNotConfiguredToast({
           navigate,
           locationId: league?.locationId ?? null,
+          provider: isClover ? 'clover' : 'square',
         }));
       } else {
         toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment.", variant: "destructive" });
@@ -263,7 +264,7 @@ export default function PaymentHistoryPage() {
     } finally {
       setIsWalletProcessing(false);
     }
-  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast, bowlerEmail, receiptEmail, navigate, league?.locationId]);
+  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast, bowlerEmail, receiptEmail, navigate, league?.locationId, isClover]);
 
   const {
     applePayAvailable,
@@ -351,6 +352,7 @@ export default function PaymentHistoryPage() {
         toast(providerNotConfiguredToast({
           navigate,
           locationId: league?.locationId ?? null,
+          provider: isClover ? 'clover' : 'square',
         }));
       } else {
         toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment. Please try again.", variant: "destructive" });

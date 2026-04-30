@@ -773,7 +773,7 @@
   },
   "tests/unit/use-bowler-payment-submit.test.ts": {
     "no-restricted-syntax": {
-      "count": 4
+      "count": 3
     }
   }
 }

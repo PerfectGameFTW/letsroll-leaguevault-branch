@@ -7,12 +7,20 @@ const {
   invalidateQueriesMock,
   createPaymentMock,
   tokenizeCardMock,
+  providerState,
 } = vi.hoisted(() => ({
   toastMock: vi.fn(),
   csrfFetchMock: vi.fn(),
   invalidateQueriesMock: vi.fn(),
   createPaymentMock: vi.fn(),
   tokenizeCardMock: vi.fn(),
+  // Per-test override hook for the active provider returned by
+  // `usePaymentProvider`. The catch block in
+  // `useBowlerPaymentSubmit` reads `isClover` to decide whether the
+  // PROVIDER_NOT_CONFIGURED toast names "Clover" or "Square"
+  // (task #610). Default to Square so the existing success-path
+  // tests behave as before.
+  providerState: { isClover: false },
 }));
 
 vi.mock('react', async () => {
@@ -44,6 +52,44 @@ vi.mock('@/lib/square', () => ({
   tokenizeCard: tokenizeCardMock,
 }));
 
+vi.mock('@/hooks/use-payment-provider', () => ({
+  usePaymentProvider: () => ({
+    isClover: providerState.isClover,
+    isSquare: !providerState.isClover,
+  }),
+  clearProviderConfigCache: () => {},
+}));
+
+// Mock the toast helper so the test can pin the exact `provider`
+// argument the hook forwards (rather than constructing the JSX
+// `ToastAction` and asserting on serialized output). This is the
+// real wiring contract for #610: the hook MUST pass the location's
+// active provider, not let the helper's default ("square") win.
+const { providerNotConfiguredToastMock } = vi.hoisted(() => ({
+  providerNotConfiguredToastMock: vi.fn(),
+}));
+
+vi.mock('@/lib/provider-not-configured', async () => {
+  const actual = await vi.importActual<typeof import('../../client/src/lib/provider-not-configured')>(
+    '../../client/src/lib/provider-not-configured',
+  );
+  return {
+    ...actual,
+    providerNotConfiguredToast: (
+      opts: NonNullable<Parameters<typeof actual.providerNotConfiguredToast>[0]> = {},
+    ) => {
+      providerNotConfiguredToastMock(opts);
+      // Return a sentinel so the hook's `toast(...)` call still has a
+      // real-shaped object to forward and the test can assert on the
+      // toast-mock's `title` if it wants to.
+      return {
+        title: `${opts.provider === 'clover' ? 'Clover' : 'Square'} isn't connected for this location`,
+        variant: 'destructive' as const,
+      };
+    },
+  };
+});
+
 import { useBowlerPaymentSubmit } from '@/hooks/use-bowler-payment-submit';
 
 type SubmitOpts = Parameters<typeof useBowlerPaymentSubmit>[0];
@@ -57,10 +103,24 @@ function jsonResponse(body: unknown, ok = true): Promise<FakeResponse> {
   return Promise.resolve({ ok, json: () => Promise.resolve(body) });
 }
 
+function makeLeague(paymentMode: 'pay-as-you-go' | 'upfront' = 'pay-as-you-go'): League {
+  return { id: 'league-1', paymentMode } as unknown as League;
+}
+
+function makeBowler(): Bowler {
+  return { id: 'bowler-1' } as unknown as Bowler;
+}
+
+function makeCard(): NonNullable<SubmitOpts['card']> {
+  // The hook only checks `card` is truthy at the cardMode==='new' gate;
+  // the real shape doesn't matter because tokenizeCard is mocked.
+  return { token: 'unused' } as unknown as NonNullable<SubmitOpts['card']>;
+}
+
 function makeOptions(overrides: Partial<SubmitOpts> = {}): SubmitOpts {
   const base: SubmitOpts = {
-    league: { id: 'league-1', paymentMode: 'pay-as-you-go' } as unknown as League,
-    bowler: { id: 'bowler-1' } as unknown as Bowler,
+    league: makeLeague(),
+    bowler: makeBowler(),
     weeklyFee: 2000,
     card: null,
     cardMode: 'saved',
@@ -101,6 +161,10 @@ beforeEach(() => {
   invalidateQueriesMock.mockReset();
   createPaymentMock.mockReset();
   tokenizeCardMock.mockReset();
+  // Default to Square so success-path tests stay legacy-shaped.
+  // The PROVIDER_NOT_CONFIGURED test below opts back into Clover.
+  providerState.isClover = false;
+  providerNotConfiguredToastMock.mockReset();
 });
 
 describe('useBowlerPaymentSubmit success toasts', () => {
@@ -109,7 +173,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
 
     const submit = useBowlerPaymentSubmit(
       makeOptions({
-        league: { id: 'league-1', paymentMode: 'pay-as-you-go' } as unknown as League,
+        league: makeLeague('pay-as-you-go'),
         selectedSchedule: 'custom',
         calculateTotalAmount: () => 5000,
       }),
@@ -148,7 +212,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
 
     const submit = useBowlerPaymentSubmit(
       makeOptions({
-        league: { id: 'league-1', paymentMode: 'upfront' } as unknown as League,
+        league: makeLeague('upfront'),
       }),
     );
 
@@ -214,5 +278,74 @@ describe('useBowlerPaymentSubmit success toasts', () => {
       'Paid $80.00 today and weekly auto-pay is now active for future weeks.',
     );
     expect(description).not.toBe('Your card has been saved and weekly auto-pay is now active.');
+  });
+});
+
+// Task #610: bowler-facing payment submission was the last
+// PROVIDER_NOT_CONFIGURED toast site that still hard-coded a Square
+// label even on Clover-only locations. Pin both the Clover and Square
+// branches so a future refactor of `useBowlerPaymentSubmit` can't
+// silently regress to "Square isn't connected" on Clover leagues.
+describe('useBowlerPaymentSubmit PROVIDER_NOT_CONFIGURED toast (#610)', () => {
+  // Helper: drive the upfront-with-new-card branch so the catch block
+  // sees a structured error from `throwApiErrorIfNotOk`. The
+  // `/api/payments-provider/cards/:bowlerId` POST is the only call in
+  // the upfront flow that funnels its non-OK body through
+  // `makeApiError`, which is what preserves the
+  // PROVIDER_NOT_CONFIGURED code for `isProviderNotConfiguredError`.
+  async function triggerNotConfigured() {
+    tokenizeCardMock.mockResolvedValueOnce('cnon:fake-token');
+    csrfFetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: () =>
+        Promise.resolve({
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Provider not connected' },
+        }),
+    });
+
+    const submit = useBowlerPaymentSubmit(
+      makeOptions({
+        league: makeLeague('upfront'),
+        // Force the new-card path so the save-card endpoint runs
+        // (saved-card path short-circuits past the fetch).
+        cardMode: 'new',
+        card: makeCard(),
+        selectedSavedCardId: '',
+      }),
+    );
+    await submit();
+  }
+
+  it('forwards provider:"clover" to providerNotConfiguredToast when usePaymentProvider returns clover', async () => {
+    providerState.isClover = true;
+
+    await triggerNotConfigured();
+
+    // Pin the wiring contract directly: the hook MUST forward the
+    // resolved provider so the helper can render "Clover isn't
+    // connected …" instead of falling back to its 'square' default.
+    expect(providerNotConfiguredToastMock).toHaveBeenCalledTimes(1);
+    expect(providerNotConfiguredToastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'clover' }),
+    );
+
+    // Belt-and-suspenders: the toast that actually fires must say Clover.
+    const { title, variant } = lastToast();
+    expect(variant).toBe('destructive');
+    expect(title).toBe("Clover isn't connected for this location");
+    expect(title).not.toMatch(/Square/);
+  });
+
+  it('forwards provider:"square" when usePaymentProvider returns square', async () => {
+    providerState.isClover = false;
+
+    await triggerNotConfigured();
+
+    expect(providerNotConfiguredToastMock).toHaveBeenCalledTimes(1);
+    expect(providerNotConfiguredToastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'square' }),
+    );
+    expect(lastToast().title).toBe("Square isn't connected for this location");
   });
 });

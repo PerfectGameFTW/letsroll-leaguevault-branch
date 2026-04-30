@@ -10,6 +10,7 @@ import {
   makeApiError,
 } from "@/lib/provider-not-configured";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import type { League, Bowler } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CloverCard } from "@/hooks/use-clover-payment";
@@ -70,6 +71,11 @@ export function useBowlerPaymentSubmit({
 }: UseBowlerPaymentSubmitOptions) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  // Look up the active provider for this league's location so the
+  // PROVIDER_NOT_CONFIGURED toast in the catch block names the right
+  // integration (Clover-only locations were getting "Square isn't
+  // connected for this location" — task #610).
+  const { isClover } = usePaymentProvider(league.locationId ?? null);
 
   // Local helper that lets the inline csrfFetch calls below propagate
   // the structured `error.code` (specifically PROVIDER_NOT_CONFIGURED)
@@ -262,6 +268,7 @@ export function useBowlerPaymentSubmit({
         toast(providerNotConfiguredToast({
           navigate,
           locationId: league.locationId ?? null,
+          provider: isClover ? 'clover' : 'square',
         }));
         return;
       }
@@ -281,7 +288,7 @@ export function useBowlerPaymentSubmit({
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard, includeFinalTwoWeeks, showFinalTwoWeeksWarning,
-    buyerEmail, financials, calculateTotalAmount, toast, navigate,
+    buyerEmail, financials, calculateTotalAmount, toast, navigate, isClover,
     setIsSubmitting, setShowFinalTwoWeeksWarning, setIncludeFinalTwoWeeks, setShowPaymentSetup,
   ]);
 }

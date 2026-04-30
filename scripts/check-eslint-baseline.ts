@@ -84,8 +84,12 @@ const RULE_CEILINGS: Record<string, number> = {
   // `verifyTrustProxy`'s parameter type.
   // Ratcheted 159 → 154 in task #572 to match the live count after the
   // same CI green-up pass paid down five double-casts without lowering
-  // this ceiling at the time.
-  'no-restricted-syntax': 154,
+  // this ceiling at the time. Ratcheted 154 → 153 in task #610 after the
+  // PROVIDER_NOT_CONFIGURED test refactor in
+  // tests/unit/use-bowler-payment-submit.test.ts collapsed six inline
+  // `as unknown as` casts into three typed factory helpers (makeLeague,
+  // makeBowler, makeCard).
+  'no-restricted-syntax': 153,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
@@ -99,7 +103,7 @@ const RULE_CEILINGS: Record<string, number> = {
 // from 38 → 35 in tests/unit/apple-pay-jobs.test.ts and the
 // matching downward ratchets on no-unnecessary-type-assertion
 // (92 → 91) and no-restricted-syntax (159 → 154).
-const TOTAL_CEILING = 525;
+const TOTAL_CEILING = 524;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

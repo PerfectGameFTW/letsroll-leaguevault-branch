@@ -16,6 +16,7 @@ import {
 } from "@/lib/provider-not-configured";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import { useToast } from "@/hooks/use-toast";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +96,17 @@ export default function PaymentsPage() {
     },
   });
 
+  // Derive the active refund target's locationId so we can look up its
+  // payment provider ahead of the mutation. The lookup is cached inside
+  // `usePaymentProvider` per locationId, so toggling between rows in the
+  // refund dialog doesn't refetch on every click. Threading `provider`
+  // into the toast keeps Clover-only locations from seeing
+  // "Square isn't connected for this location" (task #610).
+  const refundLocationId = paymentToRefund
+    ? (leaguesResponse?.data ?? []).find((l) => l.id === paymentToRefund.leagueId)?.locationId ?? null
+    : null;
+  const { isClover: refundIsClover } = usePaymentProvider(refundLocationId);
+
   const refundPaymentMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: number; reason?: string }) => {
       const response = await apiRequest(`/api/payments/${id}/refund`, "POST", { reason });
@@ -113,10 +125,11 @@ export default function PaymentsPage() {
         // Surface the actionable "Square isn't connected" message
         // (#391) so admins can jump straight to /integrations
         // instead of seeing a generic "Refund Failed" toast.
-        const locationId = paymentToRefund
-          ? leagues.find((l) => l.id === paymentToRefund.leagueId)?.locationId ?? null
-          : null;
-        toast(providerNotConfiguredToast({ navigate, locationId }));
+        toast(providerNotConfiguredToast({
+          navigate,
+          locationId: refundLocationId,
+          provider: refundIsClover ? 'clover' : 'square',
+        }));
         return;
       }
       // Task #598: surface the typed PaymentProviderError userMessage
