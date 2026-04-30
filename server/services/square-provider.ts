@@ -1,5 +1,5 @@
 import { SquareClient, SquareEnvironment, SquareError } from 'square';
-import type { CreatePaymentRequest, CatalogObject } from 'square';
+import type { CreatePaymentRequest, CatalogObject, BaseClientOptions } from 'square';
 import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
@@ -86,7 +86,51 @@ async function paginateCatalogObjects(
   return all;
 }
 
-function buildSquareClient(accessToken: string, appId?: string): SquareClient {
+/**
+ * The `Square-Version` header that `square@44.0.1`'s baked-in default
+ * sends on every outbound request. Audited and pinned in
+ * `docs/square-api-version-audit.md` §1, with the operator pre-flight
+ * checklist for bumping it in §6.
+ *
+ * This constant exists so a CI test (Task #614) can assert that the
+ * SDK's default header still matches what the audit reviewed. If a
+ * future `square` upgrade ships a different default (e.g. `square@45`
+ * with a new pinned version), the test will fail loudly and force the
+ * operator to re-run the audit before merging the SDK bump — which
+ * matters because changing the wire version changes response shapes
+ * across every call site at once.
+ *
+ * Update path when this needs to change:
+ *   1. Re-run the per-release diff in `docs/square-api-version-audit.md` §5
+ *      for the new window.
+ *   2. Update both this constant and the version table in §1 of the
+ *      audit doc in the same commit.
+ *   3. Walk the operator pre-flight checklist in §6 before the bump
+ *      lands in production.
+ */
+export const SQUARE_EXPECTED_VERSION = '2026-01-22' as const;
+
+/**
+ * Build a `SquareClient` from raw credentials, picking
+ * Production vs Sandbox using the existing token/appId heuristic.
+ *
+ * Exported so the version-header CI test (Task #614) can construct
+ * a client through the *same* code path the production
+ * `getSquareClient` does — otherwise the test would silently miss
+ * drift in how the client is constructed (e.g. someone adding a
+ * `version: '2025-01-23'` override here).
+ *
+ * `extraOptions` is intentionally narrow: the production-derived
+ * `token` and `environment` are written *after* the spread, so they
+ * always win over anything in `extraOptions` (a test cannot
+ * accidentally change which token or environment we exercise).
+ * Production callers always pass none.
+ */
+export function buildSquareClient(
+  accessToken: string,
+  appId?: string,
+  extraOptions?: Partial<BaseClientOptions>,
+): SquareClient {
   const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
   const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
   const isProductionToken = cleanToken.startsWith('EAAAEv') || cleanToken.startsWith('EAAAl7');
@@ -95,7 +139,7 @@ function buildSquareClient(accessToken: string, appId?: string): SquareClient {
   // option key is `token` now, not `accessToken`, and the environment
   // values are URLs from the SquareEnvironment record (Production /
   // Sandbox), not the legacy `Environment` enum.
-  return new SquareClient({ token: cleanToken, environment });
+  return new SquareClient({ ...extraOptions, token: cleanToken, environment });
 }
 
 export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, WalletProvider {
