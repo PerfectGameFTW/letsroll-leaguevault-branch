@@ -409,6 +409,19 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           detail,
         );
       }
+      if (apiErr?.statusCode === 401) {
+        // Same mapping as processPayment above: a Square auth failure
+        // (revoked / expired access token, wrong app id, etc.) is a
+        // server-side credential problem the admin can't action with
+        // a card retry — surface SYSTEM_ERROR so the toast tells them
+        // it's a temporary infra issue rather than a declined card.
+        // Pinned by tests/unit/square-charge-failures.test.ts (#619).
+        throw new PaymentProviderError(
+          'Payment system is temporarily unavailable. Please try again later.',
+          'SYSTEM_ERROR',
+          detail,
+        );
+      }
       if (apiErr?.statusCode === 400) {
         // Raw `detail` is captured for logs only — the user gets the
         // hand-authored sentence regardless of what Square returned.
