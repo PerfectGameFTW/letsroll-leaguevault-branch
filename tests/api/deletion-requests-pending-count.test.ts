@@ -31,7 +31,7 @@ import {
 } from '../helpers';
 import { storage } from '../../server/storage';
 import { db } from '../../server/db';
-import { users } from '@shared/schema';
+import { users, deletionRequests } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 
 const PATH = '/api/system-admin/deletion-requests/pending-count';
@@ -85,34 +85,47 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
   });
 
   afterAll(async () => {
-    // Best-effort: mark the seeded pending rows as rejected so they
-    // stop showing up in the badge for any developer poking the dev
-    // DB. We do NOT hard-delete (no helper exists, and the audit
-    // trail is intentional).
-    if (createdUserIds.length > 0) {
+    // Cleanup contract (#615): every row we inserted (users +
+    // deletion_requests) MUST be hard-deleted; failures are loud so
+    // the suite fails the run instead of leaking dev-DB rows.
+    //
+    // Note: `deletion_requests` has NO FK back to `users` (only
+    // `reviewed_by` references users, and that is ON DELETE SET NULL,
+    // not cascade), so deleting the seeded user does not remove the
+    // pending-count rows. We must delete them explicitly.
+    const failures: Array<{ label: string; error: unknown }> = [];
+    const tryRun = async (label: string, fn: () => Promise<unknown>) => {
       try {
-        await db.delete(users).where(inArray(users.id, createdUserIds));
-      } catch {
-        // best-effort
+        await fn();
+      } catch (error) {
+        failures.push({ label, error });
+        console.error(`[pending-count cleanup] ${label} failed:`, error);
       }
+    };
+
+    if (seededIds.length > 0) {
+      const ids = [...seededIds];
+      await tryRun(`deletion_requests:${ids.join(',')}`, () =>
+        db.delete(deletionRequests).where(inArray(deletionRequests.id, ids)),
+      );
+      seededIds.length = 0;
+    }
+
+    if (createdUserIds.length > 0) {
+      const ids = [...createdUserIds];
+      await tryRun(`users:${ids.join(',')}`, () =>
+        db.delete(users).where(inArray(users.id, ids)),
+      );
       createdUserIds.length = 0;
     }
-    if (!sysAdmin) return;
-    for (const id of seededIds) {
-      try {
-        const row = await storage.getDeletionRequest(id);
-        if (row?.status === 'pending') {
-          await storage.updateDeletionRequestStatus(
-            id,
-            'rejected',
-            sysAdmin.user.id,
-            `cleanup: ${runTag}`,
-          );
-        }
-      } catch {
-        // Cleanup is best-effort; a failure here must not mask a
-        // real test failure surfaced by vitest.
-      }
+
+    if (failures.length > 0) {
+      const summary = failures
+        .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+        .join('\n');
+      throw new Error(
+        `pending-count afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+      );
     }
   });
 

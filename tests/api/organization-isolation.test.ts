@@ -287,20 +287,48 @@ describe('Organization Isolation', () => {
     });
 
     afterAll(async () => {
-      // Best-effort fixture cleanup so re-runs of the suite stay
-      // self-contained. Failures are non-fatal.
-      try {
-        if (bowlerLeagueId != null) {
-          await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, bowlerLeagueId));
+      // Cleanup contract (#615): every row inserted in `beforeAll`
+      // above MUST be deleted here, with per-call-site labels and a
+      // collected failure throw at the end. The previous catch-all
+      // claimed leftover fixtures would be "reaped by the test DB",
+      // but no such reaping exists — silently swallowed FK errors
+      // here leak rows into the shared dev database on every run.
+      const failures: Array<{ label: string; error: unknown }> = [];
+      const tryRun = async (label: string, fn: () => Promise<unknown>) => {
+        try {
+          await fn();
+        } catch (error) {
+          failures.push({ label, error });
+          console.error(`[org-isolation cross-org cleanup] ${label} failed:`, error);
         }
-        if (orgBBowlerId != null) {
-          await db.delete(bowlersTable).where(eq(bowlersTable.id, orgBBowlerId));
-        }
-        if (orgBTeamId != null) {
-          await db.delete(teamsTable).where(eq(teamsTable.id, orgBTeamId));
-        }
-      } catch {
-        // ignore — leftover fixtures will be reaped by the test DB.
+      };
+
+      if (bowlerLeagueId != null) {
+        const id = bowlerLeagueId;
+        await tryRun(`bowler_leagues:${id}`, () =>
+          db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)),
+        );
+      }
+      if (orgBBowlerId != null) {
+        const id = orgBBowlerId;
+        await tryRun(`bowlers:${id}`, () =>
+          db.delete(bowlersTable).where(eq(bowlersTable.id, id)),
+        );
+      }
+      if (orgBTeamId != null) {
+        const id = orgBTeamId;
+        await tryRun(`teams:${id}`, () =>
+          db.delete(teamsTable).where(eq(teamsTable.id, id)),
+        );
+      }
+
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+          .join('\n');
+        throw new Error(
+          `org-isolation cross-org afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+        );
       }
     });
 
@@ -580,31 +608,69 @@ describe('Organization Isolation', () => {
     });
 
     afterAll(async () => {
-      try {
-        const { locations: locationsTable, leagues: leaguesTable, payments: paymentsTable } =
-          await import('@shared/schema');
-        if (orgBPaymentId != null) {
-          await db.delete(paymentsTable).where(eq(paymentsTable.id, orgBPaymentId));
+      // Cleanup contract (#615): every row inserted in `beforeAll`
+      // above MUST be deleted here, with per-call-site labels and a
+      // collected failure throw at the end. The previous best-effort
+      // catch-all silently leaked locations/teams/bowlers/payments
+      // into the shared dev DB whenever a single FK delete blew up.
+      const { locations: locationsTable, leagues: leaguesTable, payments: paymentsTable } =
+        await import('@shared/schema');
+
+      const failures: Array<{ label: string; error: unknown }> = [];
+      const tryRun = async (label: string, fn: () => Promise<unknown>) => {
+        try {
+          await fn();
+        } catch (error) {
+          failures.push({ label, error });
+          console.error(`[org-isolation list-leak cleanup] ${label} failed:`, error);
         }
-        if (orgBBowlerLeagueId != null) {
-          await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, orgBBowlerLeagueId));
-        }
-        if (orgBBowlerId != null) {
-          await db.delete(bowlersTable).where(eq(bowlersTable.id, orgBBowlerId));
-        }
-        if (orgBTeamId != null) {
-          await db.delete(teamsTable).where(eq(teamsTable.id, orgBTeamId));
-        }
-        if (orgBLocationId != null) {
-          // Detach from the org B league first so the location FK can drop.
-          await db
+      };
+
+      if (orgBPaymentId != null) {
+        const id = orgBPaymentId;
+        await tryRun(`payments:${id}`, () =>
+          db.delete(paymentsTable).where(eq(paymentsTable.id, id)),
+        );
+      }
+      if (orgBBowlerLeagueId != null) {
+        const id = orgBBowlerLeagueId;
+        await tryRun(`bowler_leagues:${id}`, () =>
+          db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)),
+        );
+      }
+      if (orgBBowlerId != null) {
+        const id = orgBBowlerId;
+        await tryRun(`bowlers:${id}`, () =>
+          db.delete(bowlersTable).where(eq(bowlersTable.id, id)),
+        );
+      }
+      if (orgBTeamId != null) {
+        const id = orgBTeamId;
+        await tryRun(`teams:${id}`, () =>
+          db.delete(teamsTable).where(eq(teamsTable.id, id)),
+        );
+      }
+      if (orgBLocationId != null) {
+        const id = orgBLocationId;
+        // Detach from the org B league first so the location FK can drop.
+        await tryRun(`leagues.locationId=null where locationId=${id}`, () =>
+          db
             .update(leaguesTable)
             .set({ locationId: null })
-            .where(eq(leaguesTable.locationId, orgBLocationId));
-          await db.delete(locationsTable).where(eq(locationsTable.id, orgBLocationId));
-        }
-      } catch {
-        // best-effort
+            .where(eq(leaguesTable.locationId, id)),
+        );
+        await tryRun(`locations:${id}`, () =>
+          db.delete(locationsTable).where(eq(locationsTable.id, id)),
+        );
+      }
+
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+          .join('\n');
+        throw new Error(
+          `org-isolation list-leak afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+        );
       }
     });
 

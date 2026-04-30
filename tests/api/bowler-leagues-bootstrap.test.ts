@@ -104,18 +104,43 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
   });
 
   afterAll(async () => {
-    try {
-      for (const id of createdBowlerLeagueIds) {
-        await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+    // Cleanup contract (#615): every row this suite created MUST be
+    // deleted here, with per-call-site labels and a collected failure
+    // throw at the end. The previous catch-all silently leaked
+    // bowler_leagues / bowlers / teams into the shared dev DB on every
+    // run when one FK delete blew up.
+    const failures: Array<{ label: string; error: unknown }> = [];
+    const tryRun = async (label: string, fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+      } catch (error) {
+        failures.push({ label, error });
+        console.error(`[bowler-leagues-bootstrap cleanup] ${label} failed:`, error);
       }
-      for (const id of createdBowlerIds) {
-        await db.delete(bowlersTable).where(eq(bowlersTable.id, id));
-      }
-      if (teamId != null) {
-        await db.delete(teamsTable).where(eq(teamsTable.id, teamId));
-      }
-    } catch {
-      // best-effort
+    };
+
+    for (const id of createdBowlerLeagueIds) {
+      await tryRun(`bowler_leagues:${id}`, () =>
+        db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)),
+      );
+    }
+    for (const id of createdBowlerIds) {
+      await tryRun(`bowlers:${id}`, () => db.delete(bowlersTable).where(eq(bowlersTable.id, id)));
+    }
+    if (teamId != null) {
+      const id = teamId;
+      await tryRun(`teams:${id}`, () =>
+        db.delete(teamsTable).where(eq(teamsTable.id, id)),
+      );
+    }
+
+    if (failures.length > 0) {
+      const summary = failures
+        .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+        .join('\n');
+      throw new Error(
+        `bowler-leagues-bootstrap afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+      );
     }
   });
 

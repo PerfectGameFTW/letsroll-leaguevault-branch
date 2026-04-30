@@ -13,7 +13,7 @@
  * leagues are inserted directly without any DDL.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { eq, sql, inArray, like, or } from 'drizzle-orm';
+import { eq, sql, inArray, like, or, and } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   leagues,
@@ -23,6 +23,7 @@ import {
   payments,
   users,
   organizations,
+  orphanCleanupAudits,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import {
@@ -75,6 +76,28 @@ describe('Orphaned Data API (system-admin)', () => {
   let orphanUserId = 0;
   let orphanSysAdminId = 0;
   let nonOrphanUserId = 0;
+
+  // Append-only registry of every row this suite inserts. The success-
+  // path tests zero out the per-test variables (e.g. `orphanPaymentId
+  // = 0`) once the route under test has deleted the resource, which
+  // would otherwise hide the matching `orphan_cleanup_audits` row from
+  // afterAll cleanup. The registry survives those resets so audit
+  // cleanup always sees the original ids.
+  const inserted: {
+    leagues: number[];
+    teams: number[];
+    bowlers: number[];
+    bowlerLeagues: number[];
+    payments: number[];
+    users: number[];
+  } = {
+    leagues: [],
+    teams: [],
+    bowlers: [],
+    bowlerLeagues: [],
+    payments: [],
+    users: [],
+  };
 
   beforeAll(async () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
@@ -147,6 +170,7 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: leagues.id });
     orphanLeagueA = la.id;
+    inserted.leagues.push(orphanLeagueA);
 
     const [lb] = await db
       .insert(leagues)
@@ -157,6 +181,7 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: leagues.id });
     orphanLeagueB = lb.id;
+    inserted.leagues.push(orphanLeagueB);
 
     const [ln] = await db
       .insert(leagues)
@@ -167,12 +192,14 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: leagues.id });
     nonOrphanLeagueId = ln.id;
+    inserted.leagues.push(nonOrphanLeagueId);
 
     const [bw] = await db
       .insert(bowlers)
       .values({ name: 'Vitest Orphan Bowler', organizationId: targetOrgId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
+    inserted.bowlers.push(bowlerId);
 
     // Teams: parent-org-null variant + parent-missing variant + non-orphan
     const [t1] = await db
@@ -180,30 +207,35 @@ describe('Orphaned Data API (system-admin)', () => {
       .values({ name: 'Vitest Orphan Team', number: 9991, leagueId: orphanLeagueA })
       .returning({ id: teams.id });
     orphanTeamId = t1.id;
+    inserted.teams.push(orphanTeamId);
 
     parentMissingTeamId = await insertChildBypassingLeagueFk(teams, 'teams', {
       name: 'Vitest Parent-Missing Team',
       number: 9992,
       leagueId: BOGUS_LEAGUE_ID,
     });
+    inserted.teams.push(parentMissingTeamId);
 
     const [t3] = await db
       .insert(teams)
       .values({ name: 'Vitest Non-Orphan Team', number: 9993, leagueId: nonOrphanLeagueId })
       .returning({ id: teams.id });
     nonOrphanTeamId = t3.id;
+    inserted.teams.push(nonOrphanTeamId);
 
     const [bl1] = await db
       .insert(bowlerLeagues)
       .values({ bowlerId, leagueId: orphanLeagueA, teamId: orphanTeamId })
       .returning({ id: bowlerLeagues.id });
     orphanBowlerLeagueId = bl1.id;
+    inserted.bowlerLeagues.push(orphanBowlerLeagueId);
 
     parentMissingBowlerLeagueId = await insertChildBypassingLeagueFk(
       bowlerLeagues,
       'bowler_leagues',
       { bowlerId, leagueId: BOGUS_LEAGUE_ID, teamId: orphanTeamId },
     );
+    inserted.bowlerLeagues.push(parentMissingBowlerLeagueId);
 
     const [p1] = await db
       .insert(payments)
@@ -216,6 +248,7 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: payments.id });
     orphanPaymentId = p1.id;
+    inserted.payments.push(orphanPaymentId);
 
     parentMissingPaymentId = await insertChildBypassingLeagueFk(payments, 'payments', {
       bowlerId,
@@ -224,6 +257,7 @@ describe('Orphaned Data API (system-admin)', () => {
       weekOf: '2025-01-06 00:00:00',
       type: 'cash',
     });
+    inserted.payments.push(parentMissingPaymentId);
 
     const pwd = await hashPassword('Throwaway-Password-123!');
     const stamp = Date.now();
@@ -242,6 +276,7 @@ describe('Orphaned Data API (system-admin)', () => {
       role: 'user',
     });
     orphanUserId = orphanUser.id;
+    inserted.users.push(orphanUserId);
 
     const [u2] = await db
       .insert(users)
@@ -254,6 +289,7 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: users.id });
     orphanSysAdminId = u2.id;
+    inserted.users.push(orphanSysAdminId);
 
     const [u3] = await db
       .insert(users)
@@ -266,37 +302,91 @@ describe('Orphaned Data API (system-admin)', () => {
       })
       .returning({ id: users.id });
     nonOrphanUserId = u3.id;
+    inserted.users.push(nonOrphanUserId);
   });
 
   afterAll(async () => {
-    const tryRun = async (fn: () => Promise<unknown>) => {
-      try { await fn(); } catch { /* best effort */ }
+    // Cleanup contract (#615):
+    //  - Every row this suite inserted in `beforeAll` (or via the
+    //    bypass-FK helpers) must be deleted here OR have already been
+    //    deleted by the route under test (in which case the matching
+    //    DELETE is a no-op).
+    //  - Every `orphan_cleanup_audits` row written by the success-path
+    //    tests (delete / reassign / undo endpoints) must be deleted
+    //    too. We iterate the append-only `inserted` registry rather
+    //    than the per-test variables — the success-path tests zero
+    //    those out, which would otherwise hide the matching audit row.
+    //  - Any failure to delete a row is loud — labeled with table+id,
+    //    logged, AND collected so the suite fails at the end. The
+    //    previous swallow-all cleanup pattern (#615) silently leaked
+    //    rows (and FK errors) into the dev database on every run,
+    //    which bloated the dev DB and produced phantom data other
+    //    tests had to step around.
+    //  - All deletes are still attempted even when one fails, so a
+    //    single bad row doesn't block the rest of cleanup.
+    const failures: Array<{ label: string; error: unknown }> = [];
+    const tryRun = async (label: string, fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+      } catch (error) {
+        failures.push({ label, error });
+        console.error(`[orphaned-data cleanup] ${label} failed:`, error);
+      }
     };
 
+    // Audit rows first. `orphan_cleanup_audits.resource_id` is a
+    // plain integer (no FK), so order doesn't matter for FK safety —
+    // but deleting them up-front keeps the audit table from growing
+    // forever across repeated runs against the same dev DB.
+    const auditTargets: Array<{ type: string; id: number }> = [
+      ...inserted.leagues.map((id) => ({ type: 'leagues', id })),
+      ...inserted.teams.map((id) => ({ type: 'teams', id })),
+      ...inserted.bowlerLeagues.map((id) => ({ type: 'bowlerLeagues', id })),
+      ...inserted.payments.map((id) => ({ type: 'payments', id })),
+      ...inserted.users.map((id) => ({ type: 'users', id })),
+    ];
+    for (const { type, id } of auditTargets) {
+      await tryRun(`orphan_cleanup_audits ${type}:${id}`, () =>
+        db.delete(orphanCleanupAudits).where(and(
+          eq(orphanCleanupAudits.resourceType, type),
+          eq(orphanCleanupAudits.resourceId, id),
+        )),
+      );
+    }
+
     for (const id of [orphanUserId, orphanSysAdminId, nonOrphanUserId]) {
-      if (id) await tryRun(() => db.delete(users).where(eq(users.id, id)));
+      if (id) await tryRun(`users:${id}`, () => db.delete(users).where(eq(users.id, id)));
     }
     for (const id of [orphanPaymentId, parentMissingPaymentId]) {
-      if (id) await tryRun(() => db.delete(payments).where(eq(payments.id, id)));
+      if (id) await tryRun(`payments:${id}`, () => db.delete(payments).where(eq(payments.id, id)));
     }
     for (const id of [orphanBowlerLeagueId, parentMissingBowlerLeagueId]) {
-      if (id) await tryRun(() => db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)));
+      if (id) await tryRun(`bowler_leagues:${id}`, () => db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id)));
     }
     for (const id of [orphanTeamId, parentMissingTeamId, nonOrphanTeamId]) {
-      if (id) await tryRun(() => db.delete(teams).where(eq(teams.id, id)));
+      if (id) await tryRun(`teams:${id}`, () => db.delete(teams).where(eq(teams.id, id)));
     }
-    if (bowlerId) await tryRun(() => db.delete(bowlers).where(eq(bowlers.id, bowlerId)));
+    if (bowlerId) await tryRun(`bowlers:${bowlerId}`, () => db.delete(bowlers).where(eq(bowlers.id, bowlerId)));
     for (const id of [orphanLeagueA, orphanLeagueB, nonOrphanLeagueId]) {
-      if (id) await tryRun(() => db.delete(leagues).where(eq(leagues.id, id)));
+      if (id) await tryRun(`leagues:${id}`, () => db.delete(leagues).where(eq(leagues.id, id)));
     }
 
     // The per-insert FK helpers re-added each constraint as NOT VALID
     // so the orphan row wouldn't trip back-validation. Now that the
     // orphan rows are gone, mark them VALID again. VALIDATE CONSTRAINT
     // takes only SHARE UPDATE EXCLUSIVE (does not block reads/writes).
-    await validateLeagueFk('teams');
-    await validateLeagueFk('bowler_leagues');
-    await validateLeagueFk('payments');
+    await tryRun('validate teams_league_id_fkey', () => validateLeagueFk('teams'));
+    await tryRun('validate bowler_leagues_league_id_fkey', () => validateLeagueFk('bowler_leagues'));
+    await tryRun('validate payments_league_id_fkey', () => validateLeagueFk('payments'));
+
+    if (failures.length > 0) {
+      const summary = failures
+        .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+        .join('\n');
+      throw new Error(
+        `orphaned-data afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+      );
+    }
   });
 
   // ---- list endpoints --------------------------------------------------
