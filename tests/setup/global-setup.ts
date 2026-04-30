@@ -18,7 +18,21 @@
  * legacy CHECK constraint of the same name; orphan-data fixtures need a
  * trigger because triggers can be temporarily disabled for one
  * transaction (CHECK constraints cannot).
+ *
+ * Finally, the teardown asserts the dev DB does not contain orphan-audit
+ * fixture leaks (Task #629). #608 hardened the
+ * `tests/api/orphaned-data-audits.test.ts` afterAll cleanup, and #616
+ * one-shot-purged the historical accumulation; this assertion is the
+ * detection layer that fails the test workflow on the next regression
+ * instead of silently letting rows pile up. Bypass with
+ * `SKIP_AUDIT_LEAK_CHECK=1` only when you already know the dev DB is in
+ * a known-bad state and you're explicitly running the suite to gather
+ * other signal — never disable it in CI.
  */
+import {
+  checkLeakedAudits,
+  formatLeakReport,
+} from '../../scripts/check-no-leaked-audits';
 import { seedTestUsers } from './seed-test-users';
 import { cleanup as closeDbPool } from '../../server/db';
 import { installDbInvariants } from '../../server/db-invariants';
@@ -31,6 +45,36 @@ export default async function setup() {
   }
 
   return async function teardown() {
-    await closeDbPool();
+    let leakError: Error | null = null;
+    if (process.env.SKIP_AUDIT_LEAK_CHECK !== '1') {
+      try {
+        const { counts, samples, seededAdminId } = await checkLeakedAudits();
+        const report = formatLeakReport(counts, samples, seededAdminId);
+        if (report !== null) {
+          leakError = new Error(report);
+        }
+      } catch (err) {
+        // Surface query errors as a leak-check failure so the operator
+        // sees that the tripwire ran and crashed (vs. silently passing).
+        leakError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+    // Always attempt to close the pool so the event loop can exit, but
+    // never let a close-time error mask the primary leak signal — the
+    // leak report is the actionable surface, pool-close failures are not.
+    try {
+      await closeDbPool();
+    } catch (closeErr) {
+      if (leakError === null) {
+        throw closeErr;
+      }
+      console.error(
+        '[global-setup] closeDbPool() also failed during teardown; surfacing the leak error instead:',
+        closeErr,
+      );
+    }
+    if (leakError !== null) {
+      throw leakError;
+    }
   };
 }
