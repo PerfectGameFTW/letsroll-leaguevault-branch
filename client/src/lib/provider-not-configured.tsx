@@ -76,23 +76,26 @@ export interface ProviderNotConfiguredToastOptions {
    */
   description?: string;
   /**
-   * Active payment provider for the location, when known. The toast
-   * title and (default) body name this provider so admins know which
-   * integration to fix instead of always reading "Square". Defaults
-   * to 'square' for legacy callers that don't yet pass it. (Task #599.)
+   * Active payment provider for the location. The toast title and
+   * (default) body name this provider so admins know which
+   * integration to fix. Required: the CI guard
+   * `scripts/check-provider-not-configured.ts` fails the build on
+   * any call site that omits this field or hardcodes a `'square'` /
+   * `'clover'` string literal instead of passing a value sourced
+   * from `usePaymentProvider(locationId)`.
    */
-  provider?: PaymentProviderType;
+  provider: PaymentProviderType;
 }
 
 export function providerNotConfiguredToast(
-  options: ProviderNotConfiguredToastOptions = {},
+  options: ProviderNotConfiguredToastOptions,
 ): {
   title: string;
   description: string;
   variant: "destructive";
   action?: React.ReactElement;
 } {
-  const { navigate, locationId, description, provider = "square" } = options;
+  const { navigate, locationId, description, provider } = options;
   const settingsPath = locationId
     ? `/integrations?location=${locationId}`
     : "/integrations";

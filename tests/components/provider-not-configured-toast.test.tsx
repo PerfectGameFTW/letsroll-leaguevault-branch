@@ -30,7 +30,7 @@ function Trigger({
 }: {
   navigate?: (path: string) => void;
   locationId?: number | null;
-  provider?: 'square' | 'clover';
+  provider: 'square' | 'clover';
 }) {
   const { toast } = useToast();
   return (
@@ -53,7 +53,7 @@ describe('providerNotConfiguredToast', () => {
 
     render(
       <>
-        <Trigger navigate={navigate} />
+        <Trigger navigate={navigate} provider="square" />
         <Toaster />
       </>,
     );
@@ -77,7 +77,7 @@ describe('providerNotConfiguredToast', () => {
 
     render(
       <>
-        <Trigger navigate={navigate} locationId={42} />
+        <Trigger navigate={navigate} locationId={42} provider="square" />
         <Toaster />
       </>,
     );

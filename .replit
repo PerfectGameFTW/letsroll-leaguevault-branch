@@ -72,15 +72,15 @@ args = "wire-sanitization"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "not-found-code"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "build"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "test"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "not-found-code"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -150,17 +150,6 @@ args = "npx tsx scripts/check-wire-sanitization.ts"
 isValidation = true
 
 [[workflows.workflow]]
-name = "not-found-code"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx tsx scripts/check-not-found-code.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
 name = "build"
 author = "agent"
 
@@ -178,6 +167,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm test"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "not-found-code"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts"
 
 [workflows.workflow.metadata]
 isValidation = true

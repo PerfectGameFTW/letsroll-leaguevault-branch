@@ -34,7 +34,7 @@ The agent has 8 named validation commands registered that mirror `.github/workfl
 | `csrf-coverage`     | `npm run check:csrf`                               | "CSRF coverage"          |
 | `org-isolation`     | `npm run check:org-isolation`                      | "Cross-org isolation"    |
 | `wire-sanitization` | `npx tsx scripts/check-wire-sanitization.ts`       | "Wire sanitization"      |
-| `not-found-code`    | `npx tsx scripts/check-not-found-code.ts`          | "Not-found error-code"   |
+| `not-found-code`    | `npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts` | "Not-found error-code" + "Provider-not-configured toast" (chained — task #624) |
 | `build`             | `npm run build`                                    | "Production build"       |
 | `test`              | `npm test`                                         | sibling `Tests` job      |
 

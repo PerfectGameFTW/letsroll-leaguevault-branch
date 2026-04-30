@@ -76,7 +76,7 @@ vi.mock('@/lib/provider-not-configured', async () => {
   return {
     ...actual,
     providerNotConfiguredToast: (
-      opts: NonNullable<Parameters<typeof actual.providerNotConfiguredToast>[0]> = {},
+      opts: Parameters<typeof actual.providerNotConfiguredToast>[0],
     ) => {
       providerNotConfiguredToastMock(opts);
       // Return a sentinel so the hook's `toast(...)` call still has a
