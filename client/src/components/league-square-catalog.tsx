@@ -65,6 +65,28 @@ interface LeagueSquareCatalogProps {
   onCategoryChange: (categoryId: string | null) => void;
 }
 
+interface OriginalSelection {
+  variationId: string | null;
+  itemId: string | null;
+  name: string | null;
+  fee: number | null;
+}
+
+function readOriginal(
+  defaults: Partial<InsertLeague> | undefined,
+  variationKey: 'lineageItemVariationId' | 'prizeFundItemVariationId',
+  itemKey: 'squareLineageItemId' | 'squarePrizeFundItemId',
+  nameKey: 'squareLineageItemName' | 'squarePrizeFundItemName',
+  feeKey: 'lineageFee' | 'prizeFundFee',
+): OriginalSelection {
+  return {
+    variationId: defaults?.[variationKey] ?? null,
+    itemId: defaults?.[itemKey] ?? null,
+    name: defaults?.[nameKey] ?? null,
+    fee: defaults?.[feeKey] ?? null,
+  };
+}
+
 export function LeagueSquareCatalog({
   form,
   locationId,
@@ -175,6 +197,59 @@ export function LeagueSquareCatalog({
       }
     }
     return null;
+  };
+
+  // Snapshot of the originally-saved Lineage / Prize Fund selections, taken
+  // from the form's default values. RHF updates `formState.defaultValues`
+  // whenever `form.reset(values)` is called (e.g. when the Edit-League dialog
+  // loads a league), so this stays in sync with what was last persisted —
+  // unlike `form.watch(...)`, which reflects in-progress user edits. The
+  // fallback rows in the Lineage/Prize Fund dropdowns use these snapshots so
+  // re-selecting the fallback after picking a different visible item atomically
+  // restores the originally-saved item id, name, and fee instead of silently
+  // leaving the form in a half-updated state.
+  const defaults = form.formState.defaultValues as Partial<InsertLeague> | undefined;
+  const originalLineage = readOriginal(
+    defaults,
+    'lineageItemVariationId',
+    'squareLineageItemId',
+    'squareLineageItemName',
+    'lineageFee',
+  );
+  const originalPrizeFund = readOriginal(
+    defaults,
+    'prizeFundItemVariationId',
+    'squarePrizeFundItemId',
+    'squarePrizeFundItemName',
+    'prizeFundFee',
+  );
+
+  const restoreLineageOriginal = () => {
+    form.setValue('squareLineageItemId', originalLineage.itemId);
+    form.setValue('lineageItemVariationId', originalLineage.variationId);
+    form.setValue('squareLineageItemName', originalLineage.name);
+    form.setValue('lineageFee', originalLineage.fee);
+    const lineagePrice = originalLineage.fee ?? 0;
+    const prizeFundPrice =
+      getPriceForVariation(form.getValues('prizeFundItemVariationId')) ??
+      form.getValues('prizeFundFee') ??
+      0;
+    const total = lineagePrice + prizeFundPrice;
+    if (total > 0) form.setValue('weeklyFee', total);
+  };
+
+  const restorePrizeFundOriginal = () => {
+    form.setValue('squarePrizeFundItemId', originalPrizeFund.itemId);
+    form.setValue('prizeFundItemVariationId', originalPrizeFund.variationId);
+    form.setValue('squarePrizeFundItemName', originalPrizeFund.name);
+    form.setValue('prizeFundFee', originalPrizeFund.fee);
+    const prizeFundPrice = originalPrizeFund.fee ?? 0;
+    const lineagePrice =
+      getPriceForVariation(form.getValues('lineageItemVariationId')) ??
+      form.getValues('lineageFee') ??
+      0;
+    const total = lineagePrice + prizeFundPrice;
+    if (total > 0) form.setValue('weeklyFee', total);
   };
 
   if (!locationId) {
@@ -299,21 +374,34 @@ export function LeagueSquareCatalog({
               form.setValue('lineageItemVariationId', null);
               form.setValue('squareLineageItemName', null);
               form.setValue('lineageFee', null);
-            } else {
-              for (const item of catalogItems) {
-                const variation = item.variations.find(v => v.id === value);
-                if (variation) {
-                  form.setValue('squareLineageItemId', item.id);
-                  form.setValue('lineageItemVariationId', variation.id);
-                  form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                  const lineagePrice = variation.price || 0;
-                  const prizeFundPrice = getPriceForVariation(form.getValues('prizeFundItemVariationId'));
-                  const total = lineagePrice + (prizeFundPrice || 0);
-                  if (total > 0) form.setValue('weeklyFee', total);
-                  if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
-                  break;
-                }
+              return;
+            }
+            for (const item of catalogItems) {
+              const variation = item.variations.find(v => v.id === value);
+              if (variation) {
+                form.setValue('squareLineageItemId', item.id);
+                form.setValue('lineageItemVariationId', variation.id);
+                form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                const lineagePrice = variation.price || 0;
+                const prizeFundPrice = getPriceForVariation(form.getValues('prizeFundItemVariationId'));
+                const total = lineagePrice + (prizeFundPrice || 0);
+                if (total > 0) form.setValue('weeklyFee', total);
+                if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
+                return;
               }
+            }
+            // The clicked value isn't in `catalogItems` — the only legitimate
+            // value here is the originally-saved Lineage row (rendered as the
+            // fallback below for items that have been hidden by the search /
+            // category filter, or removed from Square entirely). Restore the
+            // full saved snapshot so the form doesn't end up with the new
+            // variation id but the previous item id / name / fee.
+            if (
+              originalLineage.variationId &&
+              originalLineage.name &&
+              value === originalLineage.variationId
+            ) {
+              restoreLineageOriginal();
             }
           }}
           disabled={!hasCatalogItems}
@@ -331,11 +419,11 @@ export function LeagueSquareCatalog({
               <>
                 <SelectItem value="none">None</SelectItem>
                 {(() => {
-                  const savedId = form.watch('lineageItemVariationId');
-                  const savedName = form.watch('squareLineageItemName');
+                  const savedId = originalLineage.variationId;
+                  const savedName = originalLineage.name;
                   const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
                   if (savedId && savedName && !isInList) {
-                    return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
+                    return <SelectItem key={savedId} value={savedId} data-testid="select-lineage-fallback">{savedName}</SelectItem>;
                   }
                   return null;
                 })()}
@@ -367,21 +455,30 @@ export function LeagueSquareCatalog({
               form.setValue('prizeFundItemVariationId', null);
               form.setValue('squarePrizeFundItemName', null);
               form.setValue('prizeFundFee', null);
-            } else {
-              for (const item of catalogItems) {
-                const variation = item.variations.find(v => v.id === value);
-                if (variation) {
-                  form.setValue('squarePrizeFundItemId', item.id);
-                  form.setValue('prizeFundItemVariationId', variation.id);
-                  form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                  const lineagePrice = getPriceForVariation(form.getValues('lineageItemVariationId'));
-                  const prizeFundPrice = variation.price || 0;
-                  const total = (lineagePrice || 0) + prizeFundPrice;
-                  if (total > 0) form.setValue('weeklyFee', total);
-                  if (prizeFundPrice > 0) form.setValue('prizeFundFee', prizeFundPrice);
-                  break;
-                }
+              return;
+            }
+            for (const item of catalogItems) {
+              const variation = item.variations.find(v => v.id === value);
+              if (variation) {
+                form.setValue('squarePrizeFundItemId', item.id);
+                form.setValue('prizeFundItemVariationId', variation.id);
+                form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                const lineagePrice = getPriceForVariation(form.getValues('lineageItemVariationId'));
+                const prizeFundPrice = variation.price || 0;
+                const total = (lineagePrice || 0) + prizeFundPrice;
+                if (total > 0) form.setValue('weeklyFee', total);
+                if (prizeFundPrice > 0) form.setValue('prizeFundFee', prizeFundPrice);
+                return;
               }
+            }
+            // See the Lineage handler above for why we restore the snapshot
+            // here instead of silently exiting.
+            if (
+              originalPrizeFund.variationId &&
+              originalPrizeFund.name &&
+              value === originalPrizeFund.variationId
+            ) {
+              restorePrizeFundOriginal();
             }
           }}
           disabled={!hasCatalogItems}
@@ -399,11 +496,11 @@ export function LeagueSquareCatalog({
               <>
                 <SelectItem value="none">None</SelectItem>
                 {(() => {
-                  const savedId = form.watch('prizeFundItemVariationId');
-                  const savedName = form.watch('squarePrizeFundItemName');
+                  const savedId = originalPrizeFund.variationId;
+                  const savedName = originalPrizeFund.name;
                   const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
                   if (savedId && savedName && !isInList) {
-                    return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
+                    return <SelectItem key={savedId} value={savedId} data-testid="select-prize-fund-fallback">{savedName}</SelectItem>;
                   }
                   return null;
                 })()}

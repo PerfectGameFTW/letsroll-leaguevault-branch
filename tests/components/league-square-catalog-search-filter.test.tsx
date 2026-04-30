@@ -57,15 +57,25 @@ import { LeagueSquareCatalog } from '@/components/league-square-catalog';
 interface HarnessProps {
   savedLineageVariationId?: string | null;
   savedLineageItemName?: string | null;
+  savedLineageItemId?: string | null;
+  savedLineageFee?: number | null;
   savedPrizeFundVariationId?: string | null;
   savedPrizeFundItemName?: string | null;
+  savedPrizeFundItemId?: string | null;
+  savedPrizeFundFee?: number | null;
+  savedWeeklyFee?: number;
 }
 
 function Harness({
   savedLineageVariationId = null,
   savedLineageItemName = null,
+  savedLineageItemId = null,
+  savedLineageFee = null,
   savedPrizeFundVariationId = null,
   savedPrizeFundItemName = null,
+  savedPrizeFundItemId = null,
+  savedPrizeFundFee = null,
+  savedWeeklyFee = 0,
 }: HarnessProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
@@ -82,15 +92,15 @@ function Harness({
       practiceStartTime: '',
       competitionStartTime: '',
       timezone: 'America/New_York',
-      weeklyFee: 0,
-      lineageFee: null,
-      prizeFundFee: null,
+      weeklyFee: savedWeeklyFee,
+      lineageFee: savedLineageFee,
+      prizeFundFee: savedPrizeFundFee,
       finalTwoWeeksDueWeek: 6,
       paymentMode: 'weekly',
-      squareLineageItemId: null,
+      squareLineageItemId: savedLineageItemId,
       lineageItemVariationId: savedLineageVariationId,
       squareLineageItemName: savedLineageItemName,
-      squarePrizeFundItemId: null,
+      squarePrizeFundItemId: savedPrizeFundItemId,
       prizeFundItemVariationId: savedPrizeFundVariationId,
       squarePrizeFundItemName: savedPrizeFundItemName,
       squareCategoryId: null,
@@ -108,6 +118,22 @@ function Harness({
         selectedCategoryId={selectedCategoryId}
         onCategoryChange={setSelectedCategoryId}
       />
+      <div data-testid="state-lineage">
+        {JSON.stringify({
+          variationId: form.watch('lineageItemVariationId') ?? null,
+          itemId: form.watch('squareLineageItemId') ?? null,
+          name: form.watch('squareLineageItemName') ?? null,
+          fee: form.watch('lineageFee') ?? null,
+        })}
+      </div>
+      <div data-testid="state-prize-fund">
+        {JSON.stringify({
+          variationId: form.watch('prizeFundItemVariationId') ?? null,
+          itemId: form.watch('squarePrizeFundItemId') ?? null,
+          name: form.watch('squarePrizeFundItemName') ?? null,
+          fee: form.watch('prizeFundFee') ?? null,
+        })}
+      </div>
     </Form>
   );
 }
@@ -269,5 +295,106 @@ describe('LeagueSquareCatalog search filter', () => {
       options.some((opt) => opt.textContent === 'Monday League Item 2'),
     ).toBe(true);
     await closeOpenSelect(user);
+  });
+
+  it('re-selecting the saved fallback row after picking a different visible item restores the originally-saved item id, name, and fee atomically', async () => {
+    const user = userEvent.setup();
+    // Pre-seed both Lineage and Prize Fund with full saved selections that
+    // point at variations the catalog does NOT contain ("var-deleted-l" and
+    // "var-deleted-p"), simulating items that were removed from Square (or
+    // are currently being filtered out by category). The fallback row is the
+    // only way to re-select them, and we need to prove that doing so restores
+    // every related field — not just the variation id.
+    renderHarness({
+      savedLineageVariationId: 'var-deleted-l',
+      savedLineageItemId: 'item-deleted-l',
+      savedLineageItemName: 'Deleted Lineage Item',
+      savedLineageFee: 2500,
+      savedPrizeFundVariationId: 'var-deleted-p',
+      savedPrizeFundItemId: 'item-deleted-p',
+      savedPrizeFundItemName: 'Deleted Prize Fund Item',
+      savedPrizeFundFee: 1500,
+      savedWeeklyFee: 4000,
+    });
+
+    const input = await screen.findByTestId<HTMLInputElement>(
+      'input-catalog-search',
+    );
+    await waitFor(() => expect(input).not.toBeDisabled());
+
+    const readLineage = () =>
+      JSON.parse(screen.getByTestId('state-lineage').textContent ?? '{}');
+    const readPrizeFund = () =>
+      JSON.parse(screen.getByTestId('state-prize-fund').textContent ?? '{}');
+
+    // Sanity: form starts with the originally-saved values intact.
+    expect(readLineage()).toEqual({
+      variationId: 'var-deleted-l',
+      itemId: 'item-deleted-l',
+      name: 'Deleted Lineage Item',
+      fee: 2500,
+    });
+    expect(readPrizeFund()).toEqual({
+      variationId: 'var-deleted-p',
+      itemId: 'item-deleted-p',
+      name: 'Deleted Prize Fund Item',
+      fee: 1500,
+    });
+
+    // Pick a visible Lineage item. The form's Lineage fields update to point
+    // at the visible item (var-1 / item-1 / Monday League Item 1 / 1500).
+    await openSelect(user, LINEAGE_TRIGGER_INDEX);
+    await user.click(
+      screen.getByRole('option', { name: /^Monday League Item 1\b/ }),
+    );
+    await waitFor(() => {
+      expect(readLineage()).toEqual({
+        variationId: 'var-1',
+        itemId: 'item-1',
+        name: 'Monday League Item 1',
+        fee: 1500,
+      });
+    });
+
+    // Pick a different visible Prize Fund item too.
+    await openSelect(user, PRIZE_FUND_TRIGGER_INDEX);
+    await user.click(
+      screen.getByRole('option', { name: /^Monday League Item 2\b/ }),
+    );
+    await waitFor(() => {
+      expect(readPrizeFund()).toEqual({
+        variationId: 'var-2',
+        itemId: 'item-2',
+        name: 'Monday League Item 2',
+        fee: 1500,
+      });
+    });
+
+    // Re-open Lineage and click the fallback row for the originally-saved
+    // (catalog-missing) selection. Before the fix this silently exited and
+    // left the form with var-1 / item-1 / "Monday League Item 1" / 1500.
+    // After the fix, every field snaps back to the saved snapshot.
+    await openSelect(user, LINEAGE_TRIGGER_INDEX);
+    await user.click(screen.getByTestId('select-lineage-fallback'));
+    await waitFor(() => {
+      expect(readLineage()).toEqual({
+        variationId: 'var-deleted-l',
+        itemId: 'item-deleted-l',
+        name: 'Deleted Lineage Item',
+        fee: 2500,
+      });
+    });
+
+    // Same for Prize Fund.
+    await openSelect(user, PRIZE_FUND_TRIGGER_INDEX);
+    await user.click(screen.getByTestId('select-prize-fund-fallback'));
+    await waitFor(() => {
+      expect(readPrizeFund()).toEqual({
+        variationId: 'var-deleted-p',
+        itemId: 'item-deleted-p',
+        name: 'Deleted Prize Fund Item',
+        fee: 1500,
+      });
+    });
   });
 });
