@@ -16,9 +16,12 @@ version pin from `2025-01-23` to a current version.
   outbound request — independently of the dashboard pin.
 - We make **zero raw HTTP** calls to Square. 100% of our wire goes
   through the SDK client.
-- We have **no Square webhook receiver** (only Clover). The CSRF-
-  exempt path covers `/payments-provider/webhooks` generically; the
-  `webhooks.ts` router only mounts a `POST /webhooks/clover` handler.
+- We have **no real Square webhook receiver** (only Clover). The
+  CSRF-exempt path covers `/payments-provider/webhooks`
+  generically; the `webhooks.ts` router mounts the real
+  `POST /webhooks/clover` handler plus a tripwire stub at
+  `POST /webhooks/square` (task #612) that 501's any unexpected
+  Square delivery and emits a `log.error` line so on-call sees it.
 - Our SDK call surface is small and already on the v40+ flat-client
   shape (no `.result.errors[]` wrapper, structured errors directly on
   `SquareError`). All response field reads in our code are on fields
@@ -228,13 +231,23 @@ client. No raw HTTP.**
 
 ### Receivers in this repo
 
-- `server/routes/payments-provider/webhooks.ts` — **Clover only**. Per
-  task #577 the file mounts a single handler at `POST /webhooks/clover`.
-  No `POST /webhooks/square` route exists.
+- `server/routes/payments-provider/webhooks.ts` — **Clover handler
+  + Square tripwire stub**.
+  - `POST /webhooks/clover` is the real, signed Clover handler from
+    task #577.
+  - `POST /webhooks/square` is a tripwire stub added in task #612.
+    It answers `501 Not Implemented` and emits a single
+    `log.error` line capturing method, path, all request headers,
+    and the raw body. We do not subscribe to any Square webhook
+    events today, so the tripwire exists purely to make an
+    accidental subscription loud instead of silent. There is no
+    HMAC verification on the stub — we have no Square webhook
+    secret to verify against, and the whole point is to fire on
+    any unexpected delivery so on-call sees it.
 - `server/middleware/csrf.ts:39-45` — exempts the path prefix
-  `/payments-provider/webhooks` from CSRF. The comment explicitly
-  reads "Clover today; Square may follow," confirming the exemption
-  is forward-compatible but no Square handler is mounted yet.
+  `/payments-provider/webhooks` from CSRF. The exemption covers
+  both the Clover handler and the Square tripwire above without
+  needing to be touched.
 
 ### Subscriptions on Square's side
 
@@ -244,10 +257,11 @@ no Square webhook subscriptions exist on either the production or
 sandbox application. If any exist, Square will start delivering
 events to whatever URL was registered, and:
 
-1. We have no signed-receiver code to verify them with — so they
-   would land at a 404 (or worse, get treated as a Clover event by
-   the path-prefix CSRF exemption if the URL was registered under
-   `/payments-provider/webhooks/...`).
+1. We still have no signed-receiver code, so a real subscription's
+   events would hit the task #612 tripwire stub and return 501.
+   The 501 is loud enough to surface in on-call but it is not a
+   substitute for a real handler — money-relevant events
+   (refunds, disputes, chargebacks) would still go unprocessed.
 2. The dashboard version pin would dictate the payload schema. Today
    that schema is `2025-01-23`; bumping to `2026-01-22` could change
    the event shape without us noticing because no handler reads it.
@@ -400,11 +414,13 @@ prerequisites for the audit's evidence.
 None of these block the version bump. They were filed as separate
 project tasks so the bump itself (Task #600) can ship independently.
 
-1. **Task #612 — Stub a Square webhook receiver.** Even without a
-   registered subscription, having a `POST /webhooks/square`
-   handler that returns `501`/`410` with structured logging closes
-   the "what if someone registers a subscription out-of-band"
-   risk surfaced in §4.
+1. **Task #612 — Stub a Square webhook receiver. ✅ DONE.**
+   Implemented in `server/routes/payments-provider/webhooks.ts` as
+   a `POST /webhooks/square` handler that returns
+   `501 SQUARE_WEBHOOK_NOT_IMPLEMENTED` and emits a single
+   `log.error` line with method, path, headers, and raw body.
+   Closes the "what if someone registers a subscription
+   out-of-band" risk surfaced in §4.
 2. **Task #613 — Capture catalog pagination in `listCatalogItems`.**
    Today the unfiltered branch (`server/services/square-provider.ts`
    `catalog.list`/`catalog.searchItems`) only fetches the first
