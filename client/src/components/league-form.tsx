@@ -146,7 +146,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     }
   };
 
-  const handleLocationChange = (value: string) => {
+  const handleLocationChange = (_value: string) => {
     setSelectedCategoryId(null);
     form.setValue('squareCategoryId', null);
     form.setValue('squareLineageItemId', null);

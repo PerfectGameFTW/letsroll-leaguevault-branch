@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { FormControl, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,6 +13,31 @@ import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertLeague } from "@shared/schema";
+
+const searchStorageKey = (locationId: number) =>
+  `league-square-catalog:search:${locationId}`;
+export const categoryStorageKey = (locationId: number) =>
+  `league-square-catalog:category:${locationId}`;
+
+function readStoredFilter(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredFilter(key: string, value: string | null) {
+  try {
+    if (value && value.length > 0) {
+      localStorage.setItem(key, value);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore quota / privacy-mode errors */
+  }
+}
 
 interface CatalogItemVariation {
   id: string;
@@ -88,7 +114,45 @@ export function LeagueSquareCatalog({
   const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
   const hasCatalogItems = allCatalogItems.length > 0;
 
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(() =>
+    locationId ? readStoredFilter(searchStorageKey(locationId)) : ''
+  );
+  useEffect(() => {
+    if (!locationId) {
+      setSearchInput('');
+      return;
+    }
+    setSearchInput(readStoredFilter(searchStorageKey(locationId)));
+  }, [locationId]);
+
+  useEffect(() => {
+    if (!locationId) return;
+    if (selectedCategoryId) return;
+    const saved = readStoredFilter(categoryStorageKey(locationId));
+    if (!saved) return;
+    onCategoryChange(saved);
+    form.setValue('squareCategoryId', saved);
+  }, [locationId, selectedCategoryId, onCategoryChange, form]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+    if (locationId) writeStoredFilter(searchStorageKey(locationId), value);
+  };
+
+  const handleClearFilters = () => {
+    if (searchInput) {
+      setSearchInput('');
+      if (locationId) writeStoredFilter(searchStorageKey(locationId), null);
+    }
+    if (selectedCategoryId) {
+      onCategoryChange(null);
+      form.setValue('squareCategoryId', null);
+      if (locationId) writeStoredFilter(categoryStorageKey(locationId), null);
+    }
+  };
+
+  const hasActiveFilters = searchInput.length > 0 || !!selectedCategoryId;
+
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(searchInput.trim().toLowerCase()), 200);
@@ -126,7 +190,21 @@ export function LeagueSquareCatalog({
 
   return (
     <div className="space-y-3 rounded-lg border p-3">
-      <div className="text-sm font-medium">Square Catalog Items</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Square Catalog Items</div>
+        {hasActiveFilters && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-2 py-1 text-xs"
+            onClick={handleClearFilters}
+            data-testid="button-clear-catalog-filters"
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
 
       {isLoadingCatalog && (
         <p className="text-sm text-muted-foreground">Loading catalog items&hellip;</p>
@@ -144,7 +222,7 @@ export function LeagueSquareCatalog({
             type="text"
             placeholder="Search by item name…"
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             disabled={!hasCatalogItems}
             className="pl-8 pr-8"
             data-testid="input-catalog-search"
@@ -152,7 +230,7 @@ export function LeagueSquareCatalog({
           {searchInput && (
             <button
               type="button"
-              onClick={() => setSearchInput('')}
+              onClick={() => handleSearchChange('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
               data-testid="button-clear-catalog-search"
@@ -182,6 +260,7 @@ export function LeagueSquareCatalog({
             const catId = value === 'all' ? null : value;
             onCategoryChange(catId);
             form.setValue('squareCategoryId', catId);
+            if (locationId) writeStoredFilter(categoryStorageKey(locationId), catId);
           }}
           disabled={!hasCatalogItems}
         >
