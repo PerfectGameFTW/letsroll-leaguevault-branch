@@ -27,16 +27,15 @@
  *      - Every failure path fires log.error so on-call has signal.
  *
  *   2. SquarePaymentProvider.processPayment + .createOrderWithPayment
- *      (provider layer):
- *      - 400 → INVALID_REQUEST (note the two methods have DIFFERENT
+ *      (provider layer): both methods map SquareError statusCodes the
+ *      same way:
+ *      - 400 → INVALID_REQUEST (the two methods do have different
  *        hand-authored userMessage sentences — both are pinned).
- *      - 401 → SYSTEM_ERROR for processPayment. createOrderWithPayment
- *        has no 401-specific branch in production today, so a 401
- *        falls through to PAYMENT_FAILED with the order-flow's
- *        fallback sentence — that current behavior is also pinned so
- *        any future change is a deliberate, reviewed one.
- *      - 402 → PAYMENT_DECLINED with the canonical decline sentence
- *        for both methods.
+ *      - 401 → SYSTEM_ERROR with the same safe "temporarily
+ *        unavailable" sentence (Task #619 closed an asymmetry where
+ *        createOrderWithPayment used to fall through to PAYMENT_FAILED
+ *        on a 401; both methods now share the SYSTEM_ERROR contract).
+ *      - 402 → PAYMENT_DECLINED with the canonical decline sentence.
  *      - Fallback (non-mapped status / non-SquareError) →
  *        PAYMENT_FAILED, with each method's own fallback sentence.
  *      - Already-typed PaymentProviderError / ProviderNotConfiguredError
@@ -532,15 +531,9 @@ describe('SquarePaymentProvider.createOrderWithPayment — SquareError mapping (
   });
 
   it('maps a 401 (auth) into the generic SYSTEM_ERROR bucket — never leaks credentials', async () => {
-    // createOrderWithPayment originally had no 401-specific branch and
-    // would fall through to PAYMENT_FAILED, which differed from
-    // processPayment's 401 → SYSTEM_ERROR mapping. Task #619 closed
-    // that asymmetry: a Square auth failure (revoked / expired token,
-    // wrong app id) is a server-side credential problem the admin
-    // can't action with a card retry, so the user-facing toast must
-    // tell them it's a temporary infra issue rather than a declined
-    // card. This test pins both methods to the same 401 contract so
-    // a future refactor can't silently regress one of them.
+    // Same SYSTEM_ERROR contract as processPayment above — both Square
+    // charge methods must hand admins the "temporarily unavailable"
+    // sentence on a credential failure rather than a card-retry prompt.
     mockPaymentsCreate.mockRejectedValue(
       squareErr(401, 'Bearer token rejected', 'UNAUTHORIZED'),
     );
