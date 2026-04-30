@@ -1,4 +1,5 @@
 import { FormControl, FormItem, FormLabel } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -7,6 +8,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
+import { Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertLeague } from "@shared/schema";
 
@@ -85,6 +88,19 @@ export function LeagueSquareCatalog({
   const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
   const hasCatalogItems = allCatalogItems.length > 0;
 
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchInput.trim().toLowerCase()), 200);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  const visibleCatalogItems = useMemo(() => {
+    if (!debouncedSearch) return catalogItems;
+    return catalogItems.filter(item => item.name.toLowerCase().includes(debouncedSearch));
+  }, [catalogItems, debouncedSearch]);
+  const isSearching = debouncedSearch.length > 0;
+
   const getPriceForVariation = (variationId: string | null | undefined): number | null => {
     if (!variationId) return null;
     const searchLists = [allCatalogItems, catalogItems];
@@ -112,6 +128,40 @@ export function LeagueSquareCatalog({
       {locationId && !isLoadingCatalog && !hasCatalogItems && (
         <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
       )}
+
+      <FormItem>
+        <FormLabel>Search Items</FormLabel>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            type="text"
+            placeholder="Search by item name…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            disabled={!hasCatalogItems}
+            className="pl-8 pr-8"
+            data-testid="input-catalog-search"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => setSearchInput('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+              data-testid="button-clear-catalog-search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {isSearching && (
+          <p className="text-xs text-muted-foreground" data-testid="text-catalog-search-count">
+            {visibleCatalogItems.length === 0
+              ? 'No items match your search'
+              : `${visibleCatalogItems.length} of ${catalogItems.length} item${catalogItems.length === 1 ? '' : 's'} match`}
+          </p>
+        )}
+      </FormItem>
 
       <FormItem>
         <FormLabel>Filter by Category</FormLabel>
@@ -197,13 +247,13 @@ export function LeagueSquareCatalog({
                 {(() => {
                   const savedId = form.watch('lineageItemVariationId');
                   const savedName = form.watch('squareLineageItemName');
-                  const isInList = savedId && catalogItems.some(item => item.variations.some(v => v.id === savedId));
+                  const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
                   if (savedId && savedName && !isInList) {
                     return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
                   }
                   return null;
                 })()}
-                {catalogItems.map((item) =>
+                {visibleCatalogItems.map((item) =>
                   item.variations.map((variation) => (
                     <SelectItem key={variation.id} value={variation.id}>
                       {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
@@ -262,7 +312,16 @@ export function LeagueSquareCatalog({
             {hasCatalogItems && (
               <>
                 <SelectItem value="none">None</SelectItem>
-                {catalogItems.map((item) =>
+                {(() => {
+                  const savedId = form.watch('prizeFundItemVariationId');
+                  const savedName = form.watch('squarePrizeFundItemName');
+                  const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
+                  if (savedId && savedName && !isInList) {
+                    return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
+                  }
+                  return null;
+                })()}
+                {visibleCatalogItems.map((item) =>
                   item.variations.map((variation) => (
                     <SelectItem key={variation.id} value={variation.id}>
                       {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
