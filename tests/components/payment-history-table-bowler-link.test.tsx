@@ -15,7 +15,6 @@ import type { Payment } from '@shared/schema';
 
 const PAYMENTS: Payment[] = [
   {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     id: 1,
     bowlerId: 42,
     leagueId: 7,

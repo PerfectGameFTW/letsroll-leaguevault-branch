@@ -669,7 +669,6 @@ function main(): void {
   // any of which might be a non-/api bypass. Fail loudly rather than
   // silently under-report.
   if (propagationExhausted) {
-    // eslint-disable-next-line no-console
     console.error(
       `[check-csrf-coverage] FAIL — composition-edge propagation did not converge in ${PROPAGATION_CAP} passes. The router-composition graph likely contains a cycle, or the chain is deeper than the cap. Effective-path computation is INCOMPLETE; results below may be missing bypasses. Investigate scripts/check-csrf-coverage.ts and the router import graph.`,
     );
@@ -709,24 +708,20 @@ function main(): void {
   }
 
   if (violations.length === 0) {
-    // eslint-disable-next-line no-console
     console.log(
       '[check-csrf-coverage] OK — no state-changing routes outside /api detected anywhere in server/.',
     );
     return;
   }
 
-  // eslint-disable-next-line no-console
   console.error(
     '[check-csrf-coverage] FAIL — state-changing routes outside /api detected:',
   );
   for (const v of violations) {
     const rel = relative(process.cwd(), v.source);
     const tail = v.detail ? `  [${v.detail}]` : '';
-    // eslint-disable-next-line no-console
     console.error(`  - ${v.method} ${v.path}  (in ${rel})${tail}`);
   }
-  // eslint-disable-next-line no-console
   console.error(
     "\nThe global CSRF mount is `app.use('/api', csrfProtection)` — routes\n" +
       'outside /api silently bypass it. Either move the route under /api,\n' +

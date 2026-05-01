@@ -243,7 +243,6 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         await fn();
       } catch (error) {
         failures.push({ label, error });
-        // eslint-disable-next-line no-console
         console.error(`[orphan-audits cleanup] ${label} failed:`, error);
       }
     };

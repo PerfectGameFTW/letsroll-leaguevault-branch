@@ -237,7 +237,6 @@ function main(): void {
   if (!existsSync(SERVER_DIR)) {
     // Synthetic fixtures may omit `server/` entirely — that means
     // there's nothing to check, which is trivially OK.
-    // eslint-disable-next-line no-console
     console.log('[check-trust-proxy-coverage] OK — no server/ directory');
     process.exit(0);
   }
@@ -282,27 +281,22 @@ function main(): void {
   }
 
   if (violations.length === 0) {
-    // eslint-disable-next-line no-console
     console.log('[check-trust-proxy-coverage] OK');
     process.exit(0);
   }
 
-  // eslint-disable-next-line no-console
   console.error(
     '[check-trust-proxy-coverage] FAIL — the following express() entrypoints under server/ have a misconfigured trust-proxy guard:',
   );
   for (const v of violations) {
     if (v.kind === 'missing') {
-      // eslint-disable-next-line no-console
       console.error(`  ${v.file}:${v.line}  express() without assertTrustProxyAtBoot in same file`);
     } else {
-      // eslint-disable-next-line no-console
       console.error(
         `  ${v.file}:${v.line}  assertTrustProxyAtBoot called after listen() at line ${v.listenLine} — assertion must fire before any request can be handled`,
       );
     }
   }
-  // eslint-disable-next-line no-console
   console.error(
     '\nFix by importing assertTrustProxyAtBoot from server/lib/trust-proxy-check and calling it on the new app right after `app.set("trust proxy", N)`, before any `<app|server>.listen(...)` call in the same file. See the entrypoint registry in that file.',
   );
