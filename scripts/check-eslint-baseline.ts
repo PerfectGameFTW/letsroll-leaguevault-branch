@@ -55,7 +55,11 @@ const RULE_CEILINGS: Record<string, number> = {
   // `server/services/bowlnow-sync-retry.ts` and
   // `scripts/verify-trust-proxy-deploy.ts` were typed away in the
   // same pass; the remaining sites are test-only.
-  '@typescript-eslint/no-non-null-assertion': 256,
+  // Ratcheted 256 → 255 in task #646 after deleting the dead
+  // `checkAndChargeFinalTwoWeeks` helper from
+  // `server/services/payment-checks.ts`, which carried one
+  // suppression for this rule.
+  '@typescript-eslint/no-non-null-assertion': 255,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -64,7 +68,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // Ratcheted 92 → 91 in task #572 to match the live count after the
   // same CI green-up pass paid down one cast without lowering this
   // ceiling at the time.
-  '@typescript-eslint/no-unnecessary-type-assertion': 89,
+  // Ratcheted 89 → 88 in task #646 after deleting the dead
+  // `checkAndChargeFinalTwoWeeks` helper, which carried one
+  // suppression for this rule.
+  '@typescript-eslint/no-unnecessary-type-assertion': 88,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -103,7 +110,12 @@ const RULE_CEILINGS: Record<string, number> = {
 // from 38 → 35 in tests/unit/apple-pay-jobs.test.ts and the
 // matching downward ratchets on no-unnecessary-type-assertion
 // (92 → 91) and no-restricted-syntax (159 → 154).
-const TOTAL_CEILING = 524;
+// Ratcheted 524 → 522 in task #646 alongside the per-rule drops on
+// `no-non-null-assertion` (256 → 255) and `no-unnecessary-type-assertion`
+// (89 → 88) — both came from the dead `checkAndChargeFinalTwoWeeks`
+// helper that was removed when the "Final 2 Weeks Due By" feature
+// retired.
+const TOTAL_CEILING = 522;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

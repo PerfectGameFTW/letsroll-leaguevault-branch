@@ -21,8 +21,14 @@ const WEEKDAY_INDEX: Record<typeof WEEKDAYS[number], number> = {
  *
  * Returns `{ ok: true }` on success, or `{ ok: false, message, path }` for
  * the first failing date so callers can attach a `.refine` error.
+ *
+ * Exported for the PATCH route in `server/routes/leagues.ts`, which has
+ * to enforce schedule-context checks server-side using the merged
+ * persisted-league + patch-body view (a partial PATCH that only changes
+ * `doublePayDates` would otherwise bypass the schema-level guard, since
+ * the schema can't see the persisted weekDay/seasonStart/seasonEnd).
  */
-function validateDoublePayDates(args: {
+export function validateDoublePayDates(args: {
   doublePayDates: string[] | undefined | null;
   skipDates?: string[] | null;
   cancelledDates?: string[] | null;
@@ -150,7 +156,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   skipDates: z.array(z.string()).default([]),
   cancelledDates: z.array(z.string()).default([]),
   doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed").default([]),
-}).omit({ id: true })
+}).omit({ id: true, finalTwoWeeksDueWeek: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
     "Season end date must be after season start date"

@@ -1,0 +1,15 @@
+-- Task #646: drop the legacy DEFAULT 6 on `final_two_weeks_due_week`.
+--
+-- The column itself is preserved (it's the source for the one-shot
+-- `backfill-double-pay-dates.ts` startup migration that derives 2 ISO
+-- `double_pay_dates` from this single integer). But the DEFAULT must
+-- go: with `DEFAULT 6` in place, every newly-created league —
+-- including ones whose form no longer surfaces this field — would
+-- silently land in the DB with `final_two_weeks_due_week = 6`. On the
+-- next server start the backfill would then auto-seed 2 double-pay
+-- dates that the admin never picked, causing unintended 2× charges.
+--
+-- After this migration: existing rows keep whatever value they had,
+-- but new INSERTs that don't set the column get NULL, and the
+-- backfill's `IS NOT NULL` guard correctly skips them.
+ALTER TABLE leagues ALTER COLUMN final_two_weeks_due_week DROP DEFAULT;

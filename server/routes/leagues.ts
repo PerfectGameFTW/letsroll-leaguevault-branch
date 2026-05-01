@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { insertLeagueSchema, updateLeagueSchema, DEFAULT_TIMEZONE } from "@shared/schema";
+import { validateDoublePayDates } from "@shared/schema/leagues";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError, parseOptionalIntParam } from '../utils/api';
 import { requireOrganizationAccess, hasAccessToLeague } from '../utils/access-control';
@@ -262,7 +263,27 @@ router.patch("/:id", async (req: Request, res) => {
       seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,
       seasonEnd: derivedSeasonEnd ?? (req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined)
     });
-    
+
+    // Task #646: a partial PATCH that only changes `doublePayDates`
+    // bypasses the schema-level weekday/season-window/overlap checks
+    // (the schema bails out when those context fields aren't in the
+    // payload). Re-run the validator here against the merged
+    // persisted-league + patch-body view so a `doublePayDates`-only
+    // PATCH still gets fully checked.
+    if (update.doublePayDates !== undefined) {
+      const result = validateDoublePayDates({
+        doublePayDates: update.doublePayDates,
+        skipDates: update.skipDates ?? league.skipDates ?? [],
+        cancelledDates: update.cancelledDates ?? league.cancelledDates ?? [],
+        weekDay: update.weekDay ?? league.weekDay,
+        seasonStart: update.seasonStart ?? league.seasonStart,
+        seasonEnd: update.seasonEnd ?? league.seasonEnd,
+      });
+      if (!result.ok) {
+        return sendError(res, result.message, 400, 'BAD_REQUEST');
+      }
+    }
+
     const updated = await storage.updateLeague(id, update);
 
     // Task #429: a name change moves the bowler between Smart Lists

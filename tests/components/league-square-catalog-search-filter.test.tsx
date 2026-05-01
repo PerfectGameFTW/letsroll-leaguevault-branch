@@ -95,7 +95,6 @@ function Harness({
       weeklyFee: savedWeeklyFee,
       lineageFee: savedLineageFee,
       prizeFundFee: savedPrizeFundFee,
-      finalTwoWeeksDueWeek: 6,
       paymentMode: 'weekly',
       squareLineageItemId: savedLineageItemId,
       lineageItemVariationId: savedLineageVariationId,

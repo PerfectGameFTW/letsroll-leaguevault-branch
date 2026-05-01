@@ -89,7 +89,6 @@ function Harness() {
       weeklyFee: SAVED_WEEKLY_FEE,
       lineageFee: SAVED_LINEAGE_FEE,
       prizeFundFee: SAVED_PRIZE_FUND_FEE,
-      finalTwoWeeksDueWeek: 6,
       paymentMode: 'weekly',
       squareLineageItemId: SAVED_LINEAGE_ITEM_ID,
       lineageItemVariationId: SAVED_LINEAGE_VARIATION_ID,

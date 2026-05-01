@@ -232,14 +232,6 @@
       "count": 4
     }
   },
-  "server/services/payment-checks.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "server/services/payment-execution.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
