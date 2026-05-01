@@ -24,7 +24,11 @@ import {
 } from './clover';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
-import { ProviderNotConfiguredError, PaymentProviderError } from './payment-provider-factory';
+import {
+  ProviderNotConfiguredError,
+  PaymentProviderError,
+  CardOwnershipMismatchError,
+} from './payment-provider-factory';
 
 const log = createLogger('CloverProvider');
 
@@ -219,6 +223,28 @@ export class CloverPaymentProvider implements PaymentProvider, CustomerCleanupPr
       );
     }
     const creds = await this.getCredentials();
+
+    // Tenancy pre-check (task #649) — list this customer's saved
+    // sources first and throw the typed `CardOwnershipMismatchError`
+    // if `cardId` isn't among them. This brings Clover to parity with
+    // Square's `disableCard` (task #620): the DELETE
+    // /api/payments-provider/cards/:bowlerId/:cardId route matches
+    // the typed class on `instanceof` and returns a dedicated 403.
+    // Without this pre-check, the same caller bug on a Clover
+    // location surfaced as a generic Clover not-found mapped to a
+    // 500 PaymentProviderError, giving admins a different and less
+    // actionable response shape than Square locations.
+    let sources;
+    try {
+      sources = await listCustomerSources(creds, customerId);
+    } catch (error) {
+      this.mapApiError(error, 'Failed to remove card.', 'CARD_REMOVAL_FAILED');
+    }
+    const cardBelongsToCustomer = sources.some((s) => s.id === cardId);
+    if (!cardBelongsToCustomer) {
+      throw new CardOwnershipMismatchError();
+    }
+
     try {
       await deleteCustomerSource(creds, customerId, cardId);
     } catch (error) {
