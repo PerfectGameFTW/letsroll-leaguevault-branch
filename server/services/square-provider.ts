@@ -4,7 +4,11 @@ import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
-import { ProviderNotConfiguredError, PaymentProviderError } from './payment-provider-factory';
+import {
+  ProviderNotConfiguredError,
+  PaymentProviderError,
+  CardOwnershipMismatchError,
+} from './payment-provider-factory';
 import {
   ensureDefinitions,
   upsertCustomerStringAttribute,
@@ -628,7 +632,14 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     const cards = listPage.data ?? [];
     const cardBelongsToCustomer = cards.some(c => c.id === cardId);
     if (!cardBelongsToCustomer) {
-      throw new Error('Card does not belong to this customer');
+      // Typed tenancy-violation error (task #620). The DELETE card
+      // route matches this on `instanceof` to map to 403 — see
+      // server/routes/payments-provider/cards.ts. Pre-#620 this was a
+      // plain `new Error(...)` and the route picked it out via
+      // `error.constructor === Error` + a substring check on the
+      // message, which would have mapped any other plain Error
+      // bubbling out of the provider chain into the same 403.
+      throw new CardOwnershipMismatchError();
     }
 
     await client.cards.disable({ cardId });

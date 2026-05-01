@@ -11,7 +11,11 @@ import { storage } from '../../storage';
 import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.js';
 import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
-import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
+import {
+  getPaymentProvider,
+  ProviderNotConfiguredError,
+  CardOwnershipMismatchError,
+} from '../../services/payment-provider-factory';
 import { buildPaymentErrorResponse } from '../../utils/payment-error-response.js';
 import { getProviderCustomerId, persistCloverCustomer, ensureProviderCustomer } from '../../services/payment-utils';
 import { getProviderForLeague } from './shared.js';
@@ -187,21 +191,20 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
   } catch (error) {
     log.error('Disable card error:', error instanceof Error ? error.message : error);
 
-    // The Square + Clover providers throw a hand-authored
-    // "Card does not belong to this customer" Error when the
-    // requested card id isn't one of this customer's saved cards
-    // (see server/services/square-provider.ts::disableCard). That's
-    // a tenancy violation rather than a provider failure, so it
-    // keeps its dedicated 403 mapping. Everything else routes
-    // through the shared helper so admins see the typed
-    // PaymentProviderError.userMessage / code instead of an
-    // ad-hoc string. Task #605.
-    if (
-      error instanceof Error &&
-      !(error instanceof ProviderNotConfiguredError) &&
-      error.constructor === Error &&
-      error.message.includes('does not belong')
-    ) {
+    // The Square provider throws a typed
+    // `CardOwnershipMismatchError` when the requested card id isn't
+    // one of this customer's saved cards (see
+    // server/services/square-provider.ts::disableCard). That's a
+    // tenancy violation rather than a provider failure, so it keeps
+    // its dedicated 403 mapping. Everything else routes through the
+    // shared helper so admins see the typed
+    // PaymentProviderError.userMessage / code instead of an ad-hoc
+    // string. Task #605 introduced the helper; task #620 replaced
+    // the previous `error.constructor === Error` + substring guard
+    // with this `instanceof` check so an unrelated plain `Error`
+    // bubbling out of the provider chain no longer accidentally
+    // triggers the 403 branch.
+    if (error instanceof CardOwnershipMismatchError) {
       return sendError(res, error.message, 403);
     }
     const { status, userMessage, code } = buildPaymentErrorResponse(

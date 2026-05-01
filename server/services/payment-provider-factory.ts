@@ -51,6 +51,42 @@ export class PaymentProviderError extends Error {
 }
 
 /**
+ * Typed error for the "this card id is not on this customer's vault"
+ * tenancy guard inside `disableCard` (task #620).
+ *
+ * Pre-#620, the Square provider threw a plain `new Error('Card does
+ * not belong to this customer')` and the DELETE card route picked it
+ * out by combining `error.constructor === Error` with a substring
+ * match on `error.message`. That worked but was fragile in two ways:
+ *
+ *   1. Any other plain `Error` thrown from the provider chain that
+ *      happened to mention "does not belong" would have been mapped
+ *      to the same 403 instead of the generic 500 fallback.
+ *   2. Wrapping the throw in a subclass during a future refactor
+ *      would silently flip the branch off (because
+ *      `error.constructor === Error` is strict-equality, not an
+ *      instanceof check) and the tenancy violation would leak as a
+ *      500.
+ *
+ * Throwing this typed class instead lets the route match on
+ * `instanceof CardOwnershipMismatchError`, which is self-documenting
+ * and immune to message-text refactors. The shared
+ * `buildPaymentErrorResponse` helper is intentionally NOT updated to
+ * recognise this class — it is a tenancy violation rather than a
+ * provider failure, so the route keeps its dedicated 403 mapping and
+ * everything else continues to flow through the helper's fallback
+ * branch unchanged.
+ */
+export class CardOwnershipMismatchError extends Error {
+  public readonly code = 'CARD_OWNERSHIP_MISMATCH';
+
+  constructor(message = 'Card does not belong to this customer') {
+    super(message);
+    this.name = 'CardOwnershipMismatchError';
+  }
+}
+
+/**
  * Generic, always-safe payment failure message for the user. Used as
  * the fallback whenever a candidate user-facing string fails the
  * sanitizer below.
