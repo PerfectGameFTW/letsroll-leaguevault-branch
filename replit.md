@@ -126,6 +126,22 @@ Validations can be re-run on demand from the agent's code-execution sandbox via 
 - `client/src/hooks/` - Custom React hooks
 - `client/src/lib/financial-utils.ts` - Shared financial calculation utilities (weeks, dues, past-due)
 
+## Pulling External Changes Back Into Replit
+When code is edited off-Replit (OpenAI Codex, a teammate, a local
+checkout, etc.) and pushed to GitHub, run **`bash scripts/post-pull.sh`**
+once after `git pull` to reset the dev environment cleanly. The script
+runs `npm install`, `npm run db:push --force`, and re-seeds the GitHub
+SSH key — same steps `scripts/post-merge.sh` runs after a Replit task
+agent merge. It's idempotent (safe to re-run) and prints a reminder
+checklist for the manual follow-ups it can't automate (new secrets,
+restarting the app workflow, running validation).
+
+The script targets whatever `DATABASE_URL` points at — verify you're
+on the dev DB before running. As a safety rail, it refuses to run
+when `REPLIT_DEPLOYMENT=1` or `NODE_ENV=production`; pass
+`--allow-prod` only if you genuinely mean to apply forced schema
+changes to a production database.
+
 ## Database
 - Uses Neon PostgreSQL (managed via Replit's DATABASE_URL environment variable)
 - Connection via `DATABASE_URL` environment variable (runtime-managed)

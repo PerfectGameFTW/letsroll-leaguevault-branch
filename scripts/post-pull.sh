@@ -1,0 +1,101 @@
+#!/bin/bash
+#
+# scripts/post-pull.sh
+#
+# Reset the Replit environment cleanly after pulling external changes
+# from GitHub (e.g. edits made by OpenAI Codex, a teammate, or any
+# other off-Replit tool). Run this once after every `git pull` so the
+# dev container's npm dependencies, dev database schema, and SSH key
+# match the new commit.
+#
+# This is the same set of steps `scripts/post-merge.sh` runs after a
+# Replit task agent merge — exposed under a different name because
+# `post-merge.sh` is reserved for the platform's automatic post-merge
+# hook and re-running it manually would be confusing.
+#
+# Usage:
+#   bash scripts/post-pull.sh                # normal dev use
+#   bash scripts/post-pull.sh --allow-prod   # opt-in escape hatch (see below)
+#
+# Idempotent: every step is a no-op if there's nothing to do, so it's
+# safe to run even when the pull only touched code (no deps / schema
+# changes). Exits non-zero on the first hard failure (npm install or
+# db:push). Refuses to run when REPLIT_DEPLOYMENT=1 or
+# NODE_ENV=production unless --allow-prod is passed, because step 2
+# applies destructive schema changes to whatever DATABASE_URL points at.
+
+set -e
+
+# --- Production-DB safety rail ---------------------------------------
+# `db:push --force` in step 2 applies schema directly to whatever
+# `DATABASE_URL` points at, with destructive force semantics. This
+# script is only intended for the Replit dev environment. Refuse to
+# run if anything looks like a production deployment context unless
+# the operator explicitly opts in with --allow-prod (escape hatch
+# for genuine recovery scenarios).
+ALLOW_PROD=0
+[ "${1:-}" = "--allow-prod" ] && ALLOW_PROD=1
+if [ "$ALLOW_PROD" = "0" ]; then
+  if [ "${REPLIT_DEPLOYMENT:-0}" = "1" ] || [ "${NODE_ENV:-}" = "production" ]; then
+    echo "ERROR: post-pull.sh refuses to run in a production-looking context." >&2
+    echo "       (REPLIT_DEPLOYMENT=${REPLIT_DEPLOYMENT:-} NODE_ENV=${NODE_ENV:-})" >&2
+    echo "       This script runs 'db:push --force' which can destroy production schema." >&2
+    echo "       If you really mean to do this, re-run with: bash scripts/post-pull.sh --allow-prod" >&2
+    exit 2
+  fi
+fi
+
+echo ""
+echo "=========================================="
+echo "  Post-pull reset — syncing dev env"
+echo "=========================================="
+echo ""
+
+echo "[1/3] npm install — syncing dependencies from package.json…"
+npm install
+echo "      done."
+echo ""
+
+echo "[2/3] npm run db:push --force — applying migrations to dev DB…"
+npm run db:push -- --force
+echo "      done."
+echo ""
+
+echo "[3/3] setup-ssh — re-seeding GitHub SSH key (so 'git push' keeps working)…"
+# Distinguish three outcomes from setup-ssh.sh --quiet:
+#   exit 0 => either the key was re-seeded OR the
+#             GITHUB_SSH_PRIVATE_KEY secret isn't configured (the
+#             --quiet flag treats missing-secret as a silent no-op).
+#             Either way the reset is healthy.
+#   exit !=0 => something genuinely went wrong while writing the key
+#               (corrupt PEM, permission failure, etc.). We don't
+#               fail the whole reset for it — npm and db are already
+#               synced — but we DO warn loudly so the operator knows
+#               git push may not work until they fix it manually.
+SSH_RC=0
+bash scripts/setup-ssh.sh --quiet || SSH_RC=$?
+if [ "$SSH_RC" = "0" ]; then
+  echo "      done."
+else
+  echo "      WARNING: setup-ssh.sh failed (exit $SSH_RC). 'git push' over SSH" >&2
+  echo "      may not work until you re-run 'bash scripts/setup-ssh.sh'" >&2
+  echo "      interactively to see the underlying error." >&2
+fi
+echo ""
+
+echo "=========================================="
+echo "  Reset complete."
+echo "=========================================="
+echo ""
+echo "What this did NOT do (handle manually if needed):"
+echo "  • Add new secrets / env vars — check the pulled commit message"
+echo "    for any new secrets the code now requires, then add them in"
+echo "    the Replit Secrets pane."
+echo "  • Restart the 'Start application' workflow — Replit usually"
+echo "    auto-restarts it, but if the app looks stale, restart it"
+echo "    from the Workflows pane."
+echo "  • Run the validation suite — to check the pulled changes don't"
+echo "    break anything, run any of: typecheck, lint, build, test,"
+echo "    csrf-coverage, org-isolation, wire-sanitization, not-found-code"
+echo "    from the Workflows pane (or 'npm run check && npm test')."
+echo ""
