@@ -149,6 +149,185 @@ export function buildSquareClient(
   return new SquareClient({ ...extraOptions, token: cleanToken, environment });
 }
 
+/**
+ * Runtime Square-Version header guard (task #627).
+ *
+ * Background: the CI test in `__tests__/square-version-header.test.ts`
+ * (task #614) catches `Square-Version` drift on the lockfile that's
+ * about to merge. But a deploy-time SDK upgrade — a hotfix `npm i
+ * square@latest` rolled directly into the deploy artifact, a
+ * `package-lock.json` regen during CI, or any other bump that ships
+ * to production without re-running the merge-gating test on the
+ * bumped lockfile — could still float a different wire version into
+ * production unnoticed. Drift matters because changing
+ * `Square-Version` changes response shapes across every Square call
+ * site at once (see `docs/square-api-version-audit.md` §1).
+ *
+ * This runtime guard re-uses the same fake-fetcher capture trick the
+ * CI test relies on: build a `SquareClient` whose `fetcher` records
+ * the headers and short-circuits the network call, fire one
+ * `payments.get` against it, and compare the captured
+ * `Square-Version` value against `SQUARE_EXPECTED_VERSION`. The
+ * probe is memoized per process: it runs once at server boot (from
+ * `server/index.ts`) and is also kicked off lazily on the first
+ * `getSquareClient()` call — whichever happens first.
+ *
+ * Failure modes:
+ *   - **Drift detected.** Logs a `[PAGE] Square SDK Square-Version
+ *     header drift` line at `error` priority with `expected`,
+ *     `actual`, and a runbook pointer to
+ *     `docs/square-api-version-audit.md` §6. Subsequent
+ *     `getSquareClient()` calls return `null` so the provider refuses
+ *     to initialize — admin-facing routes surface that as the same
+ *     `PROVIDER_NOT_CONFIGURED` 422 they'd see if Square credentials
+ *     were missing. That's a strong, unambiguous signal — better than
+ *     letting a drifted SDK silently parse responses against an
+ *     unaudited wire version.
+ *   - **Probe could not capture (e.g. SDK mocked in tests).** Logs an
+ *     `info` line and treats the check as non-conclusive — does NOT
+ *     refuse to initialize. The CI test (#614) is still the canonical
+ *     guard against drift; this runtime probe is defense-in-depth and
+ *     must not break unit tests that mock the `square` module.
+ */
+type ProbeResult =
+  | { ok: true; version: string; reason?: undefined }
+  | { ok: true; version: undefined; reason: 'no-captured-request' }
+  | { ok: false; version: string | undefined; reason: 'drift' };
+
+type ProbeFn = () => Promise<ProbeResult>;
+
+async function defaultProbeSquareSdkVersion(): Promise<ProbeResult> {
+  const captured: Array<Record<string, unknown>> = [];
+  // Mirrors the fake fetcher pattern in
+  // `__tests__/square-version-header.test.ts`: capture the headers
+  // the SDK assembles and short-circuit before any real network call.
+  // Typed via `BaseClientOptions['fetcher']` (which the SDK declares
+  // as `core.FetchFunction`). The returned `FailedResponse` shape is
+  // assignable to `APIResponse<R, Fetcher.Error>` for any `R`, so no
+  // cast is needed.
+  const fetcher: BaseClientOptions['fetcher'] = async (args) => {
+    captured.push(args.headers ?? {});
+    const rawResponse = new Response(null, { status: 599, statusText: 'short-circuited' });
+    return {
+      ok: false,
+      error: { reason: 'unknown', errorMessage: 'short-circuited by sdk-version probe' },
+      rawResponse,
+    };
+  };
+
+  let probe: SquareClient;
+  try {
+    // Production-shaped token prefix so `buildSquareClient`'s heuristic
+    // routes to the Production environment URL — same path
+    // production traffic exercises. No real call leaves the process
+    // because `fetcher` short-circuits.
+    probe = buildSquareClient(
+      'EAAAEvSDK_VERSION_PROBE_NOT_A_REAL_SECRET',
+      undefined,
+      { fetcher },
+    );
+  } catch {
+    // SDK couldn't be constructed at all (e.g. constructor signature
+    // changed). Don't fail-shut — the CI test will catch real drift.
+    return { ok: true, version: undefined, reason: 'no-captured-request' };
+  }
+
+  try {
+    await probe.payments.get({ paymentId: 'sdk-version-probe' });
+  } catch {
+    // Expected: the fake fetcher returns `ok: false` so the SDK
+    // throws downstream. Also catches the case where the SDK is
+    // mocked in tests and `payments.get` is undefined — handled by
+    // the `no-captured-request` branch below.
+  }
+
+  const headers = captured[0];
+  if (!headers) {
+    return { ok: true, version: undefined, reason: 'no-captured-request' };
+  }
+  // Per the test (and Square's fetcher impl), header keys are
+  // lowercased before dispatch. Wire literal is `Square-Version`;
+  // case-insensitive match is what counts.
+  const raw = headers['square-version'];
+  const version = typeof raw === 'string' ? raw : undefined;
+  if (version !== SQUARE_EXPECTED_VERSION) {
+    return { ok: false, version, reason: 'drift' };
+  }
+  return { ok: true, version };
+}
+
+let _verificationPromise: Promise<{ ok: boolean; version: string | undefined }> | null = null;
+let _probeImpl: ProbeFn = defaultProbeSquareSdkVersion;
+
+/**
+ * Reset the memoized verification result and the probe implementation.
+ * Test-only — never call from production code. Used by
+ * `__tests__/square-version-runtime-guard.test.ts` so each test case
+ * starts from a clean cache.
+ */
+export function _resetSquareSdkVersionVerificationForTests(): void {
+  _verificationPromise = null;
+  _probeImpl = defaultProbeSquareSdkVersion;
+}
+
+/**
+ * Replace the probe implementation. Test-only — used to inject a
+ * synthetic captured Square-Version header without standing up a
+ * real `SquareClient`. Pass `null` to restore the default probe.
+ */
+export function _setSquareSdkVersionProbeForTests(probe: ProbeFn | null): void {
+  _probeImpl = probe ?? defaultProbeSquareSdkVersion;
+  _verificationPromise = null;
+}
+
+/**
+ * Run (or return the memoized result of) the runtime Square-Version
+ * header check. Safe to call eagerly at server boot AND lazily from
+ * `getSquareClient()` — the first caller wins, every subsequent
+ * caller awaits the same promise.
+ *
+ * Returns `{ ok, version }`. Callers should treat `ok: false` as
+ * "refuse to talk to Square at all" — see `getSquareClient` below.
+ */
+export async function verifySquareSdkVersion(): Promise<{
+  ok: boolean;
+  version: string | undefined;
+}> {
+  if (_verificationPromise) return _verificationPromise;
+  _verificationPromise = _probeImpl().then((result) => {
+    if (result.ok && result.reason === 'no-captured-request') {
+      // Non-conclusive (mocked SDK, weird build). Logged at info so
+      // a real prod drift doesn't get drowned out by noise from
+      // tests / dev runs that legitimately can't probe.
+      log.info(
+        'Square SDK Square-Version probe could not capture an outgoing request — runtime version check skipped (CI test #614 remains the canonical guard).',
+      );
+    } else if (result.ok) {
+      log.info('Square SDK Square-Version verified at runtime', {
+        version: result.version,
+        expected: SQUARE_EXPECTED_VERSION,
+      });
+    } else {
+      // Structured, paging-priority alert. The `[PAGE]` prefix
+      // matches the convention on-call uses to triage `error` lines
+      // at-a-glance; the runbook pointer keeps the responder one
+      // click from the documented recovery path.
+      log.error(
+        '[PAGE] Square SDK Square-Version header drift detected at runtime — refusing to initialize Square provider',
+        {
+          expected: SQUARE_EXPECTED_VERSION,
+          actual: result.version ?? null,
+          runbook: 'docs/square-api-version-audit.md §6',
+          remediation:
+            'Pin the `square` package back to a version whose Square-Version equals SQUARE_EXPECTED_VERSION, or re-run the audit in §1/§5 and update SQUARE_EXPECTED_VERSION + §1 in the same commit.',
+        },
+      );
+    }
+    return { ok: result.ok, version: result.version };
+  });
+  return _verificationPromise;
+}
+
 export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, WalletProvider {
   readonly providerName = 'square';
   readonly locationId: number;
@@ -158,6 +337,21 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   }
 
   private async getSquareClient(): Promise<SquareClient | null> {
+    // Runtime Square-Version header guard (task #627). The probe is
+    // memoized per process so this is a single fast resolution after
+    // the first call (or after `server/index.ts`'s eager call at
+    // boot, whichever happens first). Drift causes us to refuse to
+    // hand back a client at all — same null contract that "no
+    // credentials" already uses, so route layers fall back to
+    // PROVIDER_NOT_CONFIGURED instead of letting a drifted SDK
+    // exchange responses against an unaudited wire version.
+    const verification = await verifySquareSdkVersion();
+    if (!verification.ok) {
+      log.error(
+        `Refusing Square client for location ${this.locationId}: Square-Version header drift (expected ${SQUARE_EXPECTED_VERSION}, got ${verification.version ?? 'unknown'}). See docs/square-api-version-audit.md §6.`,
+      );
+      return null;
+    }
     try {
       const creds = await storage.getLocationSquareConfig(this.locationId);
       if (creds?.accessToken && creds.accessToken.trim().length > 0) {

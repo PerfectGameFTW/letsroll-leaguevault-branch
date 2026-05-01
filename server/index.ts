@@ -13,6 +13,7 @@ import { paymentScheduler } from './services/payment-scheduler';
 import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
 import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
 import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
+import { verifySquareSdkVersion } from './services/square-provider';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
@@ -297,6 +298,17 @@ async function startServer() {
       // Square and BowlNow failure modes don't interfere with each
       // other (see server/services/bowlnow-sync-retry.ts header).
       startBowlnowSyncRetrySweep();
+
+      // Eagerly run the runtime Square-Version header guard (task
+      // #627). The probe is memoized inside `verifySquareSdkVersion`
+      // so the first `getSquareClient()` call would otherwise pay
+      // the cost — running it here surfaces drift in boot logs even
+      // if no Square traffic flows for a while after start. The
+      // guard logs internally; we never throw, so a failed probe
+      // can't take down the rest of startup.
+      verifySquareSdkVersion().catch((err) => {
+        log.error('Square SDK version probe threw at boot:', err);
+      });
 
       // Pre-create the Square customer-custom-attribute definitions
       // (`league_name`, `league_season`) on every Square-connected

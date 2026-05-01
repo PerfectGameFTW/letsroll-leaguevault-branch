@@ -375,6 +375,82 @@ published changelogs. This checklist is a small set of **operational
 sanity checks** to run before flipping the dashboard pin — not
 prerequisites for the audit's evidence.
 
+### Runtime drift guard (Task #627)
+
+The CI test in `server/services/__tests__/square-version-header.test.ts`
+(Task #614) catches `Square-Version` drift on the lockfile that's
+about to merge. Task #627 adds a second line of defense for the
+lockfile that's actually running:
+
+- `verifySquareSdkVersion()` in `server/services/square-provider.ts`
+  fires a fake-fetcher probe against a real `SquareClient`, captures
+  the outgoing `Square-Version` header, and compares it to
+  `SQUARE_EXPECTED_VERSION`. Memoized per process.
+- The probe runs eagerly at server boot from `server/index.ts`
+  (right after `startBowlnowSyncRetrySweep()`). It also kicks off
+  lazily on the first `getSquareClient()` call — whichever happens
+  first.
+- **Drift is fail-shut.** When the captured header doesn't match
+  `SQUARE_EXPECTED_VERSION`, every subsequent call to
+  `getSquareClient()` returns `null`, which the existing route
+  layer surfaces as the same `PROVIDER_NOT_CONFIGURED` 422 admins
+  see when Square credentials are missing.
+
+#### What the on-call sees
+
+A drifted deploy emits exactly one structured `error`-level log line
+of the form:
+
+```
+[ERROR] [SquareService] [PAGE] Square SDK Square-Version header drift detected at runtime — refusing to initialize Square provider {"expected":"2026-01-22","actual":"<wire-version>","runbook":"docs/square-api-version-audit.md §6","remediation":"…"}
+```
+
+Every Square-credentialed location additionally emits one
+`error`-level refusal line per request that tries to hit the
+provider:
+
+```
+[ERROR] [SquareService] Refusing Square client for location <id>: Square-Version header drift (expected 2026-01-22, got <wire-version>). See docs/square-api-version-audit.md §6.
+```
+
+Admins downstream see Square pages render the
+`PROVIDER_NOT_CONFIGURED` empty state — a strong, unambiguous signal
+that something at the SDK layer is wrong, rather than the silent
+"talking to Square against an unaudited wire version" failure mode
+the guard exists to prevent.
+
+#### Runbook for the on-call when the `[PAGE]` line fires
+
+1. **Confirm what version is actually on the wire.** The line's
+   `actual` field is the captured `Square-Version` header. If it's
+   `null`, the SDK never sent the header at all (which would mean
+   the SDK shape itself changed — also a drift event).
+2. **Do not flip the dashboard pin.** The dashboard pin is unrelated
+   to this header (see §1 implication). The drift is on the
+   *installed `square` package*.
+3. **Diff the deployed `square` version against the last known-good
+   one.** `git log -- package.json package-lock.json` will show the
+   recent SDK bumps. Cross-reference against the `actual` value
+   reported in the log line.
+4. **Pick a recovery path:**
+   - **Fast rollback**: pin the `square` package back to the last
+     version whose header equaled `SQUARE_EXPECTED_VERSION` and
+     redeploy. The `[PAGE]` line stops firing on the next boot.
+   - **Forward audit**: if the bump is desired, walk §1 + §5 of
+     this doc for the new release window, then update both
+     `SQUARE_EXPECTED_VERSION` (in `server/services/square-provider.ts`)
+     and the §1 version table in the same commit. The CI test
+     (#614) will green and the runtime guard will start logging
+     `Square SDK Square-Version verified at runtime` instead.
+5. **Verify recovery.** After redeploy, a single
+   `[INFO] [SquareService] Square SDK Square-Version verified at runtime`
+   line appears at boot. Tail the boot logs to confirm.
+
+The remaining checks below remain unchanged — they were already
+written for the dashboard-pin flip, not for SDK upgrades.
+
+
+
 1. Re-skim §5's diff table — if the operator wants independent
    verification, the per-release URLs are
    `https://developer.squareup.com/docs/changelog/connect-logs/<YYYY-MM-DD>`
@@ -432,6 +508,12 @@ project tasks so the bump itself (Task #600) can ship independently.
    change the pinned version (the type `version?: "2026-01-22"`
    in `BaseClient.d.ts` would surface a compile error, but only
    if a caller passes the literal — which we never do today).
+4. **Task #627 — Catch Square SDK header drift in the deployed app
+   (not just CI). ✅ DONE.** Implemented as `verifySquareSdkVersion()`
+   in `server/services/square-provider.ts`, called eagerly at boot
+   from `server/index.ts` and lazily from every `getSquareClient()`.
+   Drift fires a `[PAGE]` `error` line and refuses to initialize
+   the Square provider. Operator runbook in §6 above.
 
 ---
 
