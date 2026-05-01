@@ -23,10 +23,12 @@ export function toLocalMidnight(date: string | Date): Date {
   return d;
 }
 
+export type ScheduleWeekType = "normal" | "skip" | "cancelled" | "double-pay";
+
 export type ScheduleWeek = {
   date: Date;
   isoDate: string;
-  type: "normal" | "skip" | "cancelled";
+  type: ScheduleWeekType;
   bowlingWeekNumber: number | null;
 };
 
@@ -92,10 +94,12 @@ export function getAllBowlingDates(
   weekDay: string,
   totalBowlingWeeks: number,
   skipDates: string[],
-  cancelledDates: string[]
+  cancelledDates: string[],
+  doublePayDates: string[] = []
 ): ScheduleWeek[] {
   const skipSet = new Set((skipDates ?? []).map((d) => d.slice(0, 10)));
   const cancelSet = new Set((cancelledDates ?? []).map((d) => d.slice(0, 10)));
+  const doublePaySet = new Set((doublePayDates ?? []).map((d) => d.slice(0, 10)));
 
   // Key semantics:
   //   • Skip  → holiday; season EXTENDS (skip does NOT consume a planned slot)
@@ -119,13 +123,18 @@ export function getAllBowlingDates(
     const dateStr = toIsoDateStr(current);
     const isSkip = skipSet.has(dateStr);
     const isCancelled = cancelSet.has(dateStr);
+    const isDoublePay = !isSkip && !isCancelled && doublePaySet.has(dateStr);
     const type: ScheduleWeek["type"] = isSkip
       ? "skip"
       : isCancelled
       ? "cancelled"
+      : isDoublePay
+      ? "double-pay"
       : "normal";
 
-    // Only normal dates get a bowling week number
+    // Both normal and double-pay dates count as bowling weeks (they
+    // each consume one slot and get a week number); skip/cancelled
+    // dates do not get a number.
     const weekNum = !isSkip && !isCancelled ? ++bowlingWeekNumber : null;
 
     // Both normal and cancelled rows consume a planned slot

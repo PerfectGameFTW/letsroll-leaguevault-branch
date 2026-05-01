@@ -1,7 +1,9 @@
 import { db } from "../db";
 import { eq, and, lte, gte, sql } from "drizzle-orm";
-import { payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema";
+import { payments, leagues, bowlers, DEFAULT_TIMEZONE, type PaymentSchedule } from "@shared/schema";
 import { providerNameToPaymentType } from "@shared/schema/constants";
+import { toZonedTime } from "date-fns-tz";
+import { toIsoDateStr } from "@shared/schedule-utils";
 import { logger } from "../logger";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import { buildPaymentErrorResponse } from "../utils/payment-error-response";
@@ -19,6 +21,12 @@ export interface ChargeResult {
   receiptNumber?: string;
   // True when a Square charge ran without buyer email (no auto-receipt).
   buyerEmailMissing?: boolean;
+  // Task #646: the actual amount charged to the provider. May differ
+  // from the schedule's stored `amount` (e.g. 2× on double-pay weeks).
+  // Callers that insert payment rows must use this value, not
+  // `scheduleRecord.amount`, so the persisted record matches what was
+  // actually billed.
+  chargedAmount?: number;
 }
 
 export type PaymentResult = ChargeResult;
@@ -83,6 +91,7 @@ export async function executeCharge(
         receiptUrl: orderResult.receiptUrl,
         receiptNumber: orderResult.receiptNumber,
         buyerEmailMissing,
+        chargedAmount: amount,
       };
     } catch (error) {
       // Surface the typed PaymentProviderError.userMessage instead
@@ -116,6 +125,7 @@ export async function executeCharge(
           receiptUrl: processResult.receiptUrl,
           receiptNumber: processResult.receiptNumber,
           buyerEmailMissing,
+          chargedAmount: amount,
         };
       }
       return { status: 'error', error: 'Payment processing failed', providerName: provider.providerName };
@@ -191,15 +201,39 @@ export async function executeScheduledPayment(
   }
 
   const weeklyFee = league?.weeklyFee || 0;
-  const scheduledQty = weeklyFee > 0 && scheduleRecord.amount % weeklyFee === 0
-    ? String(scheduleRecord.amount / weeklyFee)
+  // Task #646: if the firing date matches one of the league's
+  // double-pay dates (compared in league-local timezone), the regular
+  // weekly autopay charge becomes 2× the league's weekly fee
+  // (per spec). Fall back to doubling the schedule's stored amount only
+  // when weeklyFee is unset, so the contract still degrades gracefully.
+  // The line-item quantity below tracks the resulting amount/weeklyFee
+  // ratio automatically, so the catalog breakdown stays correct.
+  const tz = league?.timezone ?? DEFAULT_TIMEZONE;
+  const firingDateLocal = toZonedTime(new Date(scheduleRecord.nextPaymentDate), tz);
+  const firingDateStr = toIsoDateStr(firingDateLocal);
+  const isDoublePayDate = (league?.doublePayDates ?? [])
+    .some(d => d.slice(0, 10) === firingDateStr);
+  const chargeAmount = isDoublePayDate
+    ? (weeklyFee > 0 ? weeklyFee * 2 : scheduleRecord.amount * 2)
+    : scheduleRecord.amount;
+
+  if (isDoublePayDate) {
+    logger.info(`[PaymentExecution] Double-pay week — charging 2× for ${jobId}`, {
+      firingDate: firingDateStr,
+      scheduleAmount: scheduleRecord.amount,
+      chargeAmount,
+    });
+  }
+
+  const scheduledQty = weeklyFee > 0 && chargeAmount % weeklyFee === 0
+    ? String(chargeAmount / weeklyFee)
     : '1';
   const lineItems = buildLineItems(league, scheduledQty);
 
   return executeCharge(
     provider,
     scheduleRecord.paymentCardId!,
-    scheduleRecord.amount,
+    chargeAmount,
     lineItems,
     paymentCustomerId,
     buyerEmail

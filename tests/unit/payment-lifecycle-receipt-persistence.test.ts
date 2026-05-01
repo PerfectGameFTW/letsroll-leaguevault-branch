@@ -57,7 +57,6 @@ vi.mock('../../server/services/payment-execution', () => ({
 }));
 
 vi.mock('../../server/services/payment-checks', () => ({
-  checkAndChargeFinalTwoWeeks: vi.fn().mockResolvedValue(undefined),
   checkPaidInFull: vi.fn().mockResolvedValue(false),
 }));
 

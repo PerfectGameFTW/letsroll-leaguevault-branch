@@ -43,6 +43,12 @@ export const leagues = pgTable("leagues", {
   totalBowlingWeeks: integer("total_bowling_weeks"),
   skipDates: text("skip_dates").array().notNull().default(sql`'{}'`),
   cancelledDates: text("cancelled_dates").array().notNull().default(sql`'{}'`),
+  // Up to 2 ISO `YYYY-MM-DD` bowling dates that should be charged at
+  // 2× the weekly fee by the autopay scheduler (Task #646). Replaces
+  // the legacy `finalTwoWeeksDueWeek` lump-charge mechanism. The
+  // legacy column stays on the table only as a backfill source; new
+  // code never reads it.
+  doublePayDates: text("double_pay_dates").array().notNull().default(sql`'{}'`),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
@@ -80,6 +86,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   totalBowlingWeeks: z.number().int().positive().nullable().optional(),
   skipDates: z.array(z.string()).default([]),
   cancelledDates: z.array(z.string()).default([]),
+  doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed").default([]),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -96,15 +103,6 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
       return true;
     },
     { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
-  )
-  .refine(
-    (data) => {
-      if (data.finalTwoWeeksDueWeek != null && data.totalBowlingWeeks != null) {
-        return data.finalTwoWeeksDueWeek <= data.totalBowlingWeeks;
-      }
-      return true;
-    },
-    { message: "Final two weeks due week must not exceed total bowling weeks", path: ["finalTwoWeeksDueWeek"] }
   );
 
 export const updateLeagueSchema = z.object({
@@ -133,7 +131,7 @@ export const updateLeagueSchema = z.object({
   totalBowlingWeeks: z.number().int().positive().nullable(),
   skipDates: z.array(z.string()),
   cancelledDates: z.array(z.string()),
-  finalTwoWeeksDueWeek: z.number().int().min(1).nullable(),
+  doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed"),
   organizationId: z.number().int().positive(),
 }).partial().refine(
   (data) => {
@@ -155,14 +153,6 @@ export const updateLeagueSchema = z.object({
     return true;
   },
   { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
-).refine(
-  (data) => {
-    if (data.finalTwoWeeksDueWeek != null && data.totalBowlingWeeks != null) {
-      return data.finalTwoWeeksDueWeek <= data.totalBowlingWeeks;
-    }
-    return true;
-  },
-  { message: "Final two weeks due week must not exceed total bowling weeks", path: ["finalTwoWeeksDueWeek"] }
 );
 
 export type League = typeof leagues.$inferSelect;

@@ -1,10 +1,11 @@
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, CalendarX, SkipForward, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, CalendarX, SkipForward, Check, CircleDollarSign } from "lucide-react";
+import type { ScheduleWeekType } from "@shared/schedule-utils";
 
 interface ScheduleDate {
   date: Date;
   isoDate: string;
-  type: 'normal' | 'skip' | 'cancelled';
+  type: ScheduleWeekType;
   bowlingWeekNumber: number | null;
 }
 
@@ -15,9 +16,10 @@ interface LeagueSchedulePreviewProps {
   bowlingWeeks: number;
   skipDates: string[];
   cancelledDates: string[];
+  doublePayDates: string[];
   effectiveBowlingWeeks: number;
   computedSeasonEnd: Date | null;
-  toggleDateType: (isoDate: string, currentType: 'normal' | 'skip' | 'cancelled') => void;
+  toggleDateType: (isoDate: string, currentType: ScheduleWeekType) => void;
 }
 
 export function LeagueSchedulePreview({
@@ -27,6 +29,7 @@ export function LeagueSchedulePreview({
   bowlingWeeks,
   skipDates,
   cancelledDates,
+  doublePayDates,
   effectiveBowlingWeeks,
   computedSeasonEnd,
   toggleDateType,
@@ -47,6 +50,7 @@ export function LeagueSchedulePreview({
               {bowlingWeeks} planned week{bowlingWeeks !== 1 ? 's' : ''}
               {skipDates.length > 0 && ` · ${skipDates.length} holiday skip${skipDates.length !== 1 ? 's' : ''}`}
               {cancelledDates.length > 0 && ` · ${cancelledDates.length} cancellation${cancelledDates.length !== 1 ? 's' : ''}`}
+              {doublePayDates.length > 0 && ` · ${doublePayDates.length} double-pay week${doublePayDates.length !== 1 ? 's' : ''}`}
               {computedSeasonEnd && ` · ends ${computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
             </span>
           )}
@@ -57,7 +61,7 @@ export function LeagueSchedulePreview({
       {showSchedule && (
         <div className="border-t">
           <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30">
-            Click a date to cycle: <span className="font-medium">Normal → Skip (holiday, season extends) → Cancelled (no makeup, season shortens)</span>
+            Click a date to cycle: <span className="font-medium">Normal → Skip (holiday, season extends) → Cancelled (no makeup, season shortens) → 2× Pay (charged double, max 2 per league)</span>
           </div>
           <div className="divide-y max-h-72 overflow-y-auto">
             {scheduleDates.map((week) => {
@@ -65,6 +69,8 @@ export function LeagueSchedulePreview({
                 ? 'Skip'
                 : week.type === 'cancelled'
                 ? 'Cancelled'
+                : week.type === 'double-pay'
+                ? `Week ${week.bowlingWeekNumber} · 2× Pay`
                 : `Week ${week.bowlingWeekNumber}`;
               return (
                 <button
@@ -76,10 +82,13 @@ export function LeagueSchedulePreview({
                       ? 'bg-yellow-50 dark:bg-yellow-950/20'
                       : week.type === 'cancelled'
                       ? 'bg-red-50 dark:bg-red-950/20'
+                      : week.type === 'double-pay'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/20'
                       : ''
                   }`}
+                  data-testid={`schedule-week-${week.isoDate}`}
                 >
-                  <span className={week.type !== 'normal' ? 'text-muted-foreground line-through' : ''}>
+                  <span className={week.type === 'skip' || week.type === 'cancelled' ? 'text-muted-foreground line-through' : ''}>
                     {week.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
                   <Badge
@@ -89,11 +98,14 @@ export function LeagueSchedulePreview({
                         ? 'border-yellow-400 text-yellow-700 dark:text-yellow-400'
                         : week.type === 'cancelled'
                         ? 'border-red-400 text-red-700 dark:text-red-400'
+                        : week.type === 'double-pay'
+                        ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400'
                         : ''
                     }`}
                   >
                     {week.type === 'skip' && <SkipForward className="mr-1 h-3 w-3" />}
                     {week.type === 'cancelled' && <CalendarX className="mr-1 h-3 w-3" />}
+                    {week.type === 'double-pay' && <CircleDollarSign className="mr-1 h-3 w-3" />}
                     {week.type === 'normal' && <Check className="mr-1 h-3 w-3" />}
                     {weekLabel}
                   </Badge>

@@ -32,21 +32,16 @@ interface UseBowlerPaymentSubmitOptions {
   selectedSavedCardId: string;
   selectedSchedule: 'weekly' | 'custom';
   storeCard: boolean;
-  includeFinalTwoWeeks: boolean;
-  showFinalTwoWeeksWarning: boolean;
   // optional inline email captured at checkout when the
   // bowler has none on file. Threaded to the server so Square's
   // hosted receipt fires for this charge.
   buyerEmail?: string;
   financials: {
     fullSeasonAmount: number;
-    finalTwoWeeks: { amount: number; dueByWeek: number; isPaid: boolean };
     amountPastDue: number;
   };
   calculateTotalAmount: () => number;
   setIsSubmitting: (v: boolean) => void;
-  setShowFinalTwoWeeksWarning: (v: boolean) => void;
-  setIncludeFinalTwoWeeks: (v: boolean) => void;
   setShowPaymentSetup: (v: boolean) => void;
 }
 
@@ -59,14 +54,10 @@ export function useBowlerPaymentSubmit({
   selectedSavedCardId,
   selectedSchedule,
   storeCard,
-  includeFinalTwoWeeks,
-  showFinalTwoWeeksWarning,
   buyerEmail,
   financials,
   calculateTotalAmount,
   setIsSubmitting,
-  setShowFinalTwoWeeksWarning,
-  setIncludeFinalTwoWeeks,
   setShowPaymentSetup,
 }: UseBowlerPaymentSubmitOptions) {
   const { toast } = useToast();
@@ -102,16 +93,9 @@ export function useBowlerPaymentSubmit({
 
     const isUpfront = league.paymentMode === 'upfront';
     const isAutoPay = !isUpfront && selectedSchedule !== 'custom';
-    const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
-
-    if (!isUpfront && isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
-      setShowFinalTwoWeeksWarning(true);
-      return;
-    }
 
     try {
       setIsSubmitting(true);
-      setShowFinalTwoWeeksWarning(false);
 
       if (isUpfront) {
         const upfrontAmount = financials.fullSeasonAmount;
@@ -145,7 +129,6 @@ export function useBowlerPaymentSubmit({
             amount: upfrontAmount,
             nextPaymentDate: new Date(),
             paymentCardId,
-            includeFinalTwoWeeks: false,
           }),
         });
         if (!scheduleResponse.ok) {
@@ -232,7 +215,6 @@ export function useBowlerPaymentSubmit({
             amount: recurringAmount,
             nextPaymentDate: new Date(),
             paymentCardId,
-            includeFinalTwoWeeks,
           }),
         });
         if (!scheduleResponse.ok) {
@@ -253,13 +235,10 @@ export function useBowlerPaymentSubmit({
       } else {
         toast({
           title: "Payment Successful",
-          description: includeFinalTwoWeeks
-            ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
-            : `Your payment of ${formatCurrency(amount)} has been processed.`,
+          description: `Your payment of ${formatCurrency(amount)} has been processed.`,
         });
       }
-      
-      setIncludeFinalTwoWeeks(false);
+
       setShowPaymentSetup(false);
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     } catch (error) {
@@ -287,8 +266,8 @@ export function useBowlerPaymentSubmit({
     }
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
-    selectedSchedule, storeCard, includeFinalTwoWeeks, showFinalTwoWeeksWarning,
+    selectedSchedule, storeCard,
     buyerEmail, financials, calculateTotalAmount, toast, navigate, isClover,
-    setIsSubmitting, setShowFinalTwoWeeksWarning, setIncludeFinalTwoWeeks, setShowPaymentSetup,
+    setIsSubmitting, setShowPaymentSetup,
   ]);
 }

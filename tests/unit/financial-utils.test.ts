@@ -20,7 +20,7 @@ function makeLeague(overrides: Partial<League> = {}): League {
     skipDates: [],
     cancelledDates: [],
     paymentMode: 'weekly',
-    finalTwoWeeksDueWeek: 30,
+    doublePayDates: [],
     ...overrides,
   } as unknown as League;
 }
@@ -50,7 +50,7 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
     vi.useRealTimers();
   });
 
-  it('mid-season before final-two-weeks due: charges weekly only', () => {
+  it('mid-season with no double-pay weeks: charges weekly only', () => {
     const league = makeLeague();
     setToday(2025, 10, 22);
 
@@ -59,36 +59,43 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
     expect(result.totalWeeksInSeason).toBe(32);
     expect(result.fullSeasonAmount).toBe(96000);
     expect(result.weeksPassed).toBe(8);
-    expect(result.finalTwoWeeksDue).toBe(false);
+    expect(result.doublePay.dates).toEqual([]);
+    expect(result.doublePay.totalExtra).toBe(0);
     expect(result.totalDueToDate).toBe(8 * 3000);
     expect(result.amountPastDue).toBe(8 * 3000);
   });
 
-  it('exactly at the final-two-weeks due week: bumps total to full season', () => {
-    const league = makeLeague();
-    setToday(2026, 3, 26);
+  it('two double-pay dates inflate fullSeasonAmount by 2× weekly fee', () => {
+    const league = makeLeague({
+      doublePayDates: [isoDate(2026, 4, 15), isoDate(2026, 4, 22)],
+    });
+    setToday(2025, 10, 22);
 
     const result = calculateFinancials(league, []);
 
-    expect(result.weeksPassed).toBe(30);
-    expect(result.finalTwoWeeksDue).toBe(true);
-    expect(result.totalDueToDate).toBe(96000);
-    expect(result.amountPastDue).toBe(96000);
+    expect(result.fullSeasonAmount).toBe(32 * 3000 + 2 * 3000);
+    expect(result.doublePay.totalExtra).toBe(6000);
+    expect(result.doublePay.perWeekExtra).toBe(3000);
+    expect(result.doublePay.pastExtra).toBe(0);
+    expect(result.totalDueToDate).toBe(8 * 3000);
   });
 
-  it('past totalWeeks - 2 but before season end: caps at full season (no double-count)', () => {
-    const league = makeLeague();
-    setToday(2026, 4, 2);
+  it('past double-pay dates roll into pastExtra and totalDueToDate', () => {
+    const league = makeLeague({
+      doublePayDates: [isoDate(2025, 10, 1), isoDate(2026, 4, 22)],
+    });
+    setToday(2025, 10, 22);
 
     const result = calculateFinancials(league, []);
 
-    expect(result.weeksPassed).toBe(31);
-    expect(result.finalTwoWeeksDue).toBe(true);
-    expect(result.totalDueToDate).toBe(96000);
+    expect(result.weeksPassed).toBe(8);
+    expect(result.doublePay.pastExtra).toBe(3000);
+    expect(result.totalDueToDate).toBe(8 * 3000 + 3000);
+    expect(result.amountPastDue).toBe(8 * 3000 + 3000);
     expect(result.totalDueToDate).toBeLessThanOrEqual(result.fullSeasonAmount);
   });
 
-  it('season fully completed with full payment: zero past due (Michael Shearer scenario)', () => {
+  it('season fully completed with full payment: zero past due', () => {
     const league = makeLeague();
     setToday(2026, 4, 23);
 
@@ -101,6 +108,7 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
     expect(result.totalPaid).toBe(96000);
     expect(result.amountPastDue).toBe(0);
     expect(result.remainingBalance).toBe(0);
+    expect(result.doublePay.isPaid).toBe(true);
   });
 
   it('season fully completed with partial payment: past due equals unpaid portion of full season', () => {

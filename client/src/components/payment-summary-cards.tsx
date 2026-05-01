@@ -1,14 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format, isValid } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, CircleDollarSign } from "lucide-react";
 
-interface FinalTwoWeeksInfo {
-  amount: number;
+interface DoublePayInfo {
+  dates: string[];
+  perWeekExtra: number;
+  totalExtra: number;
+  pastExtra: number;
   isPaid: boolean;
-  isPastDue: boolean;
-  dueByWeek: number;
-  dueByDate: Date | null;
 }
 
 interface PaymentSummaryCardsProps {
@@ -21,8 +21,7 @@ interface PaymentSummaryCardsProps {
   totalPaidAmount: number;
   amountPastDue: number;
   remainingBalance: number;
-  finalTwoWeeks: FinalTwoWeeksInfo;
-  finalTwoWeeksPaidOnWeek: number | null;
+  doublePay: DoublePayInfo;
   onPayPastDue: () => void;
   onPayRemaining: () => void;
 }
@@ -37,8 +36,7 @@ export function PaymentSummaryCards({
   totalPaidAmount,
   amountPastDue,
   remainingBalance,
-  finalTwoWeeks,
-  finalTwoWeeksPaidOnWeek,
+  doublePay,
   onPayPastDue,
   onPayRemaining,
 }: PaymentSummaryCardsProps) {
@@ -127,42 +125,29 @@ export function PaymentSummaryCards({
         </CardContent>
       </Card>
 
-      {finalTwoWeeks.amount > 0 && (
-        <Card className={`${
-          finalTwoWeeks.isPaid
-            ? 'border-green-500/50 bg-green-500/5'
-            : finalTwoWeeks.isPastDue
-              ? 'border-destructive/50 bg-destructive/5'
-              : ''
-        }`}>
+      {doublePay.dates.length > 0 && (
+        <Card className="border-emerald-500/50 bg-emerald-500/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Final 2 Weeks</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+              <CircleDollarSign className="h-5 w-5" />
+              Double-Pay Weeks
+            </CardTitle>
             <CardDescription>
-              Due by Week {finalTwoWeeks.dueByWeek}
-              {finalTwoWeeks.dueByDate && isValid(finalTwoWeeks.dueByDate) && ` (${format(finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
+              {doublePay.dates.length} week{doublePay.dates.length === 1 ? '' : 's'} at 2× weekly fee
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold ${
-              finalTwoWeeks.isPaid
-                ? 'text-green-600'
-                : finalTwoWeeks.isPastDue
-                  ? 'text-destructive'
-                  : ''
-            }`}>
-              {formatCurrency(finalTwoWeeks.amount)}
+            <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+              +{formatCurrency(doublePay.totalExtra)}
             </p>
-            <p className={`text-sm font-medium mt-1 ${
-              finalTwoWeeks.isPaid
-                ? 'text-green-600'
-                : finalTwoWeeks.isPastDue
-                  ? 'text-destructive'
-                  : 'text-muted-foreground'
-            }`}>
-              {finalTwoWeeks.isPaid
-                ? `Paid on Week ${finalTwoWeeksPaidOnWeek ?? '?'}`
-                : finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
-            </p>
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+              {doublePay.dates.map((d) => (
+                <li key={d} className="flex items-center justify-between">
+                  <span>{format(parseISO(d), 'MMM d, yyyy')}</span>
+                  <span>+{formatCurrency(doublePay.perWeekExtra)}</span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

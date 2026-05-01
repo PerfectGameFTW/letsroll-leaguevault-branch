@@ -9,7 +9,7 @@ import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage";
 import { isDateSkippedOrCancelled } from "@shared/schedule-utils";
 import { executeScheduledPayment, computePaymentSplit, type ChargeResult } from "./payment-execution";
-import { checkAndChargeFinalTwoWeeks, checkPaidInFull } from "./payment-checks";
+import { checkPaidInFull } from "./payment-checks";
 
 interface SchedulerCallbacks {
   schedulePayment: (record: PaymentSchedule) => void;
@@ -158,11 +158,15 @@ async function handleSuccessfulPayment(
       recordTime: new Date().toISOString()
     });
 
-    const { lineageAmount, prizeFundAmount } = computePaymentSplit(scheduleRecord.amount, league);
+    // Task #646: prefer the actual charged amount (which may be 2× the
+    // schedule's stored weekly amount on a double-pay week) so the
+    // persisted payment row matches what the provider actually billed.
+    const billedAmount = paymentResult.chargedAmount ?? scheduleRecord.amount;
+    const { lineageAmount, prizeFundAmount } = computePaymentSplit(billedAmount, league);
     await tx.insert(payments).values({
       bowlerId: scheduleRecord.bowlerId,
       leagueId: scheduleRecord.leagueId,
-      amount: scheduleRecord.amount,
+      amount: billedAmount,
       lineageAmount,
       prizeFundAmount,
       status: 'paid',
@@ -196,10 +200,6 @@ async function handleSuccessfulPayment(
     await storage.deactivatePaymentSchedule(scheduleRecord.id, `paid_in_full:scheduled_job=${jobId}`);
     callbacks.cancelJob(jobId);
     return;
-  }
-
-  if (league) {
-    await checkAndChargeFinalTwoWeeks(scheduleRecord, league, jobId);
   }
 
   if (league) {

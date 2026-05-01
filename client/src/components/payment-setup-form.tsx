@@ -21,11 +21,9 @@ interface PaymentSetupFormProps {
   maxPayableWeeks: number;
   fixedAmount: number | null;
   fixedAmountType: 'remaining' | 'pastDue' | null;
-  includeFinalTwoWeeks: boolean;
-  showFinalTwoWeeksWarning: boolean;
   financials: {
     fullSeasonAmount: number;
-    finalTwoWeeks: { amount: number; dueByWeek: number; isPaid: boolean };
+    doublePay: { dates: string[]; perWeekExtra: number; totalExtra: number; pastExtra: number; isPaid: boolean };
     amountPastDue: number;
     remainingBalance: number;
     totalPaid: number;
@@ -41,7 +39,6 @@ interface PaymentSetupFormProps {
   isSubmitting: boolean;
   onWeekChange: (weeks: number) => void;
   onFixedAmount: (amount: number | null, type: 'remaining' | 'pastDue' | null) => void;
-  onIncludeFinalTwoWeeksChange: (val: boolean) => void;
   setCardMode: (mode: 'new' | 'saved') => void;
   setSelectedSavedCardId: (id: string) => void;
   setStoreCard: (val: boolean) => void;
@@ -49,7 +46,6 @@ interface PaymentSetupFormProps {
   calculateTotalAmount: () => number;
   onSubmit: () => void;
   onCancel: () => void;
-  onAddFinalTwoWeeks: () => void;
   applePayAvailable: boolean;
   googlePayAvailable: boolean;
   applePayRef: RefDiv;
@@ -71,8 +67,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   maxPayableWeeks,
   fixedAmount,
   fixedAmountType,
-  includeFinalTwoWeeks,
-  showFinalTwoWeeksWarning,
   financials,
   seasonPresets,
   savedCards,
@@ -85,7 +79,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   isSubmitting,
   onWeekChange,
   onFixedAmount,
-  onIncludeFinalTwoWeeksChange,
   setCardMode,
   setSelectedSavedCardId,
   setStoreCard,
@@ -93,7 +86,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   calculateTotalAmount,
   onSubmit,
   onCancel,
-  onAddFinalTwoWeeks,
   applePayAvailable,
   googlePayAvailable,
   applePayRef,
@@ -152,11 +144,9 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               fixedAmount={fixedAmount}
               fixedAmountType={fixedAmountType}
               financials={financials}
-              includeFinalTwoWeeks={includeFinalTwoWeeks}
               seasonPresets={seasonPresets}
               onWeekChange={onWeekChange}
               onFixedAmount={onFixedAmount}
-              onIncludeFinalTwoWeeksChange={onIncludeFinalTwoWeeksChange}
             />
           )}
 
@@ -189,11 +179,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             selectedSchedule={selectedSchedule}
             fixedAmountType={fixedAmountType}
             selectedWeeks={selectedWeeks}
-            includeFinalTwoWeeks={includeFinalTwoWeeks}
-            finalTwoWeeksAmount={financials.finalTwoWeeks.amount}
             calculateTotalAmount={calculateTotalAmount}
-            showFinalTwoWeeksWarning={showFinalTwoWeeksWarning}
-            finalTwoWeeksDueByWeek={financials.finalTwoWeeks.dueByWeek}
             isSubmitting={isSubmitting}
             cardMode={cardMode}
             isInitialized={isInitialized}
@@ -201,7 +187,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             fullSeasonAmount={financials.fullSeasonAmount}
             onSubmit={onSubmit}
             onCancel={onCancel}
-            onAddFinalTwoWeeks={onAddFinalTwoWeeks}
           />
         </div>
       </CardContent>

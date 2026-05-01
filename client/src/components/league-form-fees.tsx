@@ -162,36 +162,6 @@ export function LeagueFeeSection({
         return null;
       })()}
 
-      {!isUpfront && (
-        <FormField
-          control={form.control}
-          name="finalTwoWeeksDueWeek"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Final 2 Weeks Due By</FormLabel>
-              <Select
-                onValueChange={(value) => field.onChange(parseInt(value))}
-                value={String(field.value ?? 6)}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select week" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((week) => (
-                    <SelectItem key={week} value={String(week)}>
-                      Week {week}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      )}
-
       {isUpfront && effectiveBowlingWeeks > 0 && watchedWeeklyFee > 0 && (
         <div className="rounded-lg border bg-muted/40 p-3 text-sm">
           <div className="font-medium">Full Season Total</div>

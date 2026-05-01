@@ -20,7 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { insertLeagueSchema, type InsertLeague, type League, type Location, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
+import { insertLeagueSchema, type InsertLeague, type League, type Location, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE } from "@shared/schema";
+import type { ScheduleWeekType } from "@shared/schedule-utils";
 import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { LeagueSchedulePreview } from "@/components/league-schedule-preview";
 import { Loader2 } from "lucide-react";
@@ -45,6 +46,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const [bowlingWeeks, setBowlingWeeks] = useState<number>(30);
   const [skipDates, setSkipDates] = useState<string[]>([]);
   const [cancelledDates, setCancelledDates] = useState<string[]>([]);
+  const [doublePayDates, setDoublePayDates] = useState<string[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
   const { data: locationsData } = useQuery<{ success: boolean; data: Location[] }>({
@@ -74,7 +76,6 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       weeklyFee: DEFAULT_WEEKLY_FEE_CENTS,
       lineageFee: null,
       prizeFundFee: null,
-      finalTwoWeeksDueWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
       paymentMode: "weekly",
       squareLineageItemId: null,
       lineageItemVariationId: null,
@@ -87,6 +88,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       totalBowlingWeeks: 30,
       skipDates: [],
       cancelledDates: [],
+      doublePayDates: [],
     },
   });
 
@@ -109,8 +111,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   const scheduleDates = useMemo(() => {
     if (!watchedStart || !watchedWeekDay || bowlingWeeks <= 0) return [];
-    return getAllBowlingDates(watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates);
-  }, [watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates]);
+    return getAllBowlingDates(watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates, doublePayDates);
+  }, [watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates, doublePayDates]);
 
   useEffect(() => {
     if (computedSeasonEnd) {
@@ -128,6 +130,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     setSkipDates,
     cancelledDates,
     setCancelledDates,
+    doublePayDates,
+    setDoublePayDates,
     setShowSchedule,
     setShowDeleteConfirm,
     setSelectedCategoryId,
@@ -135,14 +139,29 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     onClose,
   });
 
-  const toggleDateType = (isoDate: string, currentType: 'normal' | 'skip' | 'cancelled') => {
+  // 4-state cycle: normal → skip → cancelled → double-pay → normal.
+  // Cap of 2 double-pay weeks per league (toast on overflow).
+  const toggleDateType = (isoDate: string, currentType: ScheduleWeekType) => {
     if (currentType === 'normal') {
       setSkipDates(prev => [...prev, isoDate]);
     } else if (currentType === 'skip') {
       setSkipDates(prev => prev.filter(d => d !== isoDate));
       setCancelledDates(prev => [...prev, isoDate]);
-    } else {
+    } else if (currentType === 'cancelled') {
+      if (doublePayDates.length >= 2) {
+        toast({
+          title: "Double-pay weeks limited",
+          description: "You can only mark 2 double-pay weeks per league.",
+          variant: "destructive",
+        });
+        // Skip the double-pay state when cap is hit; cycle straight back to normal.
+        setCancelledDates(prev => prev.filter(d => d !== isoDate));
+        return;
+      }
       setCancelledDates(prev => prev.filter(d => d !== isoDate));
+      setDoublePayDates(prev => [...prev, isoDate]);
+    } else {
+      setDoublePayDates(prev => prev.filter(d => d !== isoDate));
     }
   };
 
@@ -160,12 +179,14 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const handleSeasonStartChange = () => {
     setSkipDates([]);
     setCancelledDates([]);
+    setDoublePayDates([]);
   };
 
   const handleBowlingWeeksChange = (w: number) => {
     setBowlingWeeks(w);
     setSkipDates([]);
     setCancelledDates([]);
+    setDoublePayDates([]);
   };
 
   return (
@@ -220,6 +241,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   bowlingWeeks={bowlingWeeks}
                   skipDates={skipDates}
                   cancelledDates={cancelledDates}
+                  doublePayDates={doublePayDates}
                   effectiveBowlingWeeks={effectiveBowlingWeeks}
                   computedSeasonEnd={computedSeasonEnd}
                   toggleDateType={toggleDateType}

@@ -2,12 +2,12 @@ import { FC, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, CreditCard, CalendarDays, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, CreditCard, CircleDollarSign, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { DEFAULT_TIMEZONE } from "@shared/schema";
 import type { League } from "@shared/schema";
@@ -27,12 +27,12 @@ interface FinancialsData {
   totalPaid: number;
   amountPastDue: number;
   remainingBalance: number;
-  finalTwoWeeks: {
-    amount: number;
+  doublePay: {
+    dates: string[];
+    perWeekExtra: number;
+    totalExtra: number;
+    pastExtra: number;
     isPaid: boolean;
-    isPastDue: boolean;
-    dueByWeek: number;
-    dueByDate: Date | null;
   };
 }
 
@@ -139,37 +139,25 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
             </div>
           )}
 
-          {league.paymentMode !== 'upfront' && financials.finalTwoWeeks.amount > 0 && !financials.finalTwoWeeks.isPaid && (
-            <div className={`flex items-center justify-between rounded-md px-3 py-2 ${
-              financials.finalTwoWeeks.isPastDue ? 'bg-destructive/10' : 'bg-muted'
-            }`}>
-              <div className="flex flex-col gap-0.5">
-                <span className={`text-sm font-medium flex items-center gap-1.5 ${
-                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : ''
-                }`}>
-                  {financials.finalTwoWeeks.isPastDue
-                    ? <AlertTriangle className="h-3.5 w-3.5" />
-                    : <CalendarDays className="h-3.5 w-3.5" />
-                  }
-                  Final 2 Weeks
+          {league.paymentMode !== 'upfront' && financials.doublePay.dates.length > 0 && (
+            <div className="rounded-md bg-emerald-500/10 px-3 py-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+                  <CircleDollarSign className="h-3.5 w-3.5" />
+                  Double-Pay Weeks
                 </span>
-                <span className="text-xs text-muted-foreground pl-5">
-                  Due by Week {financials.finalTwoWeeks.dueByWeek}
-                  {financials.finalTwoWeeks.dueByDate && ` (${format(financials.finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
+                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                  +{formatCurrency(financials.doublePay.totalExtra)}
                 </span>
               </div>
-              <div className="flex flex-col items-end gap-0.5">
-                <span className={`text-sm font-bold ${
-                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : ''
-                }`}>
-                  {formatCurrency(financials.finalTwoWeeks.amount)}
-                </span>
-                <span className={`text-xs font-medium ${
-                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : 'text-muted-foreground'
-                }`}>
-                  {financials.finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
-                </span>
-              </div>
+              <ul className="text-xs text-muted-foreground pl-5 space-y-0.5">
+                {financials.doublePay.dates.map((d) => (
+                  <li key={d} className="flex justify-between">
+                    <span>{format(parseISO(d), 'MMM d, yyyy')}</span>
+                    <span>+{formatCurrency(financials.doublePay.perWeekExtra)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

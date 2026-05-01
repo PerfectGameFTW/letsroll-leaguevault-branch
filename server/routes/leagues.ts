@@ -557,7 +557,6 @@ router.post("/:id/new-season", async (req: Request, res) => {
       prizeFundItemVariationId: sourceLeague.prizeFundItemVariationId,
       squarePrizeFundItemName: sourceLeague.squarePrizeFundItemName,
       squareCategoryId: sourceLeague.squareCategoryId ?? undefined,
-      finalTwoWeeksDueWeek: sourceLeague.finalTwoWeeksDueWeek,
       paymentMode: sourceLeague.paymentMode ?? "weekly",
       organizationId: sourceLeague.organizationId,
       locationId: sourceLeague.locationId,
@@ -566,6 +565,9 @@ router.post("/:id/new-season", async (req: Request, res) => {
       totalBowlingWeeks: sourceLeague.totalBowlingWeeks,
       skipDates: [],
       cancelledDates: [],
+      // Double-pay weeks are season-specific (admin must re-pick them
+      // for the new season), so don't carry them over.
+      doublePayDates: [],
     });
 
     const sourceTeams = await storage.getTeams(sourceLeague.id);

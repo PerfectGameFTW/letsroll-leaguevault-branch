@@ -1,18 +1,31 @@
-import { addWeeks, startOfToday, differenceInWeeks, isValid } from "date-fns";
-import { DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
+import { startOfToday, isValid } from "date-fns";
 import type { League, Payment } from "@shared/schema";
 import {
   getEffectiveBowlingWeeks,
   countBowlingWeeksPassed,
-  getBowlingDateByWeekNumber,
+  toIsoDateStr,
 } from "@shared/schedule-utils";
 
-export interface FinalTwoWeeksStatus {
-  amount: number;
-  dueByWeek: number;
-  dueByDate: Date | null;
+/**
+ * Task #646 — replaces the old `FinalTwoWeeksStatus` shape. The
+ * admin now picks 0–2 individual ISO dates ("double-pay weeks") and
+ * each one bills the bowler 2× the weekly fee on that date.
+ */
+export interface DoublePayStatus {
+  /** ISO yyyy-mm-dd dates flagged as 2× pay weeks (0–2 entries). */
+  dates: string[];
+  /** Per-week extra owed (= weeklyFee). */
+  perWeekExtra: number;
+  /** Total extra owed across the whole season (= dates.length * weeklyFee). */
+  totalExtra: number;
+  /** Extra already due as of today (= weeklyFee × dates already on/before today). */
+  pastExtra: number;
+  /**
+   * True when the cumulative paid amount covers the full season
+   * (regular + all double-pay extras). Surfaced for parity with the
+   * old `finalTwoWeeks.isPaid` flag.
+   */
   isPaid: boolean;
-  isPastDue: boolean;
 }
 
 export interface FinancialCalculation {
@@ -23,8 +36,7 @@ export interface FinancialCalculation {
   amountPastDue: number;
   fullSeasonAmount: number;
   remainingBalance: number;
-  finalTwoWeeks: FinalTwoWeeksStatus;
-  finalTwoWeeksDue: boolean;
+  doublePay: DoublePayStatus;
 }
 
 type LeagueWithSchedule = {
@@ -78,16 +90,18 @@ export function getTotalPaidAmount(payments: Payment[]): number {
     .reduce((sum, p) => sum + p.amount, 0);
 }
 
+function emptyDoublePay(weeklyFee = 0): DoublePayStatus {
+  return {
+    dates: [],
+    perWeekExtra: weeklyFee,
+    totalExtra: 0,
+    pastExtra: 0,
+    isPaid: false,
+  };
+}
+
 export function calculateFinancials(league: League | null | undefined, payments: Payment[]): FinancialCalculation {
   const totalPaid = getTotalPaidAmount(payments);
-
-  const defaultFinalTwoWeeks: FinalTwoWeeksStatus = {
-    amount: 0,
-    dueByWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
-    dueByDate: null,
-    isPaid: false,
-    isPastDue: false,
-  };
 
   if (!league?.seasonStart || !league?.seasonEnd || !league?.weeklyFee) {
     return {
@@ -98,14 +112,20 @@ export function calculateFinancials(league: League | null | undefined, payments:
       amountPastDue: 0,
       fullSeasonAmount: 0,
       remainingBalance: 0,
-      finalTwoWeeks: defaultFinalTwoWeeks,
-      finalTwoWeeksDue: false,
+      doublePay: emptyDoublePay(),
     };
   }
 
   const weeksPassed = getWeeksPassedInSeason(league);
   const totalWeeksInSeason = getSeasonLengthWeeks(league);
-  const fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+
+  const doublePayDates = (league.doublePayDates ?? [])
+    .map(d => d.slice(0, 10))
+    .filter(Boolean);
+  const perWeekExtra = league.weeklyFee;
+  const totalExtra = doublePayDates.length * perWeekExtra;
+
+  const fullSeasonAmount = league.weeklyFee * totalWeeksInSeason + totalExtra;
   const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
   const isUpfront = league.paymentMode === 'upfront';
@@ -120,48 +140,23 @@ export function calculateFinancials(league: League | null | undefined, payments:
       amountPastDue,
       fullSeasonAmount,
       remainingBalance,
-      finalTwoWeeks: { ...defaultFinalTwoWeeks, isPaid: true },
-      finalTwoWeeksDue: false,
+      doublePay: {
+        dates: doublePayDates,
+        perWeekExtra,
+        totalExtra,
+        pastExtra: totalExtra,
+        isPaid: totalPaid >= fullSeasonAmount,
+      },
     };
   }
 
-  const dueByWeek = league.finalTwoWeeksDueWeek ?? DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK;
-  const finalTwoWeeksAmount = league.weeklyFee * 2;
   const today = startOfToday();
+  const todayStr = toIsoDateStr(today);
+  const pastDoublePayCount = doublePayDates.filter(d => d <= todayStr).length;
+  const pastExtra = pastDoublePayCount * perWeekExtra;
 
-  let dueByDate: Date | null;
-  if (league.totalBowlingWeeks != null && league.weekDay) {
-    const bowlingDueDate = getBowlingDateByWeekNumber(
-      league.seasonStart,
-      league.weekDay,
-      dueByWeek,
-      league.skipDates ?? [],
-      league.cancelledDates ?? []
-    );
-    dueByDate = bowlingDueDate ?? addWeeks(new Date(league.seasonStart), dueByWeek);
-  } else {
-    dueByDate = addWeeks(new Date(league.seasonStart), dueByWeek);
-  }
-  if (dueByDate && !isValid(dueByDate)) {
-    dueByDate = null;
-  }
-
-  const isPastDueDate = dueByDate ? today >= dueByDate : false;
-  const isPaid = totalPaid >= finalTwoWeeksAmount;
-
-  const finalTwoWeeks: FinalTwoWeeksStatus = {
-    amount: finalTwoWeeksAmount,
-    dueByWeek: dueByWeek,
-    dueByDate,
-    isPaid,
-    isPastDue: !isPaid && isPastDueDate,
-  };
-
-  let totalDueToDate = league.weeklyFee * weeksPassed;
-  if (isPastDueDate) {
-    totalDueToDate += finalTwoWeeksAmount;
-  }
-  totalDueToDate = Math.min(totalDueToDate, fullSeasonAmount);
+  const totalDueToDateRaw = league.weeklyFee * weeksPassed + pastExtra;
+  const totalDueToDate = Math.min(totalDueToDateRaw, fullSeasonAmount);
   const amountPastDue = Math.max(0, totalDueToDate - totalPaid);
 
   return {
@@ -172,8 +167,13 @@ export function calculateFinancials(league: League | null | undefined, payments:
     amountPastDue,
     fullSeasonAmount,
     remainingBalance,
-    finalTwoWeeks,
-    finalTwoWeeksDue: isPastDueDate,
+    doublePay: {
+      dates: doublePayDates,
+      perWeekExtra,
+      totalExtra,
+      pastExtra,
+      isPaid: totalPaid >= fullSeasonAmount,
+    },
   };
 }
 
@@ -187,9 +187,14 @@ export function calculateBowlerPastDue(
     totalBowlingWeeks?: number | null;
     skipDates?: string[] | null;
     cancelledDates?: string[] | null;
+    doublePayDates?: string[] | null;
   },
   bowlerPaidAmount: number
 ): number {
+  const doublePayDates = (league.doublePayDates ?? [])
+    .map(d => d.slice(0, 10))
+    .filter(Boolean);
+
   if (league.paymentMode === 'upfront') {
     const totalWeeks = getSeasonLengthWeeks({
       seasonStart: league.seasonStart,
@@ -199,9 +204,14 @@ export function calculateBowlerPastDue(
       skipDates: league.skipDates,
       cancelledDates: league.cancelledDates,
     });
-    const fullSeasonAmount = league.weeklyFee * totalWeeks;
+    const fullSeasonAmount = league.weeklyFee * totalWeeks
+      + doublePayDates.length * league.weeklyFee;
     return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
   }
+
+  const today = startOfToday();
+  const todayStr = toIsoDateStr(today);
+  const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
 
   if (league.totalBowlingWeeks != null && league.weekDay) {
     const weeksPassed = countBowlingWeeksPassed(
@@ -210,42 +220,18 @@ export function calculateBowlerPastDue(
       league.skipDates ?? [],
       league.cancelledDates ?? []
     );
-    const dueToDate = league.weeklyFee * weeksPassed;
+    const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
     return Math.max(0, dueToDate - bowlerPaidAmount);
   }
 
-  const today = startOfToday();
   const seasonStart = new Date(league.seasonStart);
   if (!isValid(seasonStart)) return 0;
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   const weeksPassed = Math.max(0, Math.round(
     (today.getTime() - seasonStart.getTime()) / msPerWeek
   ));
-  const dueToDate = league.weeklyFee * weeksPassed;
+  const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
   return Math.max(0, dueToDate - bowlerPaidAmount);
-}
-
-export function calculateFinalTwoWeeksPaidOnWeek(
-  payments: Payment[],
-  finalTwoWeeksAmount: number,
-  seasonStart: string | Date
-): number | null {
-  if (finalTwoWeeksAmount <= 0) return null;
-
-  const start = new Date(seasonStart);
-  const paidPayments = payments.filter((p) => p.status === "paid");
-  const sorted = [...paidPayments].sort(
-    (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
-  );
-
-  let runningTotal = 0;
-  for (const p of sorted) {
-    runningTotal += p.amount;
-    if (runningTotal >= finalTwoWeeksAmount) {
-      return Math.max(1, differenceInWeeks(new Date(p.weekOf), start) + 1);
-    }
-  }
-  return null;
 }
 
 export function getPaymentSummary(payments: Payment[]) {
@@ -284,8 +270,15 @@ export function calculateBowlerViewFinancials(
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
     weeksDue = getWeeksPassedInSeason(league);
     totalWeeksInSeason = getSeasonLengthWeeks(league);
-    totalSeasonDues = league.weeklyFee * weeksDue;
-    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+    const doublePayDates = (league.doublePayDates ?? [])
+      .map(d => d.slice(0, 10))
+      .filter(Boolean);
+    const today = startOfToday();
+    const todayStr = toIsoDateStr(today);
+    const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
+    const totalExtra = doublePayDates.length * league.weeklyFee;
+    totalSeasonDues = league.weeklyFee * weeksDue + pastExtra;
+    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason + totalExtra;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
   }
 

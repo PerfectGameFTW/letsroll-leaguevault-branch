@@ -6,7 +6,6 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import { Link, useSearch, useLocation as useWouterLocation } from "wouter";
 import { ChevronDown } from "lucide-react";
-import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
@@ -189,15 +188,10 @@ export default function PaymentHistoryPage() {
     amountPastDue,
     fullSeasonAmount,
     remainingBalance,
-    finalTwoWeeks,
+    doublePay,
   } = financials;
   const weeksDueCount = league?.weeklyFee ? Math.round(totalSeasonDues / league.weeklyFee) : 0;
   const weeksPaid = league?.weeklyFee ? Math.round(totalPaidAmount / league.weeklyFee) : 0;
-
-  const finalTwoWeeksPaidOnWeek =
-    finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart
-      ? calculateFinalTwoWeeksPaidOnWeek(bowlerPayments, finalTwoWeeks.amount, league.seasonStart)
-      : null;
 
   const dialogAmountCents = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
 
@@ -472,8 +466,7 @@ export default function PaymentHistoryPage() {
             totalPaidAmount={totalPaidAmount}
             amountPastDue={amountPastDue}
             remainingBalance={remainingBalance}
-            finalTwoWeeks={finalTwoWeeks}
-            finalTwoWeeksPaidOnWeek={finalTwoWeeksPaidOnWeek}
+            doublePay={doublePay}
             onPayPastDue={() => setPayDialogType('pastdue')}
             onPayRemaining={() => setPayDialogType('remaining')}
           />

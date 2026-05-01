@@ -127,17 +127,12 @@ function makeOptions(overrides: Partial<SubmitOpts> = {}): SubmitOpts {
     selectedSavedCardId: 'card-1',
     selectedSchedule: 'weekly',
     storeCard: false,
-    includeFinalTwoWeeks: false,
-    showFinalTwoWeeksWarning: false,
     financials: {
       fullSeasonAmount: 30000,
-      finalTwoWeeks: { amount: 4000, dueByWeek: 14, isPaid: true },
       amountPastDue: 0,
     },
     calculateTotalAmount: () => 2000,
     setIsSubmitting: vi.fn(),
-    setShowFinalTwoWeeksWarning: vi.fn(),
-    setIncludeFinalTwoWeeks: vi.fn(),
     setShowPaymentSetup: vi.fn(),
   };
   return { ...base, ...overrides };
@@ -189,24 +184,6 @@ describe('useBowlerPaymentSubmit success toasts', () => {
     expect(description).not.toMatch(/selectedSchedule/);
   });
 
-  it('includes the Final 2 Weeks note when the user opted in', async () => {
-    csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ data: { id: 'pmt-1' } }));
-
-    const submit = useBowlerPaymentSubmit(
-      makeOptions({
-        selectedSchedule: 'custom',
-        includeFinalTwoWeeks: true,
-        calculateTotalAmount: () => 9000,
-      }),
-    );
-
-    await submit();
-
-    const { title, description } = lastToast();
-    expect(title).toBe('Payment Successful');
-    expect(description).toBe('Payment of $90.00 processed (includes Final 2 Weeks).');
-  });
-
   it('shows the upfront full-season scheduled toast', async () => {
     csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ ok: true }));
 
@@ -234,7 +211,6 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         selectedSchedule: 'weekly',
         financials: {
           fullSeasonAmount: 30000,
-          finalTwoWeeks: { amount: 0, dueByWeek: 14, isPaid: true },
           amountPastDue: 0,
         },
         calculateTotalAmount: () => 2000,
@@ -262,7 +238,6 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         selectedSchedule: 'weekly',
         financials: {
           fullSeasonAmount: 30000,
-          finalTwoWeeks: { amount: 0, dueByWeek: 14, isPaid: true },
           amountPastDue: 6000,
         },
         calculateTotalAmount: () => 8000,

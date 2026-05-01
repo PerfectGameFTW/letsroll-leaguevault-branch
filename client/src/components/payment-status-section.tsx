@@ -49,8 +49,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const [fixedAmount, setFixedAmount] = useState<number | null>(null);
   const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
-  const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
-  const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
@@ -132,23 +130,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     setSelectedWeeks(validWeeks);
     setFixedAmount(null);
     setFixedAmountType(null);
-    if (validWeeks === maxPayableWeeks) {
-      setIncludeFinalTwoWeeks(false);
-    }
   }, [maxPayableWeeks]);
 
   const calculateTotalAmount = useCallback(() => {
-    let base = 0;
     if (selectedSchedule === 'custom') {
-      base = fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
-    } else {
-      base = weeklyFee;
+      return fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
     }
-    if (includeFinalTwoWeeks) {
-      base += weeklyFee * 2;
-    }
-    return base;
-  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount, includeFinalTwoWeeks]);
+    return weeklyFee;
+  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     try {
@@ -237,13 +226,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     selectedSavedCardId,
     selectedSchedule,
     storeCard,
-    includeFinalTwoWeeks,
-    showFinalTwoWeeksWarning,
     financials,
     calculateTotalAmount,
     setIsSubmitting,
-    setShowFinalTwoWeeksWarning,
-    setIncludeFinalTwoWeeks,
     setShowPaymentSetup,
   });
 
@@ -282,8 +267,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         maxPayableWeeks={maxPayableWeeks}
         fixedAmount={fixedAmount}
         fixedAmountType={fixedAmountType}
-        includeFinalTwoWeeks={includeFinalTwoWeeks}
-        showFinalTwoWeeksWarning={showFinalTwoWeeksWarning}
         financials={financials}
         seasonPresets={seasonPresets}
         savedCards={savedCards}
@@ -303,9 +286,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           } else if (type === 'remaining') {
             setSelectedWeeks(maxPayableWeeks);
           }
-          setIncludeFinalTwoWeeks(false);
         }}
-        onIncludeFinalTwoWeeksChange={setIncludeFinalTwoWeeks}
         setCardMode={setCardMode}
         setSelectedSavedCardId={setSelectedSavedCardId}
         setStoreCard={setStoreCard}
@@ -314,11 +295,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         onSubmit={handleSubmitPayment}
         onCancel={() => {
           setShowPaymentSetup(false);
-          setShowFinalTwoWeeksWarning(false);
-        }}
-        onAddFinalTwoWeeks={() => {
-          setIncludeFinalTwoWeeks(true);
-          setShowFinalTwoWeeksWarning(false);
         }}
         applePayAvailable={applePayAvailable}
         googlePayAvailable={googlePayAvailable}

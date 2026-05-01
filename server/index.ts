@@ -15,6 +15,7 @@ import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
 import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
+import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
@@ -268,6 +269,12 @@ async function startServer() {
       }
     } catch (error) {
       log.error('Error running avatar migration:', error);
+    }
+
+    try {
+      await backfillDoublePayDates();
+    } catch (error) {
+      log.error('Error backfilling double-pay dates:', error);
     }
 
     server.listen({ port: PORT, host: HOST }, () => {

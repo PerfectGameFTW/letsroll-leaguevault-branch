@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { differenceInWeeks } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
+import { DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE } from "@shared/schema";
 import type { InsertLeague, League, PaymentMode } from "@shared/schema";
 
 interface UseLeagueFormDataOptions {
@@ -17,6 +17,8 @@ interface UseLeagueFormDataOptions {
   setSkipDates: (dates: string[]) => void;
   cancelledDates: string[];
   setCancelledDates: (dates: string[]) => void;
+  doublePayDates: string[];
+  setDoublePayDates: (dates: string[]) => void;
   setShowSchedule: (v: boolean) => void;
   setShowDeleteConfirm: (v: boolean) => void;
   setSelectedCategoryId: (id: string | null) => void;
@@ -34,6 +36,8 @@ export function useLeagueFormData({
   setSkipDates,
   cancelledDates,
   setCancelledDates,
+  doublePayDates,
+  setDoublePayDates,
   setShowSchedule,
   setShowDeleteConfirm,
   setSelectedCategoryId,
@@ -74,6 +78,7 @@ export function useLeagueFormData({
       setBowlingWeeks(initialWeeks);
       setSkipDates(league.skipDates ?? []);
       setCancelledDates(league.cancelledDates ?? []);
+      setDoublePayDates(league.doublePayDates ?? []);
       setShowSchedule(false);
       setSelectedCategoryId(league.squareCategoryId || null);
 
@@ -92,7 +97,6 @@ export function useLeagueFormData({
         weeklyFee: league.weeklyFee || DEFAULT_WEEKLY_FEE_CENTS,
         lineageFee: league.lineageFee ?? null,
         prizeFundFee: league.prizeFundFee ?? null,
-        finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
         paymentMode: (league.paymentMode as PaymentMode) || "weekly",
         squareLineageItemId: league.squareLineageItemId || null,
         lineageItemVariationId: league.lineageItemVariationId || null,
@@ -105,6 +109,7 @@ export function useLeagueFormData({
         totalBowlingWeeks: initialWeeks,
         skipDates: league.skipDates ?? [],
         cancelledDates: league.cancelledDates ?? [],
+        doublePayDates: league.doublePayDates ?? [],
       });
       setTimeout(() => { isResettingForm.current = false; }, 0);
     } else if (!open) {
@@ -123,7 +128,6 @@ export function useLeagueFormData({
         weeklyFee: DEFAULT_WEEKLY_FEE_CENTS,
         lineageFee: null,
         prizeFundFee: null,
-        finalTwoWeeksDueWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
         paymentMode: "weekly",
         squareLineageItemId: null,
         lineageItemVariationId: null,
@@ -136,11 +140,13 @@ export function useLeagueFormData({
         totalBowlingWeeks: 30,
         skipDates: [],
         cancelledDates: [],
+        doublePayDates: [],
       });
       setTimeout(() => { isResettingForm.current = false; }, 0);
       setBowlingWeeks(30);
       setSkipDates([]);
       setCancelledDates([]);
+      setDoublePayDates([]);
       setShowSchedule(false);
       setShowDeleteConfirm(false);
       setSelectedCategoryId(null);
@@ -160,6 +166,7 @@ export function useLeagueFormData({
           totalBowlingWeeks: bowlingWeeks,
           skipDates,
           cancelledDates,
+          doublePayDates,
         }
       );
     },
