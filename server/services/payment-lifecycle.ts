@@ -163,6 +163,12 @@ async function handleSuccessfulPayment(
     // persisted payment row matches what the provider actually billed.
     const billedAmount = paymentResult.chargedAmount ?? scheduleRecord.amount;
     const { lineageAmount, prizeFundAmount } = computePaymentSplit(billedAmount, league);
+    // Task #646: stamp a clear marker on double-pay charges so admins
+    // viewing the payment history can tell at a glance why the row is
+    // 2× the usual weekly amount.
+    const notes = paymentResult.isDoublePay
+      ? 'Double-pay week (2× weekly fee)'
+      : undefined;
     await tx.insert(payments).values({
       bowlerId: scheduleRecord.bowlerId,
       leagueId: scheduleRecord.leagueId,
@@ -183,6 +189,7 @@ async function handleSuccessfulPayment(
         paymentResult.providerName === 'square'
           ? paymentResult.buyerEmailMissing ?? false
           : false,
+      notes,
     });
 
     logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {

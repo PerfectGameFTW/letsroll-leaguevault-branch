@@ -168,7 +168,13 @@ export async function checkPaidInFull(
     } else {
       totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
     }
-    const fullSeasonAmount = league.weeklyFee * totalWeeks;
+    // Task #646: include the per-date double-pay extras
+    // (weeklyFee per dated double-pay week) in the full-season target
+    // so a schedule with double-pay weeks isn't deactivated before the
+    // doubled charges have run.
+    const doublePayExtras =
+      (league.doublePayDates?.length ?? 0) * league.weeklyFee;
+    const fullSeasonAmount = league.weeklyFee * totalWeeks + doublePayExtras;
 
     if (fullSeasonAmount <= 0) return false;
 

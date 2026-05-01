@@ -27,6 +27,11 @@ export interface ChargeResult {
   // `scheduleRecord.amount`, so the persisted record matches what was
   // actually billed.
   chargedAmount?: number;
+  // Task #646: true when this scheduled charge fired on one of the
+  // league's double-pay dates (i.e. `chargedAmount === 2 × weeklyFee`).
+  // The lifecycle uses this to stamp the persisted payment row's
+  // `notes` so admins can identify double-pay charges in the audit log.
+  isDoublePay?: boolean;
 }
 
 export type PaymentResult = ChargeResult;
@@ -230,7 +235,7 @@ export async function executeScheduledPayment(
     : '1';
   const lineItems = buildLineItems(league, scheduledQty);
 
-  return executeCharge(
+  const result = await executeCharge(
     provider,
     scheduleRecord.paymentCardId!,
     chargeAmount,
@@ -238,6 +243,10 @@ export async function executeScheduledPayment(
     paymentCustomerId,
     buyerEmail
   );
+  if (isDoublePayDate) {
+    result.isDoublePay = true;
+  }
+  return result;
 }
 
 export function computePaymentSplit(

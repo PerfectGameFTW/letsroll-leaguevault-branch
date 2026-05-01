@@ -149,13 +149,13 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       setCancelledDates(prev => [...prev, isoDate]);
     } else if (currentType === 'cancelled') {
       if (doublePayDates.length >= 2) {
+        // At cap — ignore the click (week stays Cancelled). The user
+        // must clear an existing double-pay mark before adding another.
         toast({
           title: "Double-pay weeks limited",
-          description: "You can only mark 2 double-pay weeks per league.",
+          description: "You can only mark 2 double-pay weeks per league. Clear one first to mark a new one.",
           variant: "destructive",
         });
-        // Skip the double-pay state when cap is hit; cycle straight back to normal.
-        setCancelledDates(prev => prev.filter(d => d !== isoDate));
         return;
       }
       setCancelledDates(prev => prev.filter(d => d !== isoDate));

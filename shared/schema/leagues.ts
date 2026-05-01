@@ -2,9 +2,69 @@ import { pgTable, text, serial, integer, boolean, timestamp, index, type AnyPgCo
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { WEEKDAYS, PAYMENT_MODES, nameSchema, positiveIntSchema, dateSchema, timeSchema, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "./constants";
+import { WEEKDAYS, PAYMENT_MODES, nameSchema, positiveIntSchema, dateSchema, timeSchema, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE } from "./constants";
 import { organizations } from "./organizations";
 import { locations } from "./locations";
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const WEEKDAY_INDEX: Record<typeof WEEKDAYS[number], number> = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+  Thursday: 4, Friday: 5, Saturday: 6,
+};
+
+/**
+ * Task #646: validate `doublePayDates` against the league's schedule.
+ *  - each entry must be ISO `YYYY-MM-DD`
+ *  - must not overlap `skipDates` or `cancelledDates`
+ *  - must fall on the league's `weekDay` and within `[seasonStart, seasonEnd]`
+ *
+ * Returns `{ ok: true }` on success, or `{ ok: false, message, path }` for
+ * the first failing date so callers can attach a `.refine` error.
+ */
+function validateDoublePayDates(args: {
+  doublePayDates: string[] | undefined | null;
+  skipDates?: string[] | null;
+  cancelledDates?: string[] | null;
+  weekDay?: typeof WEEKDAYS[number];
+  seasonStart?: string | Date | null;
+  seasonEnd?: string | Date | null;
+}): { ok: true } | { ok: false; message: string } {
+  const dpd = args.doublePayDates ?? [];
+  if (dpd.length === 0) return { ok: true };
+
+  for (const raw of dpd) {
+    if (typeof raw !== "string" || !ISO_DATE_RE.test(raw)) {
+      return { ok: false, message: `Double-pay date "${raw}" must be in YYYY-MM-DD format` };
+    }
+  }
+
+  const skipSet = new Set((args.skipDates ?? []).map((d) => d.slice(0, 10)));
+  const cancelSet = new Set((args.cancelledDates ?? []).map((d) => d.slice(0, 10)));
+  for (const d of dpd) {
+    if (skipSet.has(d) || cancelSet.has(d)) {
+      return { ok: false, message: `Double-pay date "${d}" cannot also be a skip or cancelled week` };
+    }
+  }
+
+  if (args.weekDay && args.seasonStart && args.seasonEnd) {
+    const targetDow = WEEKDAY_INDEX[args.weekDay];
+    const startStr = (typeof args.seasonStart === "string" ? args.seasonStart : args.seasonStart.toISOString()).slice(0, 10);
+    const endStr = (typeof args.seasonEnd === "string" ? args.seasonEnd : args.seasonEnd.toISOString()).slice(0, 10);
+    for (const d of dpd) {
+      if (d < startStr || d > endStr) {
+        return { ok: false, message: `Double-pay date "${d}" must fall within the season` };
+      }
+      const [y, m, day] = d.split("-").map(Number);
+      const dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
+      if (dow !== targetDow) {
+        return { ok: false, message: `Double-pay date "${d}" must fall on ${args.weekDay}` };
+      }
+    }
+  }
+
+  return { ok: true };
+}
 
 export const leagues = pgTable("leagues", {
   id: serial("id").primaryKey(),
@@ -28,7 +88,10 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
   squareCategoryId: text("square_category_id"),
   timezone: text("timezone").default(DEFAULT_TIMEZONE),
-  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK),
+  // Legacy column kept ONLY as the source for the doublePay backfill
+  // (Task #646). Never read or written by app code; new leagues leave
+  // this NULL.
+  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week"),
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
   previousSeasonId: integer("previous_season_id").references((): AnyPgColumn => leagues.id, { onDelete: 'set null' }),
@@ -103,7 +166,20 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
       return true;
     },
     { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
-  );
+  )
+  .superRefine((data, ctx) => {
+    const result = validateDoublePayDates({
+      doublePayDates: data.doublePayDates,
+      skipDates: data.skipDates,
+      cancelledDates: data.cancelledDates,
+      weekDay: data.weekDay,
+      seasonStart: data.seasonStart,
+      seasonEnd: data.seasonEnd,
+    });
+    if (!result.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["doublePayDates"], message: result.message });
+    }
+  });
 
 export const updateLeagueSchema = z.object({
   name: nameSchema,
@@ -153,7 +229,20 @@ export const updateLeagueSchema = z.object({
     return true;
   },
   { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
-);
+).superRefine((data, ctx) => {
+  if (!data.doublePayDates) return;
+  const result = validateDoublePayDates({
+    doublePayDates: data.doublePayDates,
+    skipDates: data.skipDates,
+    cancelledDates: data.cancelledDates,
+    weekDay: data.weekDay,
+    seasonStart: data.seasonStart,
+    seasonEnd: data.seasonEnd,
+  });
+  if (!result.ok) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["doublePayDates"], message: result.message });
+  }
+});
 
 export type League = typeof leagues.$inferSelect;
 export type InsertLeague = z.infer<typeof insertLeagueSchema>;
