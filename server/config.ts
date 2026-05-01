@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createLogger } from './logger';
 import { isReplitDeploymentValue } from './utils/replit-env';
+import { APP_ENV_VALUES, resolveAppEnv, type AppEnv } from '../shared/app-env';
 
 const log = createLogger("Config");
 
@@ -57,6 +58,19 @@ export const envSchema = z.object({
   REPL_SLUG: z.string().optional(),
   REPL_OWNER: z.string().optional(),
   REPLIT_DEPLOYMENT: z.string().optional(),
+
+  // Canonical environment selector (dev | beta | prod). When unset
+  // the server defaults via `resolveAppEnv` (REPLIT_DEPLOYMENT → prod,
+  // otherwise dev). The beta Repl MUST set APP_ENV=beta in Secrets;
+  // see `shared/app-env.ts` for the resolution rules and
+  // `docs/BETA_ENVIRONMENT_SETUP.md` for the runbook.
+  APP_ENV: z
+    .enum(APP_ENV_VALUES, {
+      errorMap: () => ({
+        message: `APP_ENV must be one of: ${APP_ENV_VALUES.join(', ')}. Leave it unset to use the safe per-runtime default (prod on a Replit deploy, dev locally). The beta Repl MUST set APP_ENV=beta in Secrets — see docs/BETA_ENVIRONMENT_SETUP.md.`,
+      }),
+    })
+    .optional(),
 
   APPLE_PAY_RECOVERY_ALERTS_ENABLED: z
     .enum(["true", "false", "1", "0"])
@@ -185,6 +199,18 @@ export const isDev = env.NODE_ENV !== "production";
 // instead of `!!env.REPLIT_DEPLOYMENT` so the empty-string edge case
 // is handled in exactly one place — see `utils/replit-env.ts`.
 export const isDeployment = isReplitDeploymentValue(env.REPLIT_DEPLOYMENT);
+
+// Canonical environment selector (dev | beta | prod). Resolved once
+// at boot from APP_ENV (if set) with a runtime-aware default — see
+// `shared/app-env.ts` for the rules. Downstream code should import
+// this rather than re-resolving from `env.APP_ENV` so the default
+// only lives in one place.
+export const appEnv: AppEnv = resolveAppEnv({
+  appEnv: env.APP_ENV,
+  replitDeployment: env.REPLIT_DEPLOYMENT,
+});
+export const isBetaEnv = appEnv === 'beta';
+export const isProdEnv = appEnv === 'prod';
 
 // Canonical "are we in a production-like runtime?" boolean. NODE_ENV
 // is the explicit signal; REPLIT_DEPLOYMENT is the implicit one for

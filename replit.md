@@ -126,6 +126,72 @@ Validations can be re-run on demand from the agent's code-execution sandbox via 
 - `client/src/hooks/` - Custom React hooks
 - `client/src/lib/financial-utils.ts` - Shared financial calculation utilities (weeks, dues, past-due)
 
+## Environments & Promotion Workflow
+LeagueVault runs the same codebase against three logical environments
+(Task #652). The full beta runbook lives in
+**`docs/BETA_ENVIRONMENT_SETUP.md`**; this section covers the day-to-day
+flow once beta is up.
+
+| | dev | beta | prod |
+| --- | --- | --- | --- |
+| Repl | local workspace | forked Repl | live Repl |
+| Domain | Replit dev URL | `beta.leaguevault.app` | `leaguevault.app` |
+| Branch | `main` | `beta` | `main` |
+| Database | dev DB | beta DB (separate, empty) | prod DB |
+| Payment creds | as configured | sandbox only | live |
+| `APP_ENV` | unset → `dev` | **must be `beta`** | unset → `prod` (via `REPLIT_DEPLOYMENT`) |
+| BETA banner | hidden | visible (with commit SHA) | hidden |
+
+**Resolution rules** for `APP_ENV` are centralised in
+`shared/app-env.ts → resolveAppEnv`: explicit `APP_ENV` wins; otherwise
+`prod` on a Replit deploy, `dev` locally. `beta` is never a default —
+the beta Repl MUST set `APP_ENV=beta` in Secrets.
+
+**Boot guard**: when `APP_ENV=beta`, the server scans env at startup
+for live payment credentials (`SQUARE_PROD_*`, `SQUARE_PRODUCTION_*`,
+or any value matching `sk_live_` / `pk_live_` / `rk_live_`) and
+**refuses to start** if any are present. See
+`server/utils/live-credential-check.ts`.
+
+**Promotion direction** — features flow `main` → `beta` → `main`:
+
+```
+                  [ developer / Codex / agent ]
+                              │ commit & push
+                              ▼
+                          main branch
+                       (dev Repl pulls)
+                              │
+                              │  merge / cherry-pick into `beta` branch
+                              ▼
+                         beta branch
+                       (beta Repl pulls + deploy)
+                              │
+                              │  smoke test on beta.leaguevault.app
+                              │  with sandbox payment cards
+                              ▼
+                ┌─────────────┴─────────────┐
+         beta passes                   beta fails
+                │                           │
+                │ merge `beta` → `main`     │ fix on `main`,
+                │ (or just keep `main`      │ re-merge to `beta`,
+                │  ahead — beta is a        │ re-test
+                │  rolling pre-release)     │
+                ▼                           ▼
+            prod Repl                  return to top
+       (deploy from main)
+```
+
+**`/api/health` contract**: returns `{ status, appEnv, commit, ... }`.
+The `BetaBanner` client component (`client/src/components/beta-banner.tsx`)
+queries this and renders the persistent yellow strip when
+`appEnv === "beta"`. The commit SHA shown in the banner lets a tester
+filing a bug pin it to a specific deploy.
+
+**`scripts/post-pull.sh`** detects `APP_ENV=beta` and prints an extra
+reminder: confirm Secrets are still sandbox, mirror any new prod
+secrets with sandbox values.
+
 ## Pulling External Changes Back Into Replit
 When code is edited off-Replit (OpenAI Codex, a teammate, a local
 checkout, etc.) and pushed to GitHub, run **`bash scripts/post-pull.sh`**
@@ -186,14 +252,14 @@ All server-side env vars are validated at startup by `server/config.ts` (Zod-bas
 - **Optional** (warning logged if missing): `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
 - Import `{ env }` from `server/config` to access typed env values throughout server code.
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
-- `SQUARE_PROD_TOKEN` - Square production access token (priority 1)
-- `SQUARE_PRODUCTION_ACCESS_TOKEN` - Square production access token (priority 2, fallback)
-- `SQUARE_ACCESS_TOKEN` - Square access token (priority 3, fallback)
-- `SQUARE_PRODUCTION_APP_ID` - Square production app ID (shared env var)
-- `SQUARE_PRODUCTION_LOCATION_ID` - Square production location ID (shared env var)
-- `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback)
-- `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
-- **Note**: All Square credentials are **production mode** (not sandbox). Apple Pay/Google Pay testing must be done on the live deployed app.
+- `SQUARE_PROD_TOKEN` - Square production access token (priority 1, **prod only**)
+- `SQUARE_PRODUCTION_ACCESS_TOKEN` - Square production access token (priority 2, fallback, **prod only**)
+- `SQUARE_ACCESS_TOKEN` - Square access token (priority 3, fallback). On **prod** this holds a production token; on **beta** this holds a **sandbox** token.
+- `SQUARE_PRODUCTION_APP_ID` - Square production app ID (shared env var, **prod only**)
+- `SQUARE_PRODUCTION_LOCATION_ID` - Square production location ID (shared env var, **prod only**)
+- `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback). Sandbox values on beta, production on prod.
+- `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback). Sandbox on beta, production on prod.
+- **Beta safety**: when `APP_ENV=beta`, the boot guard (`server/utils/live-credential-check.ts`) refuses to start if any `SQUARE_PROD*` / `SQUARE_PRODUCTION_*` var is set, OR if a value in the un-prefixed sandbox slots looks like a Square *production* credential (App ID prefixed with `sq0idp-` rather than `sandbox-sq0idp-`, or access token prefixed with `EAAAEv` / `EAAAl7`). Apple Pay / Google Pay can be tested end-to-end on `beta.leaguevault.app` against Square sandbox; only true mainnet wallet certification still requires prod.
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 - `BN_API_KEY` - BowlNow sub-account API key for CRM contact sync

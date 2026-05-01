@@ -1,5 +1,7 @@
-import { env, isDev } from "./config";
+import { env, isDev, appEnv, isBetaEnv } from "./config";
 import * as Sentry from "@sentry/node";
+import { commitSha } from './utils/build-info';
+import { findLiveCredentials } from './utils/live-credential-check';
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import { registerRoutes } from "./routes/index";
@@ -36,6 +38,41 @@ declare module 'express-serve-static-core' {
 }
 
 const log = createLogger("Server");
+
+// Refuse to start a beta deploy that has live payment credentials in
+// its env. Same codebase, same UI — except the BETA banner tells
+// testers it's safe to enter test card numbers, so a live token
+// here would silently charge real cards. See
+// `server/utils/live-credential-check.ts` and Task #652.
+// `dev` and `prod` skip this check (dev intentionally uses whichever
+// creds are set; prod SHOULD have live creds).
+if (isBetaEnv) {
+  const findings = findLiveCredentials(process.env);
+  if (findings.length > 0) {
+    log.error('Refusing to start: APP_ENV=beta but live payment credentials are present in environment.');
+    for (const f of findings) {
+      log.error(`  - ${f.envVar}: ${f.reason}`);
+    }
+    log.error('Remove the listed credentials from this Repl\'s Secrets and re-deploy. See docs/BETA_ENVIRONMENT_SETUP.md.');
+    process.exit(1);
+  }
+}
+
+// One-line summary of the resolved runtime envelope, emitted at boot
+// so operators tailing logs can confirm dev/beta/prod, the commit SHA
+// they're on, and which Square credential mode is active.
+log.info('Runtime envelope', {
+  appEnv,
+  nodeEnv: env.NODE_ENV,
+  isReplitDeploy: !!env.REPLIT_DEPLOYMENT,
+  commit: commitSha,
+  squareCreds:
+    env.SQUARE_PROD_TOKEN || env.SQUARE_PRODUCTION_ACCESS_TOKEN
+      ? 'production'
+      : env.SQUARE_ACCESS_TOKEN
+        ? 'sandbox/fallback'
+        : 'unset',
+});
 
 const app = express();
 app.set("trust proxy", 1);
@@ -148,6 +185,12 @@ app.get('/api/health', async (req, res) => {
       status: 'healthy',
       port: PORT,
       timestamp: new Date().toISOString(),
+      // Surfaced to the client so the BETA banner (Task #652) can
+      // render without a separate round-trip. Stable contract:
+      // `appEnv` is the resolved selector (dev|beta|prod) and
+      // `commit` is a short SHA / deploy id (or "unknown").
+      appEnv,
+      commit: commitSha,
       diagnostics: {
         database_response_time: `${dbDuration}ms`,
         uptime: process.uptime(),

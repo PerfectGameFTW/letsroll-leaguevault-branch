@@ -87,6 +87,21 @@ echo "=========================================="
 echo "  Reset complete."
 echo "=========================================="
 echo ""
+# Env-aware reminder. Only the *beta* Repl needs the APP_ENV / sandbox
+# nag — dev runs locally without the BETA banner, and prod sets
+# APP_ENV implicitly via REPLIT_DEPLOYMENT. Surfacing this on the
+# wrong Repl just adds noise, so we gate the reminder on the value
+# the operator actually has set right now (Task #652).
+if [ "${APP_ENV:-}" = "beta" ]; then
+  echo "Beta-Repl-specific reminders (APP_ENV=beta detected):"
+  echo "  • Confirm payment Secrets are still SANDBOX (no SQUARE_PROD_TOKEN /"
+  echo "    SQUARE_PRODUCTION_*, no sk_live_/pk_live_ keys). The server"
+  echo "    refuses to start when APP_ENV=beta and a live credential is"
+  echo "    present — see docs/BETA_ENVIRONMENT_SETUP.md."
+  echo "  • If the pulled commit added new secrets, mirror them from prod"
+  echo "    using SANDBOX values, never the live ones."
+  echo ""
+fi
 echo "What this did NOT do (handle manually if needed):"
 echo "  • Add new secrets / env vars — check the pulled commit message"
 echo "    for any new secrets the code now requires, then add them in"

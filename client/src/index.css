@@ -16,6 +16,19 @@
 @tailwind utilities;
 
 @layer base {
+  /* `--beta-banner-height` is set to `28px` on `:root` by the
+     `BetaBanner` component while it's mounted (see
+     `client/src/components/beta-banner.tsx`); otherwise it stays at
+     `0px`. The variable lets the global body padding and any
+     fixed/sticky layout anchors (admin sidebar, bowler layout root,
+     sticky page headers) push themselves below the banner with a
+     single arbitrary Tailwind value like
+     `top-[var(--beta-banner-height,0px)]`, so dev/prod runtimes pay
+     zero layout cost. Task #652. */
+  :root {
+    --beta-banner-height: 0px;
+  }
+
   * {
     @apply border-border;
   }
@@ -27,7 +40,7 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    padding-top: env(safe-area-inset-top);
+    padding-top: calc(env(safe-area-inset-top) + var(--beta-banner-height, 0px));
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
