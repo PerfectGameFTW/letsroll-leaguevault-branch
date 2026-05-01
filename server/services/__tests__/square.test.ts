@@ -293,12 +293,23 @@ describe('Square Service', () => {
       await expect(noCredsProvider.getPayment('pay-id')).resolves.toBeNull();
     });
 
-    it('listCatalogCategories stays degraded (returns [])', async () => {
-      await expect(noCredsProvider.listCatalogCategories()).resolves.toEqual([]);
+    it('listCatalogCategories stays degraded (returns empty payload, truncated:false)', async () => {
+      // Task #623: shape changed from `CatalogCategory[]` to
+      // `{ categories, truncated }`. Pin both the empty list and
+      // the explicit `truncated: false` so the route can forward
+      // the flag without a Boolean fallback.
+      await expect(noCredsProvider.listCatalogCategories()).resolves.toEqual({
+        categories: [],
+        truncated: false,
+      });
     });
 
-    it('listCatalogItems stays degraded (returns [])', async () => {
-      await expect(noCredsProvider.listCatalogItems()).resolves.toEqual([]);
+    it('listCatalogItems stays degraded (returns empty payload, truncated:false)', async () => {
+      // Task #623: same shape change as listCatalogCategories above.
+      await expect(noCredsProvider.listCatalogItems()).resolves.toEqual({
+        items: [],
+        truncated: false,
+      });
     });
   });
 
@@ -337,9 +348,12 @@ describe('Square Service', () => {
         .mockResolvedValueOnce(listPage([itemObject('c', 'C')], 'cursor-2'))
         .mockResolvedValueOnce(listPage([itemObject('d', 'D')], undefined));
 
-      const items = await provider.listCatalogItems();
+      const result = await provider.listCatalogItems();
 
-      expect(items.map((i) => i.id)).toEqual(['a', 'b', 'c', 'd']);
+      expect(result.items.map((i) => i.id)).toEqual(['a', 'b', 'c', 'd']);
+      // Task #623: a fully-walked cursor must not flag the response
+      // as truncated — the UI banner only fires on a real cap hit.
+      expect(result.truncated).toBe(false);
       expect(mocks.catalog.list).toHaveBeenCalledTimes(3);
       expect(mocks.catalog.list).toHaveBeenNthCalledWith(1, { cursor: undefined, types: 'ITEM' });
       expect(mocks.catalog.list).toHaveBeenNthCalledWith(2, { cursor: 'cursor-1', types: 'ITEM' });
@@ -353,9 +367,10 @@ describe('Square Service', () => {
         .mockResolvedValueOnce({ items: [itemObject('b', 'B')], cursor: 'cursor-2' })
         .mockResolvedValueOnce({ items: [itemObject('c', 'C')], cursor: undefined });
 
-      const items = await provider.listCatalogItems('CAT-1');
+      const result = await provider.listCatalogItems('CAT-1');
 
-      expect(items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+      expect(result.items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+      expect(result.truncated).toBe(false);
       expect(mocks.catalog.searchItems).toHaveBeenCalledTimes(3);
       expect(mocks.catalog.searchItems).toHaveBeenNthCalledWith(1, {
         categoryIds: ['CAT-1'],
@@ -380,43 +395,68 @@ describe('Square Service', () => {
       // helper preserves that behavior for both branches.
       mocks.catalog.list.mockResolvedValueOnce(listPage([itemObject('only', 'Only')], ''));
 
-      const items = await provider.listCatalogItems();
+      const result = await provider.listCatalogItems();
 
-      expect(items.map((i) => i.id)).toEqual(['only']);
+      expect(result.items.map((i) => i.id)).toEqual(['only']);
+      expect(result.truncated).toBe(false);
       expect(mocks.catalog.list).toHaveBeenCalledTimes(1);
     });
 
-    it('listCatalogItems stops at the MAX_PAGES safety cap and logs a warning', async () => {
+    it('listCatalogItems stops at the MAX_PAGES safety cap, logs a warning, and flags truncated:true (task #623)', async () => {
       // Simulate a stuck cursor — every page returns one item and
       // the same non-empty cursor. The helper must bail at the page
-      // cap (20) instead of looping forever.
+      // cap (20) instead of looping forever, AND surface
+      // `truncated: true` so the admin UI (Task #623) can show the
+      // "catalog too large to fully load" banner instead of
+      // pretending the capped 20-item prefix is the whole catalog.
       mocks.catalog.list.mockImplementation(async () =>
         listPage([itemObject('x', 'X')], 'never-ending-cursor'),
       );
 
-      const items = await provider.listCatalogItems();
+      const result = await provider.listCatalogItems();
 
-      expect(items).toHaveLength(20);
+      expect(result.items).toHaveLength(20);
+      expect(result.truncated).toBe(true);
       expect(mocks.catalog.list).toHaveBeenCalledTimes(20);
       expect(mocks.log.warn).toHaveBeenCalledTimes(1);
       expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_PAGES=20/);
     });
 
-    it('listCatalogItems stops at the MAX_ITEMS safety cap and logs a warning', async () => {
+    it('listCatalogItems stops at the MAX_ITEMS safety cap, logs a warning, and flags truncated:true (task #623)', async () => {
       // Simulate huge pages (300 items each) with a non-empty cursor
       // on every page. The helper must bail once the accumulated
-      // count crosses 5,000, regardless of how many pages remain.
+      // count crosses 5,000, regardless of how many pages remain,
+      // and flag the response as truncated for the UI banner.
       const bigPage = Array.from({ length: 300 }, (_, i) => itemObject(`x-${i}`, `X${i}`));
       mocks.catalog.list.mockImplementation(async () =>
         listPage(bigPage, 'never-ending-cursor'),
       );
 
-      const items = await provider.listCatalogItems();
+      const result = await provider.listCatalogItems();
 
       // 17 pages of 300 = 5100 items, which crosses the 5000 cap.
-      expect(items.length).toBeGreaterThanOrEqual(5_000);
+      expect(result.items.length).toBeGreaterThanOrEqual(5_000);
+      expect(result.truncated).toBe(true);
       expect(mocks.log.warn).toHaveBeenCalledTimes(1);
       expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_ITEMS=5000/);
+    });
+
+    it('listCatalogItems (with categoryId) flags truncated:true when searchItems hits the cap (task #623)', async () => {
+      // The category-scoped branch goes through `catalog.searchItems`
+      // rather than `catalog.list`. Pin that the truncated flag
+      // surfaces from that branch too, otherwise the banner would
+      // silently hide whenever an admin filters by category.
+      mocks.catalog.searchItems.mockImplementation(async () => ({
+        items: [itemObject('x', 'X')],
+        cursor: 'never-ending-cursor',
+      }));
+
+      const result = await provider.listCatalogItems('CAT-1');
+
+      expect(result.truncated).toBe(true);
+      expect(mocks.catalog.searchItems).toHaveBeenCalledTimes(20);
+      expect(mocks.log.warn).toHaveBeenCalledTimes(1);
+      expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_PAGES=20/);
     });
 
     it('listCatalogCategories also paginates through the cursor', async () => {
@@ -424,9 +464,10 @@ describe('Square Service', () => {
         .mockResolvedValueOnce(listPage([categoryObject('cat-1', 'Cat One')], 'cursor-1'))
         .mockResolvedValueOnce(listPage([categoryObject('cat-2', 'Cat Two')], undefined));
 
-      const categories = await provider.listCatalogCategories();
+      const result = await provider.listCatalogCategories();
 
-      expect(categories.map((c) => c.id).sort()).toEqual(['cat-1', 'cat-2']);
+      expect(result.categories.map((c) => c.id).sort()).toEqual(['cat-1', 'cat-2']);
+      expect(result.truncated).toBe(false);
       expect(mocks.catalog.list).toHaveBeenCalledTimes(2);
       expect(mocks.catalog.list).toHaveBeenNthCalledWith(1, {
         cursor: undefined,
@@ -437,6 +478,21 @@ describe('Square Service', () => {
         types: 'CATEGORY',
       });
       expect(mocks.log.warn).not.toHaveBeenCalled();
+    });
+
+    it('listCatalogCategories flags truncated:true when the cursor never empties (task #623)', async () => {
+      // Categories rarely approach the cap in practice but the same
+      // contract applies: if the safety cap fires, the response must
+      // tell the caller so the admin UI can surface it.
+      mocks.catalog.list.mockImplementation(async () =>
+        listPage([categoryObject('c', 'C')], 'never-ending-cursor'),
+      );
+
+      const result = await provider.listCatalogCategories();
+
+      expect(result.truncated).toBe(true);
+      expect(mocks.log.warn).toHaveBeenCalledTimes(1);
+      expect(mocks.log.warn.mock.calls[0]?.[0]).toMatch(/MAX_PAGES=20/);
     });
   });
 });

@@ -59,10 +59,11 @@ async function paginateCatalogObjects(
     nextCursor: string | undefined;
   }>,
   context: string,
-): Promise<CatalogObject[]> {
+): Promise<{ objects: CatalogObject[]; truncated: boolean }> {
   const all: CatalogObject[] = [];
   let cursor: string | undefined;
   let pages = 0;
+  let truncated = false;
   do {
     const { objects, nextCursor } = await fetchPage(cursor);
     all.push(...objects);
@@ -73,6 +74,7 @@ async function paginateCatalogObjects(
         `${context}: hit MAX_ITEMS=${CATALOG_PAGINATION_MAX_ITEMS} cap after ${pages} page(s); ` +
           'stopping pagination. Some catalog items may be missing from the response.',
       );
+      truncated = true;
       break;
     }
     if (pages >= CATALOG_PAGINATION_MAX_PAGES && cursor) {
@@ -80,10 +82,11 @@ async function paginateCatalogObjects(
         `${context}: hit MAX_PAGES=${CATALOG_PAGINATION_MAX_PAGES} cap with cursor still set; ` +
           `${all.length} object(s) returned. Some catalog items may be missing from the response.`,
       );
+      truncated = true;
       break;
     }
   } while (cursor);
-  return all;
+  return { objects: all, truncated };
 }
 
 /**
@@ -985,7 +988,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     return cardId.startsWith('ccof:');
   }
 
-  async listCatalogCategories(): Promise<CatalogCategory[]> {
+  async listCatalogCategories(): Promise<{ categories: CatalogCategory[]; truncated: boolean }> {
     const client = await this.getSquareClient();
     if (!client) {
       // Intentionally degraded: GET /catalog/categories already
@@ -993,7 +996,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // admin UI shows a "no catalog yet" empty state in that
       // case). Throwing here would turn that into a 500 inside
       // the route's outer catch. Task #332.
-      return [];
+      return { categories: [], truncated: false };
     }
 
     try {
@@ -1001,7 +1004,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // we walk the cursor through the shared `paginateCatalogObjects`
       // helper so the safety cap (Task #613) applies here too even
       // though categories rarely approach it.
-      const allObjects = await paginateCatalogObjects(
+      const { objects: allObjects, truncated } = await paginateCatalogObjects(
         async (cursor) => {
           const page = await client.catalog.list({ cursor, types: 'CATEGORY' });
           return {
@@ -1032,19 +1035,19 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         })
         .sort((a, b) => a.name.localeCompare(b.name));
       if (isDev) log.info(`Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
-      return deduped;
+      return { categories: deduped, truncated };
     } catch (error) {
       log.error('Catalog categories error:', error);
       throw new Error('Failed to fetch catalog categories: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async listCatalogItems(categoryId?: string): Promise<CatalogItem[]> {
+  async listCatalogItems(categoryId?: string): Promise<{ items: CatalogItem[]; truncated: boolean }> {
     const client = await this.getSquareClient();
     if (!client) {
       // Intentionally degraded: same contract as
       // listCatalogCategories above. Task #332.
-      return [];
+      return { items: [], truncated: false };
     }
 
     try {
@@ -1093,7 +1096,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       if (categoryId) {
         // SearchCatalogItemsResponse exposes `cursor` directly on the
         // response body (no Page<> wrapper here, unlike `catalog.list`).
-        const allItems = await paginateCatalogObjects(
+        const { objects: allItems, truncated } = await paginateCatalogObjects(
           async (cursor) => {
             const response = await client.catalog.searchItems({
               categoryIds: [categoryId],
@@ -1108,10 +1111,13 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         );
         // `searchItems` returns CatalogObject[] in v40+; narrow to the
         // ITEM variant so `itemData` is reachable on the union.
-        return allItems.filter(isItemObject).map(toCatalogItem);
+        return {
+          items: allItems.filter(isItemObject).map(toCatalogItem),
+          truncated,
+        };
       }
 
-      const allObjects = await paginateCatalogObjects(
+      const { objects: allObjects, truncated } = await paginateCatalogObjects(
         async (cursor) => {
           const page = await client.catalog.list({ cursor, types: 'ITEM' });
           return {
@@ -1121,7 +1127,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         },
         'listCatalogItems',
       );
-      return allObjects.filter(isItemObject).map(toCatalogItem);
+      return {
+        items: allObjects.filter(isItemObject).map(toCatalogItem),
+        truncated,
+      };
     } catch (error) {
       log.error('Catalog list error:', error);
       throw new Error('Failed to fetch catalog items: ' + (error instanceof Error ? error.message : String(error)));

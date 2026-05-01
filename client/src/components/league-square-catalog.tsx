@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FormControl, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
-import { Search, X } from "lucide-react";
+import { AlertTriangle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertLeague } from "@shared/schema";
@@ -95,7 +96,23 @@ export function LeagueSquareCatalog({
 }: LeagueSquareCatalogProps) {
   const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
 
-  const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
+  // Task #623: the catalog API now returns
+  // `{ items|categories, truncated }` instead of a bare array, so the
+  // admin UI can show a banner when the pagination safety cap fired
+  // and the visible list is incomplete. We accept the bare-array
+  // shape too as a defensive fallback in case a stale server is
+  // still on the pre-#623 contract.
+  type CategoriesPayload = CatalogCategory[] | { categories: CatalogCategory[]; truncated?: boolean };
+  type ItemsPayload = CatalogItem[] | { items: CatalogItem[]; truncated?: boolean };
+
+  const readCategories = (payload: CategoriesPayload | undefined) =>
+    Array.isArray(payload) ? payload : payload?.categories ?? [];
+  const readItems = (payload: ItemsPayload | undefined) =>
+    Array.isArray(payload) ? payload : payload?.items ?? [];
+  const readTruncated = (payload: CategoriesPayload | ItemsPayload | undefined) =>
+    !!(payload && !Array.isArray(payload) && payload.truncated);
+
+  const { data: categoriesData } = useQuery<{ success: boolean; data: CategoriesPayload }>({
     queryKey: ['/api/payments-provider/catalog/categories', locationId],
     queryFn: async () => {
       const res = await fetch(`/api/payments-provider/catalog/categories${catalogLocationParam}`);
@@ -105,9 +122,9 @@ export function LeagueSquareCatalog({
     staleTime: 1000 * 60 * 10,
     enabled: !!locationId,
   });
-  const categories = categoriesData?.data || [];
+  const categories = readCategories(categoriesData?.data);
 
-  const { data: allCatalogData, isLoading: isLoadingCatalog } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+  const { data: allCatalogData, isLoading: isLoadingCatalog } = useQuery<{ success: boolean; data: ItemsPayload }>({
     queryKey: ['/api/payments-provider/catalog/items', locationId],
     queryFn: async () => {
       const res = await fetch(`/api/payments-provider/catalog/items${catalogLocationParam}`);
@@ -117,9 +134,9 @@ export function LeagueSquareCatalog({
     staleTime: 1000 * 60 * 10,
     enabled: !!locationId,
   });
-  const allCatalogItems = allCatalogData?.data || [];
+  const allCatalogItems = readItems(allCatalogData?.data);
 
-  const { data: filteredCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+  const { data: filteredCatalogData } = useQuery<{ success: boolean; data: ItemsPayload }>({
     queryKey: ['/api/payments-provider/catalog/items', locationId, selectedCategoryId],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -133,8 +150,16 @@ export function LeagueSquareCatalog({
     enabled: !!selectedCategoryId && !!locationId,
   });
 
-  const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
+  const catalogItems = selectedCategoryId
+    ? readItems(filteredCatalogData?.data)
+    : allCatalogItems;
   const hasCatalogItems = allCatalogItems.length > 0;
+  // Show the truncated banner if either the all-items or the
+  // currently-filtered branch came back capped — either way the
+  // visible list is incomplete.
+  const isCatalogTruncated =
+    readTruncated(allCatalogData?.data) ||
+    (!!selectedCategoryId && readTruncated(filteredCatalogData?.data));
 
   const [searchInput, setSearchInput] = useState(() =>
     locationId ? readStoredFilter(searchStorageKey(locationId)) : ''
@@ -287,6 +312,24 @@ export function LeagueSquareCatalog({
 
       {!isLoadingCatalog && !hasCatalogItems && (
         <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
+      )}
+
+      {/* Task #623: when the server's pagination safety cap fires
+          (5,000 items / 20 pages — see `paginateCatalogObjects` in
+          server/services/square-provider.ts) the visible list is a
+          truncated prefix of the real catalog. Pre-#623 the admin
+          had no signal at all — surface it here so they understand
+          why some items are missing. */}
+      {isCatalogTruncated && (
+        <Alert variant="destructive" data-testid="alert-catalog-truncated">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>This catalog is too large to fully load</AlertTitle>
+          <AlertDescription>
+            We stopped loading after a safety limit (5,000 items) was reached, so some
+            Square items aren't shown below. If you expected to see more, please contact
+            support.
+          </AlertDescription>
+        </Alert>
       )}
 
       <FormItem>

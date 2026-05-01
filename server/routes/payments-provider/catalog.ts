@@ -50,16 +50,20 @@ router.get('/catalog/categories', async (req, res) => {
     } catch (e) {
       if (e instanceof ProviderNotConfiguredError) {
         log.warn('Catalog categories: provider not configured, returning empty', { locationId: lvLocationId });
-        return sendSuccess(res, []);
+        return sendSuccess(res, { categories: [], truncated: false });
       }
       throw e;
     }
     if (!hasCatalogSupport(provider)) {
-      return sendSuccess(res, []);
+      return sendSuccess(res, { categories: [], truncated: false });
     }
 
-    const categories = await provider.listCatalogCategories();
-    sendSuccess(res, categories);
+    // Task #623: forward the provider's `truncated` flag so the admin
+    // UI can show a banner explaining that the safety cap fired and
+    // the visible list is incomplete (rather than pretending the
+    // capped list is the whole catalog, as pre-#623 did).
+    const result = await provider.listCatalogCategories();
+    sendSuccess(res, result);
   } catch (error) {
     log.error('Catalog categories error:', error);
     sendError(res, 'Failed to fetch catalog categories');
@@ -90,16 +94,18 @@ router.get('/catalog/items', async (req, res) => {
     } catch (e) {
       if (e instanceof ProviderNotConfiguredError) {
         log.warn('Catalog items: provider not configured, returning empty', { locationId: lvLocationId });
-        return sendSuccess(res, []);
+        return sendSuccess(res, { items: [], truncated: false });
       }
       throw e;
     }
     if (!hasCatalogSupport(provider)) {
-      return sendSuccess(res, []);
+      return sendSuccess(res, { items: [], truncated: false });
     }
 
-    const items = await provider.listCatalogItems(categoryId);
-    sendSuccess(res, items);
+    // Task #623: see the categories handler above for why we forward
+    // `truncated` to the UI.
+    const result = await provider.listCatalogItems(categoryId);
+    sendSuccess(res, result);
   } catch (error) {
     log.error('Catalog list error:', error);
     sendError(res, 'Failed to fetch catalog items');

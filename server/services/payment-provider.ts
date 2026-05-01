@@ -147,8 +147,20 @@ export interface PaymentProvider {
  * Use hasCatalogSupport() type guard to check at runtime.
  */
 export interface CatalogProvider {
-  listCatalogCategories(): Promise<CatalogCategory[]>;
-  listCatalogItems(categoryId?: string): Promise<CatalogItem[]>;
+  /**
+   * Returns categories alongside a `truncated` flag indicating whether
+   * the underlying pagination cap (Task #613) fired before the cursor
+   * was exhausted. Callers (e.g. the catalog API route) forward the
+   * flag to the admin UI so admins know the visible list is incomplete
+   * (Task #623). `truncated` is always `false` when no provider is
+   * configured or when the cursor finished naturally.
+   */
+  listCatalogCategories(): Promise<{ categories: CatalogCategory[]; truncated: boolean }>;
+  /**
+   * Returns items alongside a `truncated` flag with the same contract
+   * as `listCatalogCategories` above (Task #623).
+   */
+  listCatalogItems(categoryId?: string): Promise<{ items: CatalogItem[]; truncated: boolean }>;
 }
 
 /**

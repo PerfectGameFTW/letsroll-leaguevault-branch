@@ -568,15 +568,17 @@ describe('GET /api/payments-provider/catalog/categories — locationId filter', 
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 
-  it('still accepts an empty ?locationId= as "no filter" (skips ownership check) and returns []', async () => {
+  it('still accepts an empty ?locationId= as "no filter" (skips ownership check) and returns an empty payload', async () => {
     // Provider mock has hasCatalogSupport→false, so the route
-    // returns sendSuccess(res, []) — a clean 200, not just "not 400".
+    // returns the empty `{ categories, truncated }` payload (Task
+    // #623 — the data shape grew a `truncated` flag so the admin
+    // UI can show a banner when the pagination cap fires).
     const res = await get(
       '/api/payments-provider/catalog/categories?locationId=',
       ORG_USER,
     );
     expect(res.status).toBe(200);
-    expect((await res.json()).data).toEqual([]);
+    expect((await res.json()).data).toEqual({ categories: [], truncated: false });
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 });
@@ -592,13 +594,15 @@ describe('GET /api/payments-provider/catalog/items — locationId filter', () =>
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 
-  it('still accepts an empty ?locationId= as "no filter" and returns []', async () => {
+  it('still accepts an empty ?locationId= as "no filter" and returns an empty payload', async () => {
+    // See the categories handler test above for why the data shape
+    // is `{ items, truncated }` rather than a bare array (Task #623).
     const res = await get(
       '/api/payments-provider/catalog/items?locationId=',
       ORG_USER,
     );
     expect(res.status).toBe(200);
-    expect((await res.json()).data).toEqual([]);
+    expect((await res.json()).data).toEqual({ items: [], truncated: false });
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 });
