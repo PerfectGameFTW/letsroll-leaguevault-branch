@@ -11,11 +11,16 @@ const log = createLogger("DoublePayBackfill");
  * `final_two_weeks_due_week` value into two `double_pay_dates`
  * entries (the bowling-week-N date and the bowling-week-(N-1) date).
  *
- * Idempotent: only updates leagues whose `double_pay_dates` is empty
- * AND whose `final_two_weeks_due_week` is not null. Re-running after a
- * successful pass is a no-op. Leagues whose dates can't be derived
- * (missing `weekDay`/`seasonStart`, or week-1 backfill resolves to a
- * cancelled/skip-only window) are left untouched and logged.
+ * Truly one-time per league: after a successful seed we **also null
+ * out `final_two_weeks_due_week`** in the same UPDATE so the WHERE
+ * clause never matches that row again. This prevents a "re-seed on
+ * restart" regression where an admin clears `doublePayDates` (sets
+ * 0 double-pay weeks) and the next server start would otherwise
+ * re-derive the legacy 2 dates from the still-populated legacy
+ * column. Skipped leagues (missing `weekDay`/`seasonStart`, or no
+ * derivable date because the week resolves to a cancelled/skip-only
+ * window) keep their legacy value so a future seasonStart edit can
+ * re-trigger the seed; they will be tried on the next startup.
  */
 export async function backfillDoublePayDates(): Promise<void> {
   const candidates = await db
@@ -72,9 +77,16 @@ export async function backfillDoublePayDates(): Promise<void> {
       continue;
     }
 
+    // Set both `doublePayDates` AND null out `finalTwoWeeksDueWeek`
+    // atomically so the WHERE clause above never matches this row
+    // again on subsequent server starts. This is the "truly one-time
+    // per league" guarantee — without nulling the legacy column,
+    // an admin clearing `doublePayDates` to [] would let the next
+    // restart silently re-seed the same 2 dates and reintroduce
+    // unintended 2× charges.
     await db
       .update(leagues)
-      .set({ doublePayDates: dates })
+      .set({ doublePayDates: dates, finalTwoWeeksDueWeek: null })
       .where(sql`${leagues.id} = ${lg.id}`);
     updated++;
   }
