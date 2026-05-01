@@ -1,0 +1,381 @@
+/**
+ * Tests the nested-link/button CI guard introduced in task
+ * #617 (`scripts/check-no-nested-link-button.ts`).
+ *
+ * The guard walks every `.tsx` file under `client/src/` and
+ * fails when a wouter `<Link>` directly contains a `<button>`
+ * / `<Button>` (or vice versa). It skips the canonical
+ * `<Button asChild><Link/></Button>` pattern adopted in
+ * tasks #596 / #601.
+ *
+ * These tests:
+ *   1. Run the real script against the real codebase. This is
+ *      the primary forcing function: a future PR that lands a
+ *      `<Link><Button>…</Button></Link>` re-introduces the bug
+ *      and fails this test. Wired here (and not via an
+ *      `npm run check:nested-link-button` shortcut) because
+ *      `package.json` is locked in this environment; CI also
+ *      runs the script directly via `npx tsx`.
+ *   2. Drive the script against synthetic fixtures via
+ *      spawnSync to pin its detection logic for: clean files,
+ *      `<Link><Button/></Link>`, `<Link><button/></Link>`,
+ *      `<Button><Link/></Button>`, the canonical
+ *      `<Button asChild><Link/></Button>` pass, files where
+ *      `Link` doesn't come from wouter, fragment / conditional
+ *      child shapes, `--report` mode, multiple sites, and
+ *      `.test.tsx` skipping.
+ */
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { describe, expect, it } from 'vitest';
+
+const SCRIPT = join(process.cwd(), 'scripts/check-no-nested-link-button.ts');
+
+function runIn(
+  cwd: string,
+  args: string[] = [],
+): { status: number; stdout: string; stderr: string } {
+  // Resolve `tsx` against the real project's node_modules so
+  // the synthetic fixtures (which have no node_modules of their
+  // own) can still spawn the script.
+  const tsxBin = join(process.cwd(), 'node_modules', '.bin', 'tsx');
+  const r = spawnSync(tsxBin, [SCRIPT, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, NODE_ENV: 'test' },
+  });
+  return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
+}
+
+function makeFixture(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'check-no-nested-link-button-'));
+  for (const [rel, contents] of Object.entries(files)) {
+    const full = join(dir, rel);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, contents);
+  }
+  return dir;
+}
+
+describe('check-no-nested-link-button (real codebase)', () => {
+  it('passes against the real client/src tree', () => {
+    const r = runIn(process.cwd());
+    // Composite assertion: exit 0 + the success banner. If
+    // this test fails, a `<Link><Button>` (or
+    // `<Button><Link>`) site sneaked back in — fix it with
+    // one of the canonical patterns referenced in the script
+    // (see NavLeafRow in client/src/components/layout.tsx or
+    // <Button asChild><Link/></Button> in
+    // client/src/pages/profile-settings-page.tsx).
+    expect(
+      { status: r.status, stdout: r.stdout, stderr: r.stderr },
+    ).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  }, 30_000);
+});
+
+describe('check-no-nested-link-button (synthetic fixtures)', () => {
+  it('passes when no <Link>/<Button> nesting exists', () => {
+    const dir = makeFixture({
+      'client/src/clean.tsx': `import { Link } from 'wouter';
+export function Clean() {
+  return <div><Link href="/x">Go</Link></div>;
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('fails when a wouter <Link> directly contains a shadcn <Button>', () => {
+    const dir = makeFixture({
+      'client/src/bad.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return (
+    <Link href="/x">
+      <Button>Go</Button>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/FAIL/);
+    expect(r.stderr).toMatch(/client\/src\/bad\.tsx:5/);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
+  });
+
+  it('fails when a wouter <Link> directly contains a plain <button>', () => {
+    const dir = makeFixture({
+      'client/src/bad-plain.tsx': `import { Link } from 'wouter';
+export function Bad() {
+  return (
+    <Link href="/x">
+      <button type="button">Go</button>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <button>/);
+  });
+
+  it('fails when a <Button> directly contains a wouter <Link>', () => {
+    const dir = makeFixture({
+      'client/src/inverse.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Inverse() {
+  return (
+    <Button>
+      <Link href="/x">Go</Link>
+    </Button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Button> directly contains a wouter <Link>/);
+  });
+
+  it('fails when a plain <button> directly contains a wouter <Link>', () => {
+    const dir = makeFixture({
+      'client/src/inverse-plain.tsx': `import { Link } from 'wouter';
+export function Inverse() {
+  return (
+    <button type="button">
+      <Link href="/x">Go</Link>
+    </button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<button> directly contains a wouter <Link>/);
+  });
+
+  it('passes the canonical <Button asChild><Link/></Button> fix', () => {
+    const dir = makeFixture({
+      'client/src/good.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Good() {
+  return (
+    <Button asChild>
+      <Link href="/x">Go</Link>
+    </Button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('treats asChild={true} the same as bare asChild', () => {
+    const dir = makeFixture({
+      'client/src/good-explicit.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Good() {
+  return (
+    <Button asChild={true} variant="outline">
+      <Link href="/x">Go</Link>
+    </Button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('still flags asChild={false} (the slot pattern is opted out)', () => {
+    const dir = makeFixture({
+      'client/src/asfalse.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return (
+    <Button asChild={false}>
+      <Link href="/x">Go</Link>
+    </Button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Button> directly contains a wouter <Link>/);
+  });
+
+  it('ignores files that import Link from somewhere other than wouter', () => {
+    const dir = makeFixture({
+      'client/src/other-link.tsx': `import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+export function Other() {
+  // Not a wouter Link — out of scope for this guard.
+  return (
+    <Link to="/x">
+      <Button>Go</Button>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('flags <Link>{cond && <Button/>}</Link> (JSX expression child)', () => {
+    const dir = makeFixture({
+      'client/src/cond.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Cond({ show }: { show: boolean }) {
+  return (
+    <Link href="/x">
+      {show && <Button>Go</Button>}
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/directly contains <Button>/);
+  });
+
+  it('flags <Link><><Button/></></Link> (fragment child)', () => {
+    const dir = makeFixture({
+      'client/src/frag.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Frag() {
+  return (
+    <Link href="/x">
+      <>
+        <Button>Go</Button>
+      </>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/directly contains <Button>/);
+  });
+
+  it('reports multiple violations across the same file', () => {
+    const dir = makeFixture({
+      'client/src/many.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function A() {
+  return <Link href="/a"><Button>A</Button></Link>;
+}
+export function B() {
+  return <Button><Link href="/b">B</Link></Button>;
+}
+export function C() {
+  return <Link href="/c"><button type="button">C</button></Link>;
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/3 nested <Link>\/<Button> site\(s\)/);
+    expect(r.stderr).toMatch(/client\/src\/many\.tsx:4/);
+    expect(r.stderr).toMatch(/client\/src\/many\.tsx:7/);
+    expect(r.stderr).toMatch(/client\/src\/many\.tsx:10/);
+  });
+
+  it('--report mode prints violations but exits 0', () => {
+    const dir = makeFixture({
+      'client/src/bad.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return <Link href="/x"><Button>Go</Button></Link>;
+}
+`,
+    });
+    const r = runIn(dir, ['--report']);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/REPORT/);
+    expect(r.stderr).toMatch(/directly contains <Button>/);
+  });
+
+  it('prints a fix hint pointing at the canonical <Button asChild><Link/></Button> pattern', () => {
+    const dir = makeFixture({
+      'client/src/bad.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return <Link href="/x"><Button>Go</Button></Link>;
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Button asChild><Link/);
+    expect(r.stderr).toMatch(/NavLeafRow/);
+    expect(r.stderr).toMatch(/profile-settings-page\.tsx/);
+  });
+
+  it('skips .test.tsx files (production guards must not cascade into test fixtures)', () => {
+    const dir = makeFixture({
+      'client/src/ok.tsx': `import { Link } from 'wouter';
+export function Ok() { return <Link href="/x">Go</Link>; }
+`,
+      'client/src/legacy.test.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return <Link href="/x"><Button>Go</Button></Link>;
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('walks nested directories under client/src', () => {
+    const dir = makeFixture({
+      'client/src/pages/nested/deep.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Deep() {
+  return <Link href="/x"><Button>Go</Button></Link>;
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/client\/src\/pages\/nested\/deep\.tsx/);
+  });
+
+  it('fails loud (exit 2) when client/src has no .tsx files (refuses to silently pass)', () => {
+    const dir = makeFixture({
+      'client/src/.gitkeep': '',
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/no \.tsx files found/);
+  });
+});

@@ -177,7 +177,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts"
+args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts && npx tsx scripts/check-no-nested-link-button.ts"
 
 [workflows.workflow.metadata]
 isValidation = true
