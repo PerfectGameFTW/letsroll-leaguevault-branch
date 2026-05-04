@@ -140,7 +140,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
 
   // 4-state cycle: normal → skip → cancelled → double-pay → normal.
-  // Cap of 2 double-pay weeks per league (toast on overflow).
+  // When the 2-double-pay cap is already full, the cycle collapses to
+  // 3 states (normal → skip → cancelled → normal) for any week that
+  // isn't itself double-pay, so the user can still fix mistakes
+  // elsewhere in the schedule without having to first clear an
+  // existing double-pay mark.
   const toggleDateType = (isoDate: string, currentType: ScheduleWeekType) => {
     if (currentType === 'normal') {
       setSkipDates(prev => [...prev, isoDate]);
@@ -148,18 +152,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       setSkipDates(prev => prev.filter(d => d !== isoDate));
       setCancelledDates(prev => [...prev, isoDate]);
     } else if (currentType === 'cancelled') {
-      if (doublePayDates.length >= 2) {
-        // At cap — ignore the click (week stays Cancelled). The user
-        // must clear an existing double-pay mark before adding another.
-        toast({
-          title: "Double-pay weeks limited",
-          description: "You can only mark 2 double-pay weeks per league. Clear one first to mark a new one.",
-          variant: "destructive",
-        });
-        return;
-      }
       setCancelledDates(prev => prev.filter(d => d !== isoDate));
-      setDoublePayDates(prev => [...prev, isoDate]);
+      if (doublePayDates.length < 2) {
+        setDoublePayDates(prev => [...prev, isoDate]);
+      }
+      // else: cap full — week returns to Normal, double-pay step skipped.
     } else {
       setDoublePayDates(prev => prev.filter(d => d !== isoDate));
     }
