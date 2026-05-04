@@ -192,8 +192,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
             <DialogTitle>{league ? "Edit League" : "Add New League"}</DialogTitle>
           </DialogHeader>
 
@@ -217,9 +217,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   });
                 }
               )}
-              className="space-y-4"
+              className="flex flex-col min-h-0 flex-1"
             >
-              <div className="space-y-4 pb-4">
+              <div className="space-y-4 px-6 pb-4 overflow-y-auto flex-1 min-h-0">
                 <LeagueBasicInfo
                   form={form}
                   activeLocations={activeLocations}
@@ -261,7 +261,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 />
               </div>
 
-              <div className="sticky bottom-0 bg-background pt-4 border-t">
+              <div className="shrink-0 bg-background px-6 pt-4 pb-6 border-t">
                 <div className="flex justify-end space-x-2">
                   <Button
                     type="button"
