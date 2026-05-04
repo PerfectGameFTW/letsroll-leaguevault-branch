@@ -37,14 +37,20 @@ export function LeagueSchedulePreview({
   if (scheduleDates.length === 0) return null;
 
   return (
-    <div className="rounded-lg border">
+    <div className="space-y-1.5">
+      {!showSchedule && (
+        <p className="text-xs text-muted-foreground px-1">
+          Click weeks to mark holidays, cancellations, or double-pay.
+        </p>
+      )}
+      <div className="rounded-lg border">
       <button
         type="button"
         className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
         onClick={() => setShowSchedule(s => !s)}
       >
         <span className="flex flex-col items-start gap-0.5">
-          <span>Bowling Schedule</span>
+          <span>Bowling Schedule (click weeks to customize)</span>
           {bowlingWeeks > 0 && (
             <span className="text-xs text-muted-foreground font-normal">
               {bowlingWeeks} planned week{bowlingWeeks !== 1 ? 's' : ''}
@@ -121,6 +127,7 @@ export function LeagueSchedulePreview({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
