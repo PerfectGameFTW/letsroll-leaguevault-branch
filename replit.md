@@ -1,598 +1,81 @@
-# LeagueVault - Bowling League Management System
-
-## Overview
+# LeagueVault
 A full-stack bowling league management application with multi-tenant support for managing leagues, teams, bowlers, scores, and financial payments.
 
-## Dependency Philosophy
-- Always use the latest stable versions of all dependencies, runtimes, and tooling.
-- When a newer version of a package requires a runtime upgrade (e.g., Node.js), upgrade the runtime rather than downgrading the package.
-- Keep all related packages on the same major version (e.g., all Capacitor packages on v8).
-- Current runtime: **Node.js 22 LTS** (upgraded to support Capacitor CLI v8).
+## Run & Operate
+- **Run Dev**: `npm run dev` (Express + Vite on port 5000)
+- **Build**: `npm run build` (for production)
+- **Typecheck**: `npm run check`
+- **DB Push**: `npm run db:push` (applies schema changes from `shared/schema/`)
+- **Environments**: `APP_ENV` (defaults to `dev` locally, `prod` on Replit deploy; must be `beta` for beta environment).
+- **Environment Variables**:
+    - Required: `DATABASE_URL`, `SESSION_SECRET`
+    - Optional: `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET` (must be 32+ chars, non-repeated)
+    - Square/Clover credentials are configured per location in the admin UI, but environment variables like `SQUARE_ACCESS_TOKEN` can be used as fallbacks.
+- **Post-Pull**: After `git pull` from external changes, run `bash scripts/post-pull.sh`.
 
-## Follow-Up Task Policy (Agent Operating Convention)
-- **The default is: do NOT propose any follow-up task.** The user is drowning in low-signal backlog items and that is actively blocking the work of building the product. A smaller, higher-signal backlog is the goal — not an exhaustive one.
-- Only propose a follow-up when there is a real, actionable problem that genuinely needs its own task. Concretely that means: a security vulnerability that is actually exploitable in production (not a theoretical anti-pattern, not a startup-log warning, not a defense-in-depth nicety), a data-integrity risk that can corrupt or leak real data, a production incident waiting to happen, a customer-visible regression, or work that directly unblocks an in-flight feature the user is asking for.
-- Do NOT propose follow-ups for: nice-to-haves, minor tech debt, doc polish, refactoring opportunities, additional test coverage on already-tested code, "would be nice to extend X to Y" suggestions, identical-pattern fixes in sibling code paths, code-reviewer non-blocking comments, lint/log warnings, or anything you noticed in passing while doing the real task.
-- **Do not relabel a non-critical observation as "critical" to slip it past this rule.** If you find yourself reaching for the "critical" or "high" label to justify a follow-up, that is the signal that the follow-up should not exist. Be honest about severity. The user will catch dishonest labeling and it erodes trust.
-- When in doubt, skip the propose step entirely. Mention the observation in the commit message or completion notes if it's worth recording at all, but do not create a task for it.
-- This applies to every agent (main, task, design, etc.) and every mode (plan, build).
+## Stack
+- **Frontend**: React, Vite, Tailwind CSS, shadcn/ui, TanStack Query, wouter
+- **Backend**: Express, Passport.js, Drizzle ORM
+- **Database**: Neon PostgreSQL (`pg` driver, `drizzle-orm/node-postgres`)
+- **Payments**: Square SDK, Clover Ecommerce (abstracted behind `PaymentProvider` interface)
+- **Runtime**: Node.js 22 LTS
+- **Build Tool**: Vite
+- **Validation**: Zod
+- **ORM**: Drizzle ORM
 
-## Pre-Existing Errors Policy (Agent Operating Convention)
-- **Always fix pre-existing errors before completing a task.** A task is not "done" if `npx tsc --noEmit`, the test suite, or any other repo-wide check is reporting errors — even if those errors existed before the task started and are unrelated to the change.
-- Run the full repo-wide checks (typecheck + the relevant test suites) at the end of every task. If anything is failing, fix it as part of the same task before calling `mark_task_complete`. Do not file the failure as a follow-up and ship.
-- This applies even when the failing file is in a totally unrelated area of the codebase. The cost of carrying broken checks is that real regressions get masked by the noise; the fix is to keep the baseline clean at all times.
-- The only acceptable exceptions are: (a) a failure that genuinely cannot be reproduced locally and clearly belongs to infrastructure rather than code, or (b) a failure that requires user input the agent does not have (a missing secret, an external service that's down). Both must be called out explicitly in the task completion notes.
-- This applies to every agent (main, task, design, etc.) and every mode (plan, build).
+## Where things live
+- `shared/schema/`: Database schema definitions, Zod schemas, API types (source of truth for DB schema)
+- `server/`: Backend code
+    - `server/db.ts`: Database connection
+    - `server/index.ts`: Express server entry point
+    - `server/routes/`: API route definitions
+    - `server/storage/`: Database interaction logic
+    - `server/auth.ts`: Authentication with Passport.js
+    - `server/utils/access-control.ts`: Centralized authorization helpers
+    - `server/services/payment-provider.ts`: Payment provider abstraction
+    - `server/config.ts`: Environment variable validation (source of truth for env vars)
+- `client/`: Frontend code
+    - `client/src/App.tsx`: Frontend routing
+    - `client/src/pages/`: Page components
+    - `client/src/components/`: Reusable UI components
+    - `client/public/manifest.json`: PWA manifest
+- `scripts/`: Utility scripts (e.g., `zap-scan.sh`, `seed.ts`)
+- `.well-known/apple-developer-merchantid-domain-association`: Apple Pay domain verification file
 
-## Validation Gate (auto-runs on `mark_task_complete`)
-The agent has 8 named validation commands registered that mirror `.github/workflows/ci.yml` exactly. Calling `mark_task_complete` triggers them automatically; if any fail, the task is blocked. This catches CI failures locally instead of after a push to GitHub.
+## Architecture decisions
+- **Multi-tenancy**: Implemented via subdomain routing (`subdomain.leaguevault.app`) with `organizationId` scoping all data. `orgSessionGuard` prevents session leakage.
+- **Payment Provider Abstraction**: Supports multiple payment gateways (Square, Clover) through a common `PaymentProvider` interface, allowing easy switching and extension.
+- **Org-less Resource Policy**: Access control helpers explicitly deny access to any rows with a `NULL` `organizationId` (even for system admins) to prevent PII leakage and surface data integrity issues. A system admin UI for data integrity allows explicit management of such "orphaned" data.
+- **Avatar Storage**: Avatars are stored on disk and streamed through a secured API endpoint (`/api/user/avatar/:userId`) rather than being served statically, preventing enumeration and enforcing access control.
+- **Shared Rate Limit Store**: Utilizes a PostgreSQL-backed rate limit store to ensure consistent rate limiting across multiple backend replicas, preventing circumvention of limits in scaled deployments.
+- **Apple Pay Worker Lease-Based Recovery**: Background worker for Apple Pay domain registration uses lease-based claiming (`claimed_at`) to ensure at-most-once processing across rolling restarts, preventing duplicate calls to payment providers.
 
-| Name                | Command                                            | Mirrors CI step          |
-|---------------------|----------------------------------------------------|--------------------------|
-| `typecheck`         | `npm run check`                                    | "Type check"             |
-| `lint`              | `npm run lint`                                     | "Lint"                   |
-| `csrf-coverage`     | `npm run check:csrf`                               | "CSRF coverage"          |
-| `org-isolation`     | `npm run check:org-isolation`                      | "Cross-org isolation"    |
-| `wire-sanitization` | `npx tsx scripts/check-wire-sanitization.ts`       | "Wire sanitization"      |
-| `not-found-code`    | `npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts` | "Not-found error-code" + "Provider-not-configured toast" (chained — task #624) |
-| `build`             | `npm run build`                                    | "Production build"       |
-| `test`              | `npm test`                                         | sibling `Tests` job      |
+## Product
+- **League Management**: Create and manage bowling leagues, teams, and bowlers.
+- **Score Tracking**: Record and manage game scores.
+- **Financial Payments**: Handle bowler payments, including one-time, recurring, and saved card payments. Supports Apple Pay and Google Pay.
+- **Refund System**: Admins can process full refunds for payments.
+- **User & Role Management**: System admins and organization admins can manage users and their roles (system_admin, org_admin, user).
+- **Email Communications**: Automated email templates for invites, registration, and bowler claims.
+- **CRM Integration**: One-way sync of bowler contact data to BowlNow CRM.
+- **Season Management**: Create new league seasons, carrying over teams and rosters.
+- **PWA Support**: Installable as a Progressive Web App on mobile and desktop.
+- **Native Mobile Apps**: Wraps web app for iOS and Android distribution using Capacitor.
 
-The race suite (`scripts/test-race.sh`) is opt-in (`RUN_BOOTSTRAP_RACE_TESTS=1`) so it is naturally skipped by `npm test`, matching CI's split where it has its own workflow (`race-suite.yml`).
+## User preferences
+- **Follow-Up Task Policy**: Do NOT propose any follow-up tasks unless there is a critical, actionable problem (security vulnerability, data integrity risk, production incident, customer regression, or unblocking an in-flight feature). Do not propose for minor tech debt, doc polish, refactoring, or anything non-critical.
+- **Pre-Existing Errors Policy**: Always fix pre-existing errors (typecheck, tests, lint) before marking a task complete, even if unrelated to the current change. The baseline must remain clean.
 
-Lint uses ESLint 9's count-based suppressions baseline at `eslint-suppressions.json`. Net-new violations beyond the per-file count fail the gate; existing-debt counts are accepted. When fixing real violations, also re-baseline with `npx eslint . --suppress-rule <rule>` (or `--prune-suppressions` to drop stale entries) so the count stays honest.
+## Gotchas
+- **Database Migrations**: After modifying `shared/schema/`, always run `npm run db:push`.
+- **`SETUP_SECRET`**: Required for disaster recovery admin bootstrap endpoints. Must be strong (32+ chars, non-repeated).
+- **Environment Variables for Beta**: When `APP_ENV=beta`, ensure all Square credentials are for the sandbox environment. The boot guard will prevent the server from starting with live credentials in beta.
+- **Apple Pay Domain Verification**: Requires `/.well-known/apple-developer-merchantid-domain-association` file to be accessible for Square.
+- **Subdomain Branding**: While the app name is always "LeagueVault", in-app branding (logos, colors) customizes per organization subdomain.
+- **Server Startup Order**: Routes, middleware, and authorization setup are modularized; avoid duplicate setup.
 
-Validations can be re-run on demand from the agent's code-execution sandbox via `startValidationRun({ commandIds: [...] })`; full per-command logs land at `/tmp/validation/<name>.log`. The per-command runtime budget locally is similar to CI (~1 min for the static checks, ~3-4 min for `test`, ~20-40s for `build`).
-
-## Architecture
-- **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
-- **Backend**: Express + Passport.js + Drizzle ORM
-- **Database**: Neon PostgreSQL (via `pg` driver + `drizzle-orm/node-postgres`)
-- **Payments**: Provider abstraction layer (Square SDK + Clover Ecommerce)
-  - Backend:
-    - `server/services/payment-provider.ts` - Core PaymentProvider interface + optional CatalogProvider/WalletProvider interfaces + type guards
-    - `server/services/square-provider.ts` - SquarePaymentProvider wrapping existing Square SDK calls
-    - `server/services/payment-provider-factory.ts` - `getPaymentProvider(locationId)` resolves provider from location config
-    - `server/services/payment-execution.ts` - Provider-aware charge execution
-    - `server/services/clover.ts` - Clover Ecommerce REST API client (charge, capture, void, refund, customer/source CRUD)
-    - `server/services/clover-provider.ts` - CloverPaymentProvider implementing PaymentProvider interface
-    - `server/routes/payment-routes.ts` - Provider-aware payment API (mounted at `/api/payments-provider/`)
-    - `server/routes/locations.ts` - Location config routes including per-provider credential CRUD and provider switching
-  - Frontend:
-    - `client/src/hooks/use-payment-provider.ts` - Fetches + caches provider config (Square vs Clover) per locationId
-    - `client/src/hooks/use-square-payment.ts` - Square Web Payments SDK card tokenizer hook
-    - `client/src/hooks/use-clover-payment.ts` - Clover Ecommerce SDK iframe-element card tokenizer hook
-    - `client/src/hooks/use-wallet-payments.ts` - Apple Pay/Google Pay (Square-only, auto-disabled for Clover)
-    - `client/src/hooks/use-bowler-payment-submit.ts` - Provider-agnostic bowler payment submission
-    - `client/src/hooks/use-payment-form-submit.ts` - Provider-agnostic admin payment form submission
-    - `client/src/lib/square.ts` - Square SDK init, tokenization, payment creation (accepts any card type)
-    - `client/src/components/square-integration-section.tsx` - Admin payment config (Square + Clover per location, provider selector)
-  - Schema:
-    - `shared/schema/locations.ts` - `paymentProvider` field + `cloverCredentials` JSONB (apiToken/merchantId/publicTokenizerKey/environment) on locations table
-    - `shared/schema/bowlers.ts` - `cloverCustomerId` for stored Clover customer records
-    - `shared/schema/payments.ts` - `cloverChargeId` for Clover charge references
-
-## Key Files
-- `shared/schema/` - Database schema split by domain (barrel re-exports from `shared/schema/index.ts`)
-  - `constants.ts` - Enums, shared Zod schemas (dateSchema, nameSchema, etc.)
-  - `organizations.ts`, `locations.ts`, `leagues.ts`, `teams.ts`, `bowlers.ts` - Domain tables + insert/partial schemas
-  - `payments.ts`, `users.ts`, `games.ts`, `email-templates.ts` - Additional domain tables
-  - `relations.ts` - All Drizzle ORM relation definitions
-  - `api-types.ts` - API response types (ApiResponse, PaginatedResult, SavedCard, etc.)
-- `server/utils/cache.ts` - In-memory TTL cache for read-heavy queries (leagues, bowlers, user deserialization)
-- `server/db.ts` - Database connection pool (pg driver, max 50 connections, 5s connect timeout)
-- `server/index.ts` - Express server entry point (~200 lines, clean startup)
-- `server/routes/index.ts` - Route registration (no HTTP server creation, no duplicate auth setup)
-- `server/routes/` - Modular API routes
-- `server/storage/` - Database storage split by domain (barrel re-exports from `server/storage/index.ts`)
-  - `types.ts` - IStorage interface
-  - `leagues.ts`, `teams.ts`, `bowlers.ts`, `payments.ts`, `games-scores.ts` - Domain storage functions
-  - `users.ts`, `organizations.ts`, `locations.ts`, `email-templates.ts` - Additional storage functions
-- `server/auth.ts` - Authentication with Passport.js (minimal logging, no sensitive data)
-- `server/utils/access-control.ts` - Centralized authorization helpers (hasAccessToLeague, hasAccessToBowler, etc.)
-- **Storage naming convention**: Cross-org methods use `*SystemAdmin` suffix (e.g., `getAllBowlersSystemAdmin`). Org-scoped methods require `organizationId` parameter.
-
-## Org-less ("Orphaned") Resource Policy
-- All access-control helpers in `server/utils/access-control.ts` (`requireOrganizationAccess`, `hasAccessToLeague`, `hasAccessToTeam`, `hasAccessToBowler`, `hasAccessToPayment`) **deny access to any row whose effective `organizationId` is `NULL`, regardless of the caller's role — including `system_admin`.**
-- Rationale: well-formed data always has an `organizationId`. Org-less rows are bugs/stale data and exposing them silently risks PII leakage and masks integrity problems.
-- The single explicit escape hatch is the system-admin "Data integrity" surface backed by endpoints in `server/routes/system-admin.ts`:
-  - `GET /api/system-admin/orphaned-data-counts` — counts of org-less rows per resource type (`leagues`, `teams`, `bowlerLeagues`, `payments`, `users`).
-  - `GET /api/system-admin/orphaned-data/:type` — drill-down list of the actual org-less rows for one type (with parent-league context).
-  - `POST /api/system-admin/orphaned-data/:type/:id/reassign` (body `{ organizationId }`) — only valid for `leagues` and `users`. Child rows (`teams`, `bowlerLeagues`, `payments`) inherit org from the parent league, so reassigning the parent league fixes them in bulk; child endpoints return `400 REASSIGN_UNSUPPORTED`.
-  - `POST /api/system-admin/orphaned-data/:type/:id/delete` — supported for every type.
-  - All write endpoints re-verify the row is actually org-less before mutating (returns `409 NOT_ORPHANED` otherwise) so the deny-on-null rule is never bypassed for non-orphans.
-- Implementation lives in `server/storage/orphaned-data.ts` (counts + list + repair helpers, with `NotOrphanedError` / `OrphanRowNotFoundError`). The admin UI lives at `/admin/data-integrity` (`client/src/pages/data-integrity-page.tsx`).
-- **Operator note (org-less drift logging)**: the deny-on-null branches in `server/utils/access-control.ts` log at `log.debug` (not warn) so production sinks running with `LOG_LEVEL=info` or higher do not receive `userId × resourceId` correlations. To surface the org-less drift signal in production, query the system-admin `GET /api/system-admin/orphaned-data-counts` endpoint (or the per-type drill-down) — that surface is the source of truth, the access-control logs are only a development aid.
-- **Operator note (default LOG_LEVEL)**: `server/logger.ts` defaults the minimum log level to `info` whenever `NODE_ENV === 'production'` or `REPLIT_DEPLOYMENT` is set, and to `debug` otherwise — so a production deploy that forgot to set `LOG_LEVEL` does NOT silently leak the developer-only debug lines described above. `server/config.ts` validates `LOG_LEVEL` against `{debug,info,warn,error}` (see task #306) and emits a loud startup warning if a production-like deploy explicitly opts back into `LOG_LEVEL=debug`. To debug a prod incident, set `LOG_LEVEL=debug` deliberately and revert it after.
-- **Operator note (`log.debug` PII audit, task #336)**: a full audit of every `log.debug` call site under `server/` confirmed that none of them surface PII (no emails, names, phone numbers, payment ids, session tokens, or password material) when an operator opts into `LOG_LEVEL=debug` on a prod incident. The complete inventory and per-site verdict lives at `docs/log-debug-pii-audit.md`. Any new `log.debug` call site MUST keep that contract: log internal numeric ids, structural facts, and dev-utility state only — and route any user-identifying string through `maskEmail`/equivalent in `server/utils/pii.ts` first.
-- Any new authorization helper or storage method that traverses `organizationId` MUST follow the same "deny on null, even for system admins" rule.
-- **Schema-level guard (leagues)**: `leagues.organization_id` is **nullable in the schema** (the orphan-data feature exists precisely to clean up legacy org-less leagues). The application layer enforces "org required" at the API boundary: the insert/update zod schemas in `shared/schema/leagues.ts` make the org id required, and `POST /api/leagues` rejects requests that don't supply one. The legacy `globalAccess: true` branch (which created `organization_id = NULL` rows for system admins) has been removed.
-- **Test-fixture leak tripwire (tasks #608 / #616 / #629)**: `tests/api/orphaned-data-audits.test.ts` writes `Vitest Audit %` leagues / teams / bowlers / `vitest-audit-%` users / `orphan_cleanup_audits` rows authored by the seeded `admin@example.com` system admin. #608 hardened that suite's `afterAll` cleanup, #616 one-shot purged historical accumulation, and #629 wired `scripts/check-no-leaked-audits.ts` into the vitest globalSetup teardown so the `npm test` workflow itself fails on the next regression. The failure message points operators at `scripts/cleanup-orphan-audit-test-leaks.ts` to drain the leaked rows; bypass with `SKIP_AUDIT_LEAK_CHECK=1` only for local debugging — never in CI. Run `npx tsx scripts/check-no-leaked-audits.ts [--report]` to inspect leak counts without running the suite.
-- **Schema-level guard (users)**: `users.organization_id` stays nullable (the bootstrap system_admin legitimately has no org). The "non-admin must have an org" rule is enforced by an application-installed BEFORE INSERT/UPDATE trigger `users_role_org_required` (created idempotently in `tests/setup/global-setup.ts` for tests; production should install the same trigger via a migration). The schema's `insertUserSchema` rejects non-admin inserts without an `organizationId`, and `server/storage/users.ts` exports a typed `NonAdminMissingOrgError` that `createUser`, `updateUserRole`, and `setUserOrganization` throw before hitting the database. Specifically:
-  - `POST /api/auth/register` now requires an org context (subdomain) and returns `400 ORG_REQUIRED` otherwise — self-signup can no longer create org-less users.
-  - The legacy `DELETE /api/org-admin/users/:id/remove` endpoint has been removed (#274). Use `DELETE /api/org-admin/users/:id` to permanently delete the account, or reassign the user to another organization.
-  - `setup-admin.ts` is unaffected because its only insert path uses `role: 'system_admin'`.
-- `client/src/App.tsx` - Frontend routing and route guards (wrapped with ErrorBoundary)
-- `client/src/pages/` - Page components
-- `client/src/components/` - Reusable UI components
-- `client/src/components/error-boundary.tsx` - Reusable ErrorBoundary (page/section/inline levels)
-- `client/src/components/league-schedule-preview.tsx` - Extracted from league-form.tsx
-- `client/src/components/organization-form-dialog.tsx` - Extracted from organizations-page.tsx
-- `client/src/components/organization-confirm-dialogs.tsx` - Extracted from organizations-page.tsx
-- `client/src/components/payment-summary-cards.tsx` - Extracted from payment-history-page.tsx
-- `client/src/components/payment-overview-card.tsx` - Extracted from payment-status-section.tsx
-- `client/src/components/league-square-catalog.tsx` - Extracted Square catalog section from league-form.tsx; remembers the admin's last search query and last category per location in localStorage (keys `league-square-catalog:search:<locationId>` / `league-square-catalog:category:<locationId>`) and exposes a single "Clear filters" button that wipes both
-- `client/src/components/payment-credit-card-section.tsx` - Extracted credit card UI from payment-form.tsx
-- `client/src/hooks/` - Custom React hooks
-- `client/src/lib/financial-utils.ts` - Shared financial calculation utilities (weeks, dues, past-due)
-
-## Environments & Promotion Workflow
-LeagueVault runs the same codebase against three logical environments
-(Task #652). The full beta runbook lives in
-**`docs/BETA_ENVIRONMENT_SETUP.md`**; this section covers the day-to-day
-flow once beta is up.
-
-| | dev | beta | prod |
-| --- | --- | --- | --- |
-| Repl | local workspace | forked Repl | live Repl |
-| Domain | Replit dev URL | `beta.leaguevault.app` | `leaguevault.app` |
-| Branch | `main` | `beta` | `main` |
-| Database | dev DB | beta DB (separate, empty) | prod DB |
-| Payment creds | as configured | sandbox only | live |
-| `APP_ENV` | unset → `dev` | **must be `beta`** | unset → `prod` (via `REPLIT_DEPLOYMENT`) |
-| BETA banner | hidden | visible (with commit SHA) | hidden |
-
-**Resolution rules** for `APP_ENV` are centralised in
-`shared/app-env.ts → resolveAppEnv`: explicit `APP_ENV` wins; otherwise
-`prod` on a Replit deploy, `dev` locally. `beta` is never a default —
-the beta Repl MUST set `APP_ENV=beta` in Secrets.
-
-**Boot guard**: when `APP_ENV=beta`, the server scans env at startup
-for live payment credentials (`SQUARE_PROD_*`, `SQUARE_PRODUCTION_*`,
-or any value matching `sk_live_` / `pk_live_` / `rk_live_`) and
-**refuses to start** if any are present. See
-`server/utils/live-credential-check.ts`.
-
-**Promotion direction** — features flow `main` → `beta` → `main`:
-
-```
-                  [ developer / Codex / agent ]
-                              │ commit & push
-                              ▼
-                          main branch
-                       (dev Repl pulls)
-                              │
-                              │  merge / cherry-pick into `beta` branch
-                              ▼
-                         beta branch
-                       (beta Repl pulls + deploy)
-                              │
-                              │  smoke test on beta.leaguevault.app
-                              │  with sandbox payment cards
-                              ▼
-                ┌─────────────┴─────────────┐
-         beta passes                   beta fails
-                │                           │
-                │ merge `beta` → `main`     │ fix on `main`,
-                │ (or just keep `main`      │ re-merge to `beta`,
-                │  ahead — beta is a        │ re-test
-                │  rolling pre-release)     │
-                ▼                           ▼
-            prod Repl                  return to top
-       (deploy from main)
-```
-
-**`/api/health` contract**: returns `{ status, appEnv, commit, ... }`.
-The `BetaBanner` client component (`client/src/components/beta-banner.tsx`)
-queries this and renders the persistent yellow strip when
-`appEnv === "beta"`. The commit SHA shown in the banner lets a tester
-filing a bug pin it to a specific deploy.
-
-**`scripts/post-pull.sh`** detects `APP_ENV=beta` and prints an extra
-reminder: confirm Secrets are still sandbox, mirror any new prod
-secrets with sandbox values.
-
-## Pulling External Changes Back Into Replit
-When code is edited off-Replit (OpenAI Codex, a teammate, a local
-checkout, etc.) and pushed to GitHub, run **`bash scripts/post-pull.sh`**
-once after `git pull` to reset the dev environment cleanly. The script
-runs `npm install`, `npm run db:push --force`, and re-seeds the GitHub
-SSH key — same steps `scripts/post-merge.sh` runs after a Replit task
-agent merge. It's idempotent (safe to re-run) and prints a reminder
-checklist for the manual follow-ups it can't automate (new secrets,
-restarting the app workflow, running validation).
-
-The script targets whatever `DATABASE_URL` points at — verify you're
-on the dev DB before running. As a safety rail, it refuses to run
-when `REPLIT_DEPLOYMENT=1` or `NODE_ENV=production`; pass
-`--allow-prod` only if you genuinely mean to apply forced schema
-changes to a production database.
-
-## Database
-- Uses Neon PostgreSQL (managed via Replit's DATABASE_URL environment variable)
-- Connection via `DATABASE_URL` environment variable (runtime-managed)
-- Schema changes: modify files in `shared/schema/`, then run `npm run db:push`
-- Driver: standard `pg` Pool (max 50 connections, 30s idle timeout, 5s connection timeout)
-- Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
-- In-memory TTL cache (30s for leagues/bowlers, 60s for user deserialization) with invalidation on all mutation paths
-- Response compression via `compression` middleware (gzip)
-
-## Server-Side Pagination
-- `GET /api/payments` supports optional `page` and `limit` query params for server-side pagination
-- When `page` is present, returns `{ success, data, pagination: { page, limit, total, totalPages } }`
-- When `page` is absent, returns the traditional `{ success, data }` array format (backward compatible)
-- Pagination infrastructure in `server/utils/api.ts`: `sendPaginatedSuccess()` and `parsePaginationParams()`
-- Storage layer: `getPaymentsPaginated()` method in `IStorage` / `DatabaseStorage`
-- Shared types: `PaginationMeta`, `PaginatedResult<T>` in `shared/schema/api-types.ts`
-- Admin payments page (`client/src/pages/payments-page.tsx`) uses paginated API with page controls
-- Limit is capped at 100 per page server-side; default is 50
-
-## Avatar Storage
-- User avatars are stored on disk at `/uploads/avatars/<userId>.<ext>` (filenames are still keyed by userId for cleanup), but the directory is **not** served as a static mount — that was an enumeration vector since IDs are sequential integers.
-- Bytes are streamed through `GET /api/user/avatar/:userId`, mounted under `requireAuth` in `server/routes/index.ts`. Sets `Content-Type` from the on-disk extension, `Cache-Control: private, max-age=3600`, `X-Content-Type-Options: nosniff`.
-- Upload: `POST /api/user/avatar` (multipart, max 2MB, magic-byte validated). Stores `/api/user/avatar/<userId>?v=<Date.now()>` in `users.avatar`. The `?v=<ts>` is a per-upload cache buster — the GET handler ignores the value, it only changes the URL key in the browser cache so a fresh upload doesn't get masked by stale cache.
-- Delete: `DELETE /api/user/avatar`
-- On startup:
-  1. `migrateAvatarsFromDBToDisk` migrates any remaining base64 avatars from `user_avatars` DB table to disk, then drops the table.
-  2. `migrateDiskUrlsToApiUrls` rewrites legacy `/uploads/avatars/<id>.<ext>` URLs to the gated `/api/user/avatar/<id>?v=<ts>` form. Idempotent (`WHERE avatar LIKE '/uploads/avatars/%'`).
-- Directory `/uploads/avatars/` is created automatically on startup if missing.
-
-## Workflows
-- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
-
-## Port Configuration
-- Development: defaults to port 5000 (Replit webview port; external :80 must be mapped to port 5000 in the Networking panel)
-- Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
-- The server respects `PORT` env var when set, falls back to 5000
-- Session cookies use SameSite=None in Replit workspace (allows iframe preview)
-- **Networking panel**: internal port 5000 must have external port :80 assigned for the Dev URL preview to work
-
-## Environment Variables
-All server-side env vars are validated at startup by `server/config.ts` (Zod-based).
-- **Required** (app exits if missing): `DATABASE_URL`, `SESSION_SECRET`
-- **Optional** (warning logged if missing): `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
-- Import `{ env }` from `server/config` to access typed env values throughout server code.
-- `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
-- `SQUARE_PROD_TOKEN` - Square production access token (priority 1, **prod only**)
-- `SQUARE_PRODUCTION_ACCESS_TOKEN` - Square production access token (priority 2, fallback, **prod only**)
-- `SQUARE_ACCESS_TOKEN` - Square access token (priority 3, fallback). On **prod** this holds a production token; on **beta** this holds a **sandbox** token.
-- `SQUARE_PRODUCTION_APP_ID` - Square production app ID (shared env var, **prod only**)
-- `SQUARE_PRODUCTION_LOCATION_ID` - Square production location ID (shared env var, **prod only**)
-- `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback). Sandbox values on beta, production on prod.
-- `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback). Sandbox on beta, production on prod.
-- **Beta safety**: when `APP_ENV=beta`, the boot guard (`server/utils/live-credential-check.ts`) refuses to start if any `SQUARE_PROD*` / `SQUARE_PRODUCTION_*` var is set, OR if a value in the un-prefixed sandbox slots looks like a Square *production* credential (App ID prefixed with `sq0idp-` rather than `sandbox-sq0idp-`, or access token prefixed with `EAAAEv` / `EAAAl7`). Apple Pay / Google Pay can be tested end-to-end on `beta.leaguevault.app` against Square sandbox; only true mainnet wallet certification still requires prod.
-- `SESSION_SECRET` - Express session secret
-- `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
-- `BN_API_KEY` - BowlNow sub-account API key for CRM contact sync
-- `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below).
-  **Strength requirement:** must be at least 32 characters and not a single repeated character. The server refuses to start when this is set but weak (`server/config.ts` → `validateSetupSecret`). Generate one with: `openssl rand -base64 48`.
-
-## Security Scanning
-
-### npm audit
-Run `npm audit` to check dependencies for known vulnerabilities. No setup required.
-
-### OWASP ZAP (DAST)
-A baseline scan script is provided at `scripts/zap-scan.sh`. It runs a passive OWASP ZAP scan against the running application via Docker.
-
-**Prerequisites:** Docker must be installed and running.
-
-**Usage:**
-```bash
-bash scripts/zap-scan.sh
-```
-
-The scan targets `http://host.docker.internal:5000` by default. Override with:
-```bash
-ZAP_TARGET_URL=http://your-host:port bash scripts/zap-scan.sh
-```
-
-The HTML report is saved to `scripts/zap-report.html`.
-
-## Disaster Recovery — Admin Bootstrap
-
-If the database is ever wiped or rebuilt from scratch, you can recreate the first admin user using the protected setup endpoints. Both require the `SETUP_SECRET` value in the `x-setup-secret` header and only work when zero admin users exist.
-
-**Option A — Create a brand new admin user:**
-```bash
-curl -X POST https://<your-domain>/api/setup/create-first-admin \
-  -H "Content-Type: application/json" \
-  -H "x-setup-secret: <SETUP_SECRET value>" \
-  -d '{"email":"admin@example.com","password":"SecureP@ss1","name":"Admin Name"}'
-```
-
-**Option B — Promote an existing registered user to admin:**
-```bash
-curl -X POST https://<your-domain>/api/setup/first-system-admin/<userId> \
-  -H "x-setup-secret: <SETUP_SECRET value>"
-```
-
-Both endpoints live in `server/routes/setup-admin.ts` and are completely disabled if `SETUP_SECRET` is not set in the environment.
-
-**Bootstrap invariant (atomic):** Both endpoints enforce "at most one
-system_admin can be created via the bootstrap path" by serializing
-their critical section through a Postgres transaction-scoped advisory
-lock (`pg_advisory_xact_lock`) inside `bootstrapFirstAdmin` /
-`promoteFirstAdmin` in `server/storage/users.ts`. The check ("no
-system_admin exists?") and the create/promote write happen in one
-transaction under the same lock, so two concurrent requests holding
-the same `SETUP_SECRET` cannot both succeed — exactly one wins, and
-the other receives `ADMIN_EXISTS` (HTTP 403).
-
-## Recent Changes (2026-04-24)
-- **Shared rate-limit store across replicas (#356)**: The default `MemoryStore` from `express-rate-limit` keeps counts in process-local memory, so a multi-replica deployment effectively gave each client `max * replicas` requests per window. Every per-route limiter now passes a `store: createSharedRateLimitStore('<prefix>')` backed by the existing pg pool so the budget holds across processes.
-  - New helper: `server/utils/rate-limit-store.ts` exports `PostgresRateLimitStore` (implements `Store` from `express-rate-limit` against a single shared `rate_limit_buckets` table) plus a `createSharedRateLimitStore(prefix)` factory. The factory returns `undefined` when `NODE_ENV !== 'production'` so dev/tests fall back to MemoryStore — without that, tests that share the loopback IP would inherit accumulated hits from prior runs and 429 immediately.
-  - Migration: `migrations/0028_add_rate_limit_buckets.sql` (`rate_limit_buckets(key text PK, count int, reset_at timestamptz)` + `reset_at` index for the GC sweep). The table is owned by the rate-limit helper, not the Drizzle schema, so it's not part of `db:push`.
-  - Limiters wired through the shared store (each gets a unique `prefix`; a single table holds them all because the prefix namespaces the keys):
-    - `server/routes/auth.ts` — `login`, `register`, `set-password`, `forgot-password`, `claim`
-    - `server/routes/account.ts` — `deletion-request`, `confirm-email-change`, `change-password`
-    - `server/middleware/rate-limit.ts` — `payment-write`, `payment`, `admin-write`, `email-test`, `setup-admin`, `invite`
-  - GC: `PostgresRateLimitStore.init` starts a single process-wide 5-min interval that deletes expired rows in batches of 1000. The timer is `unref`'d so it doesn't block process shutdown, and `stopRateLimitGc()` is exported for tests. Correctness doesn't depend on the sweep — `increment`'s `ON CONFLICT … DO UPDATE` already resets expired rows on next use.
-  - Atomicity: a single `INSERT … ON CONFLICT DO UPDATE … RETURNING count, reset_at` SQL statement does the increment so two concurrent requests across replicas can't race past `max`.
-  - Test isolation preserved: `confirmEmailChangeLimiter` keeps its `x-test-rl-bucket` header escape hatch and the `_test/reset-confirm-email-change-limit` route — `resetKey()` works on either store implementation.
-  - Tests: `tests/unit/rate-limit-store.test.ts` (6 tests) covers the headline multi-instance behaviour (two stores against the same pool see each other's hits), per-prefix isolation, window stickiness, `resetKey`, `decrement` floor at 0, and prefix-scoped `resetAll`. All previously-passing rate-limit-touching test suites (`change-password`, `email-change`, `set-password`, `setup-admin-header`) still pass.
-
-## Recent Changes (2026-04-21)
-- **Apple Pay worker lease-based recovery (#265)**: True at-most-once provider calls across rolling restarts
-  - Schema: added `claimed_at` timestamp column to `apple_pay_job_items`; new `APPLE_PAY_ITEM_LEASE_MS` constant (10 min) shared between schema + storage
-  - Storage: `claimApplePayJobItemForProcessing` now stamps `claimed_at = NOW()`; `claimAndCompleteApplePayJobItem` clears it on terminal write
-  - `recoverInterruptedApplePayJobs` now only reverts `processing` items whose `claimed_at` is older than the lease (or NULL, for backfill safety) — a sibling instance's live in-flight claim is preserved across the rolling restart of another instance
-  - Migration: `migrations/0003_apple_pay_item_lease.sql` (db:push also applied to dev DB)
-  - Tests: 9 passing tests (was 8); replaced the unconditional-orphan test with a lease-expired test, plus a new "rolling restart safety" regression that asserts a fresh claim is NOT reverted while an expired claim is
-
-- **Apple Pay worker pre-call item claim (#260)**: Reduced duplicate provider calls under multi-instance deployments
-  - Schema: added `processing` to `APPLE_PAY_JOB_ITEM_STATUSES` (in `shared/schema/apple-pay-jobs.ts`)
-  - Storage: new `claimApplePayJobItemForProcessing(itemId)` does atomic `pending`→`processing` flip; `claimAndCompleteApplePayJobItem` now accepts pending OR processing as the source state
-  - Worker (`server/services/apple-pay-worker.ts`): pre-claims each item before invoking the payment provider; loser of the race skips silently
-  - Recovery: `recoverInterruptedApplePayJobs` now also flips orphaned `processing` items back to `pending` on boot (so a single-instance crash mid-call doesn't strand the item)
-  - Counts roll `processing` into the `pending` bucket; UI badge added
-  - Tests: `tests/unit/apple-pay-jobs.test.ts` now has 8 passing concurrency/idempotency tests (added pre-claim race + orphaned-processing recovery)
-  - Known limitation (follow-up): startup recovery is unconditional, so a rolling restart can still flip a sibling instance's live `processing` row back to pending. True at-most-once across rolling restarts requires lease/heartbeat-based recovery.
-
-## Recent Changes (2026-04-01)
-- **Drag-and-Drop Team Reordering**: Teams on the roster management page can be reordered via drag and drop
-  - Schema: added `displayOrder` integer column (default 0) to teams table
-  - `PATCH /api/teams/reorder` endpoint with full authorization (validates all teams belong to same league, checks org access, deduplicates IDs)
-  - `ReorderTeamsDialog` component (`client/src/components/reorder-teams-dialog.tsx`) with HTML5 drag-and-drop
-  - "Reorder Teams" button appears on teams page when 2+ teams exist
-  - Teams sort by `displayOrder` first, then by `number` as tiebreaker
-
-## Previous Changes (2026-03-12)
-- **Role Enum Migration**: Replaced `isAdmin` (boolean) + `isOrganizationAdmin` (boolean) with a single `role` enum column (`system_admin`, `org_admin`, `user`)
-  - Schema: `pgEnum('user_role', ['system_admin', 'org_admin', 'user'])`, `role` column with default `'user'`
-  - Storage: `updateUserRole(userId, role)` replaces `updateUserAdminStatus` + `updateUserOrganizationAdminStatus`
-  - Access control helpers: `isSystemAdmin(user)` and `isOrgOrHigher(user)` in `server/utils/access-control.ts`
-  - All 17 route files, 4 middleware/auth files, and 11 frontend files updated
-  - Backend API fields renamed: `isOrganizationAdmin` → `makeOrgAdmin`, `isAdmin` → `makeSystemAdmin` (backward-compat fallback: server accepts old field names)
-  - Old boolean columns dropped from database
-
-## Subdomain Multi-Tenancy
-- Each org can have a custom `subdomain` field (e.g., `perfectgame`) independent of the `slug` (e.g., `perfect-game`)
-- Subdomain middleware (`server/middleware/subdomain.ts`) resolves org by: subdomain field first, then slug fallback
-- Dynamic PWA manifest at `/manifest.json` always uses "LeagueVault" as the app name; uses org's custom app icon on subdomains if configured
-- Login/signup pages show org branding via `useSubdomainOrg` hook
-- Cookie domain set to `.${APP_DOMAIN}` in production for cross-subdomain session sharing
-  - `APP_DOMAIN` env var (default `leaguevault.app`) is the single source of truth for the production hostname suffix
-  - Used by the session cookie domain (`server/auth.ts`) and the Apple Pay accepted-domain check (`server/services/apple-pay-domains.ts`)
-  - Native iOS/Android entitlements stay hardcoded — those are build-time artifacts, not runtime config
-  - **Invariant (task #335 / #395)**: `envSchema.APP_DOMAIN` normalises the value to lowercase at parse-time via `.transform((v) => v.toLowerCase())`. Every consumer (`server/auth.ts`, `server/middleware/security.ts` CSP + CORS, `server/middleware/subdomain.ts` `extractSubdomain`, `server/services/email.ts` `getBaseUrl` / `FROM_EMAIL`, `server/services/apple-pay-domains.ts`) compares it against an already-lowercased request hostname or interpolates it into a header / URL where the canonical form must be lowercase. Each call site carries a `// safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335)` comment, and `tests/unit/app-domain-mixed-case-pins.test.ts` parses a deliberately mixed-case operator value through `envSchema` and pins every consumer end-to-end so a regression on the schema transform cannot silently break CORS / cookies / subdomain matching.
-- Org form dialog has a Subdomain field for admin configuration
-- **Org session isolation**: `orgSessionGuard` middleware (`server/middleware/subdomain.ts`) prevents sessions from leaking across org subdomains
-  - Runs after passport session deserialization on all routes
-  - Also enforced inline in `/api/auth/user` since auth routes are registered before the global middleware
-  - System admins bypass the guard (they manage all orgs)
-  - Users with bowler linkage to the subdomain org are auto-assigned to that org
-  - Non-matching users are logged out and see the org-branded login page
-  - Fails closed: if logout errors, returns 401 instead of continuing
-
-## Previous Changes (2026-03-09)
-- **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
-  - Web app manifest at `client/public/manifest.json` with LeagueVault branding
-  - PWA icons in `client/public/icons/` (72-512px sizes + apple-touch-icon)
-  - Service worker at `client/public/sw.js` — caches static assets, network-first for API, offline fallback
-  - Service worker registered in `client/src/main.tsx`
-  - Apple-specific meta tags for iOS home screen support
-  - Safe area insets and overscroll behavior for native mobile feel
-- **Apple Pay & Google Pay**: One-time wallet payments via Square Web Payments SDK
-  - `client/src/hooks/use-wallet-payments.ts` — hook for initializing and tokenizing Apple Pay / Google Pay
-  - **Bowler-facing flow** (primary): Wallet buttons in `payment-status-section.tsx` → `payment-setup-form.tsx` → `payment-setup-card-input.tsx`
-    - Wallet ref containers are always rendered (hidden via `display: none`) so Square SDK can attach; shown when available
-    - Gated to one-time payments and upfront league payments only (`selectedSchedule === 'custom' || league.paymentMode === 'upfront'`) — wallet cannot create autopay schedules
-    - On successful wallet payment, card is automatically saved on file (`storeCard: true`) for future autopay use
-    - "or pay with card" divider appears between wallet buttons and card form when wallet is available
-  - **Admin-facing flow**: Wallet buttons in `PaymentCreditCardSection` above the card form
-  - Wallet tokens go to the same `/api/payments-provider/payments` endpoint (no backend changes needed)
-  - Payment request amount auto-updates when the form amount changes
-  - Graceful fallback: buttons only appear when the device/browser supports them
-  - Hook has defensive checks: validates `attach` method exists on SDK-returned objects before calling
-  - Debug status banner (temporary): shows wallet init state for troubleshooting on-device
-  - **Platform support**: Apple Pay works only in Safari on iOS; Google Pay works only in Chrome on Android
-  - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (serves static file from `.well-known/` directory first, falls back to `APPLE_PAY_DOMAIN_VERIFICATION` env var). Download the verification file from Square Dashboard → Apple Pay and place it at `.well-known/apple-developer-merchantid-domain-association`.
-  - Apple Pay domain registration: `POST /api/payments-provider/apple-pay/register-domain` (admin-only, per-domain)
-  - Apple Pay bulk registration: `POST /api/payments-provider/apple-pay/register-all-domains` (system admin, all org subdomains).
-    Returns **HTTP 202 + `{ jobId }`** immediately and processes asynchronously via the
-    `applePayWorker` background service (`server/services/apple-pay-worker.ts`).
-    Job + per-domain item state persists in `apple_pay_jobs` / `apple_pay_job_items`
-    so a server restart resumes pending work without double-processing.
-    Worker uses `FOR UPDATE SKIP LOCKED` to claim one job at a time and a
-    concurrency cap of 4 in-flight provider calls per job. Poll status via
-    `GET /api/payments-provider/apple-pay/jobs/:id` (system admin) for
-    succeeded / failed / skipped / pending counts and per-domain results.
-    The single-domain endpoint remains synchronous and unchanged.
-  - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
-  - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
-  - Google Pay requires `pay.google.com` in CSP scriptSrc, frameSrc, connectSrc
-- **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
-  - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
-  - `GET /api/payments-provider/cards/:bowlerId` endpoint to list saved cards for a bowler
-  - Payment form updated: when a bowler has saved cards, shows "Saved Card" / "New Card" toggle
-  - Saved card payments go through `/api/payments-provider/payments` with the card ID as sourceId
-  - New card payments with "Save card" checked also go through `/api/payments-provider/payments` for proper card-on-file saving
-  - Card saving uses Square's Cards API (`cardsApi.createCard`) with the payment token
-- **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow CRM
-  - `server/services/bowlnow.ts` — service module for BN API (create/update contacts, sync single/all bowlers)
-  - `server/routes/bowlnow.ts` — admin API routes: `GET /api/bn/status`, `POST /api/bn/sync-bowler/:id`, `POST /api/bn/sync-all`
-  - Schema: added `bnContactId` text column to bowlers table (stores BN contact ID after sync)
-  - Auto-sync: bowler create/update routes fire-and-forget sync to BN
-  - UI: "Sync to BowlNow" button on individual bowler view, "Sync All to BowlNow" on bowlers list, BN synced/not-synced badges
-  - Custom field mapping: League Name, Team Name, Square Customer ID, Organization
-  - BN Location ID: `zQw4JcOJlKfJWCWvJ2pw`, API Version: `2021-07-28`
-- **New Season Feature**: Admins can create a new season of an existing league, carrying over all teams and bowler rosters
-  - `POST /api/leagues/:id/new-season` endpoint creates a new league with identical settings, teams, and bowler assignments
-  - `GET /api/leagues/:id/season-history` endpoint returns the full chain of linked seasons
-  - Schema: added `seasonNumber` (integer, default 1) and `previousSeasonId` (optional, self-referencing) to leagues table
-  - Old season is automatically archived when new season is created
-  - Season label utility (`client/src/lib/season-utils.ts`): generates display labels like "25/26 Season" (cross-year) or "Summer '26 Season" (same-year, based on start month)
-  - League view page: "Start New Season" button with date picker dialog, season label display, season history navigation
-  - Leagues list page: season label shown under each league name
-- **Payment Refund System**: Full refund support for org admins and system admins
-  - Square refund processing via `refundsApi.refundPayment` for credit card payments
-  - Cash/check payments can be marked as refunded without Square call
-  - `POST /api/payments/:id/refund` endpoint with access control (admin-only)
-  - Payment schema: added `refunded` status, `squareRefundId`, `refundReason`, `refundedAt` columns
-  - `refundPayment()` function in `server/services/square.ts`
-  - `getPaymentById()` and `refundPayment()` methods in storage layer
-  - Admin UI: orange refund button on paid payments in Payments page with confirmation dialog + optional reason
-  - Refunded payments show orange "refunded" badge
-- Fixed `apiRequest` argument order in payments-page.tsx delete mutation (URL first, method second)
-
-## Previous Changes (2026-03-08)
-- **Bowler-to-User Auto-Linking System**: Automatic linking between bowler records and user accounts
-  - When a user sets their password via invite or self-registers, if their email matches a bowler record, they are automatically linked
-  - When an admin creates/updates a bowler with an email matching an existing user, they are auto-linked
-  - `storage.getBowlerByEmail(email, organizationId)` requires org scope; `getBowlerByEmailSystemAdmin(email)` for cross-org lookups
-- **Claim Bowler Page** (`/claim-bowler`): Self-service roster selection for bowlers without emails
-  - After self-registration, users without an auto-linked bowler are redirected to pick their name from the roster
-  - Shows unlinked bowlers (no email, no linked user) grouped by league and team
-  - `GET /api/bowlers/unlinked` endpoint uses org-scoped queries for non-system-admin users
-  - `POST /api/auth/claim-bowler` endpoint
-  - Skip option for users not yet on a roster
-- **Bulk League Invites**: Send registration invites to all bowlers in a league at once
-  - "Send Registration Invites" button on league detail page (`/leagues/:id`)
-  - `POST /api/leagues/:id/send-invites` creates user accounts and sends invite emails for all eligible bowlers
-  - Shows summary: sent count, already registered, no email on file
-- **Email Template System**: Database-stored email templates with superadmin editor
-  - 4 templates: Bulk Registration Invite, Self-Register Linked, Self-Register Unlinked, Bowler Claimed
-  - Templates support variables: `{{bowler_name}}`, `{{organization_name}}`, `{{organization_logo}}`, `{{league_name}}`, `{{invite_link}}`, `{{login_link}}`, `{{dashboard_link}}`
-  - Superadmin editor page at `/email-templates` with preview and active/inactive toggle
-  - `email_templates` table with slug, name, description, subject, body, active fields
-  - `sendTemplatedEmail(slug, toEmail, variables)` in `server/services/email.ts`
-  - Emails auto-send: on self-registration (linked/unlinked), on bowler claim, on bulk invite
-  - Org logo included in email header when available
-- **Linked/Unlinked Status Indicators**:
-  - Users page (`/users`): "Linked Bowler" column showing bowler name + league/team or "Unlinked"
-  - Team roster view: "Account" column with "Has Account" / "No Account" badges per bowler
-- **Smart Duplicate Bowler Handling**: When adding a bowler with an email that already exists
-  - Instead of a hard error, shows a prompt to add the existing bowler to the new team
-  - Supports multi-location bowlers within the same organization
-- Users management page (`/users`) for org admins to create, manage, and remove users
-  - Admin creates user with first name, last name, email, and role (Admin or End User)
-  - System sends invite email via SendGrid with a secure link to set up password
-  - Users table shows status (Pending/Active), role, location, linked bowler
-  - Resend invite button for pending users
-  - `inviteToken` and `inviteTokenExpiry` columns on users table
-- Email service: `server/services/email.ts` using SendGrid (`@sendgrid/mail`)
-- Set Password page (`/set-password?token=...`) — public route for invited users to create their password
-  - Validates invite token, shows password requirements, auto-logs in after password set
-- Auth routes added: `POST /api/auth/set-password`, `GET /api/auth/validate-invite`, `POST /api/auth/claim-bowler`
-- Org admin routes added: `POST /api/org-admin/users/create`, `POST /api/org-admin/users/:id/resend-invite`
-
-## Previous Changes (2026-03-02)
-- Added Final 2 Weeks Due feature: leagues have configurable `finalTwoWeeksDueWeek` (week 1-10, default 6)
-  - League form: "Final 2 Weeks Due By" dropdown (Week 1-10)
-  - Payment Overview card: Final 2 Weeks status (paid/due/past due) with due date
-  - Payment History page: Final 2 Weeks card with color-coded status
-  - `calculateFinancials` returns `finalTwoWeeks` status object
-  - "Include Final 2 Weeks" checkbox on one-time payment form and auto-pay setup page
-  - When checked: adds 2× weekly fee to current payment; for auto-pay, schedule amount excludes the final 2 weeks
-  - Warning box shown when setting up auto-pay without including final 2 weeks; warns about auto-charge
-  - Backend auto-charge: payment scheduler checks on each scheduled payment if current week >= finalTwoWeeksDueWeek and charges 2× weekly fee automatically if unpaid (notes: "Auto-charged: Final 2 Weeks")
-- Quick Select payment buttons: 1 Month, Half Season, Full Season, Past Due Balance, Season Remaining Balance
-  - Past Due/Remaining Balance use exact amounts (not rounded to weeks)
-  - Half Season/Full Season hide when bowler has already paid enough to make them irrelevant
-  - Active button stays highlighted
-- Fixed Square card-on-file: uses `cardsApi.createCard` (correct API) instead of invalid `card_on_file` payment param
-  - Card is saved first, then used as payment source; requires bowler to have a Square customer ID
-  - Both `processPayment` and `createOrderWithPayment` now accept `customerId` parameter
-  - Payment route looks up bowler's `paymentCustomerId` and passes it through
-- Fixed bowler dashboard: independent queries with staleTime, error states with retry, multi-league support
-- Fixed login redirect: routes to `/` for `RootRedirectHandler` to decide admin vs bowler destination
-- Fixed bowler dashboard route guard: `AuthRouteGuard` instead of `SystemAdminRouteGuard`
-- Fixed logout: corrected `apiRequest` argument order (URL first, method second)
-- Square Catalog integration: dual-item model with Lineage + Prize Fund items per league
-  - Category filtering on catalog item endpoint (`GET /api/payments-provider/catalog/items?categoryId=...`)
-  - Categories endpoint (`GET /api/payments-provider/catalog/categories`)
-  - League form: category filter dropdown, separate Lineage and Prize Fund item pickers, auto-sum weekly fee
-  - Payments create Square Orders with multi-line items (lineage + prize fund as separate line items)
-  - Payment scheduler uses same Orders API logic for recurring payments
-  - League view shows lineage/prize fund badges; payment form shows fee breakdown
-- Added Locations layer between Organizations and Leagues (organizations → locations → leagues)
-- Locations CRUD with archive/delete, management page at `/locations`, sidebar nav link
-- League form includes Location dropdown; leagues table shows Location column with filter
-- Navigation dropdown groups leagues by location when locations exist
-- Removed all QubicaAMF scoring integration (parser, API service, score scheduler, schema fields, UI references)
-- Added league archive/delete system with cascade delete and type-to-confirm UI
-- League form: auto-fills Bowling Day from Season Start, editable Season Length auto-calculates Season End
-- Renamed "Competition Start Time" to "League Start Time", removed Practice Start Time field
-- Fixed apiRequest argument order in league form mutations
-- Filtered archived leagues from navigation dropdown
-
-## Testing
-- **Framework**: Vitest (configured in `vitest.config.ts`)
-- **Run tests**: `npx vitest run` (all tests) or `npx vitest run tests/` (integration only)
-- **Watch mode**: `npx vitest`
-- **Test structure**:
-  - `tests/helpers.ts` - Shared test utilities (login, apiGet, apiPost with CSRF support)
-  - `tests/api/organizations.test.ts` - Organization CRUD API tests
-  - `tests/api/organization-isolation.test.ts` - Multi-tenant isolation tests
-  - `server/services/__tests__/square.test.ts` - Square SDK unit tests (vi.mock)
-- **Unit tests**: `npm test -- server/` (runs without external deps)
-- **Integration tests**: `npm test -- tests/` (requires running server + seeded users)
-  - Prerequisite: `npx tsx scripts/seed.ts all` to create test users
-- **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin \<ID\> | all)
-- **Background-worker kick suppression in tests** (#569, #571): the dev
-  server runs singleton background workers (`applePayWorker`,
-  `paymentScheduler`, …) that share a DB with the vitest suite. Any
-  route that wakes one of these workers as a side effect of an HTTP
-  request can race tests by acting on rows tests just wrote. The
-  convention to silence them is:
-  - Add a header constant to `server/utils/test-suppression.ts` of the
-    shape `x-test-suppress-<worker>-kick`.
-  - Gate the worker kick at the route boundary with
-    `isTestKickSuppressed(req, HEADER)` from the same module. The helper
-    only honours the header when `NODE_ENV !== 'production'`, so the
-    production worker can never be disabled by spoofing the header.
-  - Wire the new header into `tests/helpers.ts:withTestBypassHeader` so
-    every test request is shielded by default.
-
-  Any new background worker added to `server/services/` that mutates
-  rows the test suite reads MUST follow this convention from day one.
-
-## Branding
-- **App name is always "LeagueVault"** — in app stores, on the home screen icon, and in the PWA manifest (including on org subdomains)
-- White-labeling applies inside the app after login: org logos, colors, and content are customized per bowling center
-- Login/signup pages on org subdomains show org branding via `useSubdomainOrg` hook
-
-## Capacitor (Native Mobile Apps)
-- **Capacitor** wraps the web app for iOS App Store and Google Play Store distribution
-- Native projects: `ios/` (Xcode) and `android/` (Android Studio/Gradle)
-- Config: `capacitor.config.ts` — loads live production URL (`https://leaguevault.app`) so web updates don't require app store re-submission
-- Bundle ID: `app.leaguevault.mobile`, App Name: `LeagueVault`
-- Platform detection: `client/src/lib/capacitor.ts` — `isNativeApp()`, `getPlatform()`, `isIOS()`, `isAndroid()`
-- Service worker registration is skipped inside native apps
-- Native permissions configured: Camera, Photo Library (iOS Info.plist + Android Manifest)
-- CORS: `capacitor://localhost` and `ionic://localhost` added to allowed origins in `server/index.ts`
-- Build guide: `NATIVE_BUILD.md` — step-by-step instructions for building and submitting to stores
-- Capacitor plugins installed: `@capacitor/status-bar`, `@capacitor/splash-screen`, `@capacitor/camera`, `@capacitor/preferences`
-- Key commands: `npx cap sync` (sync web assets to native), `npx cap open ios`, `npx cap open android`
-
-## Previous Changes (2026-03-01)
-- Removed dead code: deprecated `server/routes.ts`, `client/src/pages/App.tsx`, unused `series`/`weeklyStats` tables
-- Consolidated authorization: all access control functions in `server/utils/access-control.ts`
-- Merged `bowler-leagues-new.ts` into `bowler-leagues.ts` (use `?enriched=true` for detailed data)
-- Fixed N+1 queries in bowlers and bowler-leagues routes (batch fetching with Sets/Maps)
-- Added database indexes on payments and users tables
-- Cleaned up debug logging across entire backend (no sensitive data logged)
-- Extracted shared financial calculations into `client/src/lib/financial-utils.ts`
-- Removed all frontend console.log debug statements
-- Simplified server/index.ts from 1135 lines to ~200 lines (removed instance locks, port status files, stdout redirection)
+## Pointers
+- **Validation Gates**: The agent has 8 named validation commands mirroring `.github/workflows/ci.yml`. Refer to the validation table for specific commands and their purposes.
+- **Beta Environment Setup**: `docs/BETA_ENVIRONMENT_SETUP.md` for a full runbook.
+- **Native Mobile Build Guide**: `NATIVE_BUILD.md` for step-by-step instructions.
+- **PII Audit**: `docs/log-debug-pii-audit.md` for details on PII handling in debug logs.
