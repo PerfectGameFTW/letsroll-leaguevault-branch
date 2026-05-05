@@ -15,6 +15,7 @@ import {
   LEAGUE_NAME_KEY,
   LEAGUE_SEASON_KEY,
 } from './square-custom-attributes';
+import { squareCatalogCapAlerter } from './square-catalog-cap-alerts';
 import type {
   PaymentProvider,
   CatalogProvider,
@@ -63,11 +64,16 @@ async function paginateCatalogObjects(
     nextCursor: string | undefined;
   }>,
   context: string,
-): Promise<{ objects: CatalogObject[]; truncated: boolean }> {
+): Promise<{
+  objects: CatalogObject[];
+  truncated: boolean;
+  truncationReason: 'max_items' | 'max_pages' | null;
+}> {
   const all: CatalogObject[] = [];
   let cursor: string | undefined;
   let pages = 0;
   let truncated = false;
+  let truncationReason: 'max_items' | 'max_pages' | null = null;
   do {
     const { objects, nextCursor } = await fetchPage(cursor);
     all.push(...objects);
@@ -79,6 +85,7 @@ async function paginateCatalogObjects(
           'stopping pagination. Some catalog items may be missing from the response.',
       );
       truncated = true;
+      truncationReason = 'max_items';
       break;
     }
     if (pages >= CATALOG_PAGINATION_MAX_PAGES && cursor) {
@@ -87,10 +94,11 @@ async function paginateCatalogObjects(
           `${all.length} object(s) returned. Some catalog items may be missing from the response.`,
       );
       truncated = true;
+      truncationReason = 'max_pages';
       break;
     }
   } while (cursor);
-  return { objects: all, truncated };
+  return { objects: all, truncated, truncationReason };
 }
 
 /**
@@ -1226,6 +1234,44 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     return cardId.startsWith('ccof:');
   }
 
+  /**
+   * Fire-and-forget: page support that this tenant just hit the
+   * Square catalog pagination safety cap (Task #644). Never thrown:
+   * a failure to alert must not turn a degraded-but-working catalog
+   * read into a 500. The alerter itself dedupes per-location across
+   * a multi-hour window so a chatty admin page can't spam support.
+   */
+  private fireCatalogCapAlert(
+    reason: 'max_items' | 'max_pages',
+    context: string,
+  ): void {
+    void (async () => {
+      try {
+        const loc = await storage.getLocation(this.locationId);
+        const organizationId = loc?.organizationId ?? null;
+        const result = await squareCatalogCapAlerter.notifyCapHit({
+          organizationId,
+          locationId: this.locationId,
+          reason,
+          context,
+        });
+        if (result === 'failed') {
+          log.warn('Square catalog cap alert send returned failed', {
+            locationId: this.locationId,
+            organizationId,
+            reason,
+            context,
+          });
+        }
+      } catch (err) {
+        log.error('Square catalog cap alert dispatch threw', {
+          locationId: this.locationId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+  }
+
   async listCatalogCategories(): Promise<{ categories: CatalogCategory[]; truncated: boolean }> {
     const client = await this.getSquareClient();
     if (!client) {
@@ -1242,7 +1288,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // we walk the cursor through the shared `paginateCatalogObjects`
       // helper so the safety cap (Task #613) applies here too even
       // though categories rarely approach it.
-      const { objects: allObjects, truncated } = await paginateCatalogObjects(
+      const { objects: allObjects, truncated, truncationReason } = await paginateCatalogObjects(
         async (cursor) => {
           const page = await client.catalog.list({ cursor, types: 'CATEGORY' });
           return {
@@ -1252,6 +1298,9 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         },
         'listCatalogCategories',
       );
+      if (truncated && truncationReason) {
+        this.fireCatalogCapAlert(truncationReason, 'listCatalogCategories');
+      }
 
       // v40+ CatalogObject is a discriminated union via `type`. Narrow
       // to the CATEGORY variant so `categoryData` is reachable, and
@@ -1334,7 +1383,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       if (categoryId) {
         // SearchCatalogItemsResponse exposes `cursor` directly on the
         // response body (no Page<> wrapper here, unlike `catalog.list`).
-        const { objects: allItems, truncated } = await paginateCatalogObjects(
+        const { objects: allItems, truncated, truncationReason } = await paginateCatalogObjects(
           async (cursor) => {
             const response = await client.catalog.searchItems({
               categoryIds: [categoryId],
@@ -1347,6 +1396,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           },
           `listCatalogItems(categoryId=${categoryId})`,
         );
+        if (truncated && truncationReason) {
+          this.fireCatalogCapAlert(
+            truncationReason,
+            `listCatalogItems(categoryId=${categoryId})`,
+          );
+        }
         // `searchItems` returns CatalogObject[] in v40+; narrow to the
         // ITEM variant so `itemData` is reachable on the union.
         return {
@@ -1355,7 +1410,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         };
       }
 
-      const { objects: allObjects, truncated } = await paginateCatalogObjects(
+      const { objects: allObjects, truncated, truncationReason } = await paginateCatalogObjects(
         async (cursor) => {
           const page = await client.catalog.list({ cursor, types: 'ITEM' });
           return {
@@ -1365,6 +1420,9 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         },
         'listCatalogItems',
       );
+      if (truncated && truncationReason) {
+        this.fireCatalogCapAlert(truncationReason, 'listCatalogItems');
+      }
       return {
         items: allObjects.filter(isItemObject).map(toCatalogItem),
         truncated,

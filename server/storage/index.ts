@@ -200,6 +200,7 @@ export class DatabaseStorage implements IStorage {
   tryClaimAlerterSlot!: IStorage["tryClaimAlerterSlot"];
   recordAlerterSummary!: IStorage["recordAlerterSummary"];
   getRecentAlerterEvent!: IStorage["getRecentAlerterEvent"];
+  listRecentAlerterEventsByPrefix!: IStorage["listRecentAlerterEventsByPrefix"];
 
   constructor() {
     Object.assign(this, {

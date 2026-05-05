@@ -11,8 +11,17 @@ import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.j
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { hasCatalogSupport } from '../../services/payment-provider';
+import { SQUARE_CATALOG_CAP_ALERT_KIND_PREFIX } from '../../services/square-catalog-cap-alerts';
+import type { SquareCatalogCapAlerterSummary } from '@shared/schema';
 
 const log = createLogger('Payments');
+
+// How far back the system-admin banner considers a Square catalog
+// pagination-cap alert "recent" (#644). 7 days: long enough that a
+// Friday-evening cap event still pages the next admin who logs in
+// Monday morning, short enough that an already-fixed tenant stops
+// nagging support a week later.
+const RECENT_CATALOG_CAP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const router = Router();
 
@@ -109,6 +118,50 @@ router.get('/catalog/items', async (req, res) => {
   } catch (error) {
     log.error('Catalog list error:', error);
     sendError(res, 'Failed to fetch catalog items');
+  }
+});
+
+/**
+ * System-admin feed of recent Square-catalog pagination-cap alerts
+ * (#644). Returns one entry per affected location whose alert was
+ * persisted within the last `RECENT_CATALOG_CAP_WINDOW_MS`. Drives
+ * the in-app banner so support staff can spot affected tenants
+ * without grepping server logs.
+ *
+ * Restricted to `system_admin` because it leaks per-tenant identifiers
+ * (organizationId, locationId) across the org boundary on purpose —
+ * that's what lets support contact the right organization.
+ */
+router.get('/catalog/cap-alerts/recent', async (req, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const events = await storage.listRecentAlerterEventsByPrefix(
+      SQUARE_CATALOG_CAP_ALERT_KIND_PREFIX,
+      RECENT_CATALOG_CAP_WINDOW_MS,
+    );
+    const alerts = events
+      .map((e) => {
+        // Older rows might predate this alerter; only surface rows
+        // whose summary matches the expected per-location shape so
+        // the UI never has to defend against a stale apple-pay
+        // shaped payload that happened to share the prefix.
+        const s = e.summary as Partial<SquareCatalogCapAlerterSummary> | null;
+        if (!s || typeof s.locationId !== 'number') return null;
+        return {
+          sentAt: e.lastSentAt.toISOString(),
+          organizationId: s.organizationId ?? null,
+          locationId: s.locationId,
+          reason: s.reason ?? 'max_items',
+          context: s.context ?? '',
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    sendSuccess(res, { alerts });
+  } catch (error) {
+    log.error('Square catalog cap recent alerts error:', error);
+    sendError(res, 'Failed to load recent Square catalog cap alerts', 500);
   }
 });
 

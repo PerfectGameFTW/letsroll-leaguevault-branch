@@ -82,6 +82,24 @@ export const envSchema = z.object({
     .positive()
     .default(30 * 60 * 1000),
 
+  // Square catalog cap alerter (#644). Same shape as the Apple Pay
+  // recovery knobs above: a tri-state on/off override + a per-tenant
+  // rate-limit window. The default-off-in-dev / on-in-prod resolution
+  // lives in the alerter service so a dev environment isn't paging
+  // anyone when a developer wires up a fixture catalog.
+  SQUARE_CATALOG_CAP_ALERTS_ENABLED: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true" || v === "1")),
+  // 6 hours: long enough that a single org repeatedly hitting the cap
+  // doesn't flood support, short enough that a fresh recurrence after
+  // a "we'll fix it tomorrow" reply still pages.
+  SQUARE_CATALOG_CAP_ALERT_MIN_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(6 * 60 * 60 * 1000),
+
   // Comma-separated list of recipient email domains that the SendGrid
   // dispatcher MUST refuse to deliver to. Used to prevent vitest runs
   // (which create real users at `@vitest.local`) from generating bounce

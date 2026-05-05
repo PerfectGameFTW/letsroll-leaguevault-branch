@@ -298,6 +298,16 @@ export interface IAlerterStateStorage {
       }
     | null
   >;
+  listRecentAlerterEventsByPrefix(
+    prefix: string,
+    withinMs: number,
+  ): Promise<
+    Array<{
+      kind: string;
+      lastSentAt: Date;
+      summary: import("@shared/schema").AlerterSummary | null;
+    }>
+  >;
 }
 
 export interface IStorage extends

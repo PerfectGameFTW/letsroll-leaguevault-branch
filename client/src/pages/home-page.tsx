@@ -9,6 +9,7 @@ import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DashboardSkeleton, PageErrorState } from "@/components/page-states";
 import { ApplePayRecoveryBanner } from "@/components/apple-pay-recovery-banner";
+import { SquareCatalogCapBanner } from "@/components/square-catalog-cap-banner";
 
 
 function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
@@ -172,6 +173,10 @@ export default function HomePage() {
         <div className="flex flex-col gap-6">
           <ErrorBoundary level="section">
             <ApplePayRecoveryBanner />
+          </ErrorBoundary>
+
+          <ErrorBoundary level="section">
+            <SquareCatalogCapBanner />
           </ErrorBoundary>
 
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">

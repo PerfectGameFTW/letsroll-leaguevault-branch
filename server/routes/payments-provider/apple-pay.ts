@@ -16,6 +16,7 @@ import { hasWalletSupport } from '../../services/payment-provider';
 import { applePayWorker } from '../../services/apple-pay-worker';
 import { acceptedApplePayDomainsForOrg, isAcceptedApplePayDomain } from '../../services/apple-pay-domains';
 import { APPLE_PAY_RECOVERY_ALERT_KIND } from '../../services/apple-pay-alerts';
+import type { ApplePayRecoveryAlerterSummary } from '@shared/schema';
 import { isTestKickSuppressed, APPLE_PAY_WORKER_KICK_HEADER } from '../../utils/test-suppression';
 
 // How far back the admin dashboard banner should consider an Apple Pay
@@ -282,11 +283,16 @@ router.get('/apple-pay/recovery-alerts/recent', async (req, res) => {
       RECENT_ALERT_WINDOW_MS,
     );
     if (!event) return sendSuccess(res, { alert: null });
+    // The shared `AlerterSummary` type is now a discriminated union
+    // (#644 added the Square-catalog-cap variant). This row is keyed
+    // by the Apple-Pay alert kind, so narrow with a Partial<> cast
+    // and read defensively in case an old row is missing fields.
+    const summary = event.summary as Partial<ApplePayRecoveryAlerterSummary> | null;
     sendSuccess(res, {
       alert: {
         sentAt: event.lastSentAt.toISOString(),
-        itemCount: event.summary?.itemCount ?? 0,
-        affectedJobIds: event.summary?.affectedJobIds ?? [],
+        itemCount: summary?.itemCount ?? 0,
+        affectedJobIds: summary?.affectedJobIds ?? [],
       },
     });
   } catch (error) {

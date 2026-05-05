@@ -74,7 +74,12 @@ export type {
 } from "./apple-pay-jobs";
 
 export { alerterState } from "./alerter-state";
-export type { AlerterState, AlerterSummary } from "./alerter-state";
+export type {
+  AlerterState,
+  AlerterSummary,
+  ApplePayRecoveryAlerterSummary,
+  SquareCatalogCapAlerterSummary,
+} from "./alerter-state";
 
 export { sessions } from "./sessions";
 

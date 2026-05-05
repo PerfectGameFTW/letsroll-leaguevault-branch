@@ -123,6 +123,7 @@ vi.mock('../../server/routes/payments-provider/shared.js', () => ({
 // routes. They're never invoked here but must be importable.
 vi.mock('../../server/services/email', () => ({
   sendInviteEmail: vi.fn(),
+  sendSquareCatalogCapAlert: vi.fn(async () => true),
 }));
 vi.mock('../../server/services/payment-scheduler.js', () => ({
   paymentScheduler: { schedule: vi.fn() },

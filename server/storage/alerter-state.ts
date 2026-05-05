@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, gte, like, and, isNotNull, desc } from "drizzle-orm";
 import { db } from "../db";
 import { alerterState, type AlerterSummary } from "@shared/schema";
 
@@ -116,4 +116,47 @@ export async function getRecentAlerterEvent(
   const elapsed = Date.now() - sentAt.getTime();
   if (elapsed > withinMs) return null;
   return { lastSentAt: sentAt, summary: row.lastSummary };
+}
+
+/**
+ * Return every recently-sent alert event whose `kind` starts with
+ * `prefix`. Used by support-facing surfaces that aggregate per-tenant
+ * alerts into a single list — e.g. the system-admin Square catalog
+ * cap banner (Task #644), where the per-location `kind`
+ * `square_catalog_cap:loc:<id>` is grouped under the
+ * `square_catalog_cap:` prefix.
+ *
+ * Filtered server-side by `last_summary_sent_at` so a kind that
+ * claimed a slot but failed to send (no `lastSummarySentAt`) never
+ * surfaces; ordered newest-first so the UI can render
+ * "most-recent-first" without an extra sort. Capped at 100 rows
+ * defensively — far above any realistic concurrent-tenant fan-out
+ * in any window the UI might read.
+ */
+export async function listRecentAlerterEventsByPrefix(
+  prefix: string,
+  withinMs: number,
+): Promise<
+  Array<{ kind: string; lastSentAt: Date; summary: AlerterSummary | null }>
+> {
+  const since = new Date(Date.now() - withinMs);
+  const rows = await db
+    .select()
+    .from(alerterState)
+    .where(
+      and(
+        like(alerterState.kind, `${prefix}%`),
+        isNotNull(alerterState.lastSummarySentAt),
+        gte(alerterState.lastSummarySentAt, since),
+      ),
+    )
+    .orderBy(desc(alerterState.lastSummarySentAt))
+    .limit(100);
+  return rows
+    .filter((r): r is typeof r & { lastSummarySentAt: Date } => !!r.lastSummarySentAt)
+    .map((r) => ({
+      kind: r.kind,
+      lastSentAt: r.lastSummarySentAt,
+      summary: r.lastSummary,
+    }));
 }

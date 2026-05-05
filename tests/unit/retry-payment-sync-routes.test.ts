@@ -108,6 +108,7 @@ vi.mock('../../server/services/email', () => ({
   sendEmailChangeConfirmation: vi.fn(async () => true),
   sendEmailChangeNotification: vi.fn(async () => true),
   sendPasswordChangedNotification: vi.fn(async () => true),
+  sendSquareCatalogCapAlert: vi.fn(async () => true),
   getBaseUrl: () => 'https://test.example',
 }));
 

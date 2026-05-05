@@ -663,6 +663,84 @@ export async function sendApplePayRecoveryAlert(
 }
 
 /**
+ * Page support when an organization's Square catalog hits the
+ * pagination safety cap (Task #644). One email per affected
+ * (organization, location) per rate-limit window — see
+ * `SquareCatalogCapAlerter` for the dedup contract.
+ */
+export async function sendSquareCatalogCapAlert(
+  toEmails: string[],
+  details: {
+    organizationId: number | null;
+    locationId: number;
+    reason: "max_items" | "max_pages";
+    context: string;
+    suppressedSinceLastAlert: number;
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error("Cannot send Square catalog cap alert — SENDGRID_API_KEY not configured");
+    return false;
+  }
+  if (toEmails.length === 0) return false;
+
+  const baseUrl = getBaseUrl();
+  const reviewUrl = `${baseUrl}/admin/locations/${details.locationId}`;
+  const safeOrgId = escapeHtml(
+    details.organizationId === null ? "(unknown)" : String(details.organizationId),
+  );
+  const safeLocationId = escapeHtml(String(details.locationId));
+  const safeReason = escapeHtml(details.reason);
+  const safeContext = escapeHtml(details.context);
+  const suppressedLine =
+    details.suppressedSinceLastAlert > 0
+      ? `<p style="font-size: 13px; color: #b45309;">${details.suppressedSinceLastAlert} additional cap event(s) for this location were suppressed by rate-limiting since the last alert.</p>`
+      : "";
+
+  const msg = {
+    to: toEmails,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: `[LeagueVault] Square catalog hit pagination cap (org ${safeOrgId}, location ${safeLocationId})`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #1a1a2e; margin-top: 0;">Square catalog too large to fully load</h2>
+        <p style="font-size: 14px; color: #333;">
+          A request to list this organization's Square catalog tripped our
+          pagination safety cap. The admin saw a "catalog truncated" banner;
+          the visible list is incomplete. Reach out to the organization to
+          either prune their catalog or scope by category before we lose
+          more items silently.
+        </p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #333;">
+          <tr><td style="padding: 6px 0; color: #666; width: 160px;">Organization ID</td><td style="padding: 6px 0;"><strong>${safeOrgId}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Location ID</td><td style="padding: 6px 0;"><strong>${safeLocationId}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Cap that fired</td><td style="padding: 6px 0;">${safeReason}</td></tr>
+          <tr><td style="padding: 6px 0; color: #666; vertical-align: top;">Call site</td><td style="padding: 6px 0; word-break: break-word;">${safeContext}</td></tr>
+        </table>
+        ${suppressedLine}
+        <div style="margin: 24px 0;">
+          <a href="${escapeHtml(reviewUrl)}" style="background-color: #1a1a2e; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; display: inline-block;">Open Location</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await dispatchMail(msg, true);
+    log.info(
+      `Square catalog cap alert sent to ${toEmails.length} admin(s) for location ${details.locationId}`,
+    );
+    return true;
+  } catch (error) {
+    log.error("Failed to send Square catalog cap alert:", describeMailError(error));
+    return false;
+  }
+}
+
+/**
  * Resend a Square hosted-receipt link. Tries the DB-driven
  * 'payment_receipt_resend' template first, falling back to the
  * inline HTML below on fresh installs.
