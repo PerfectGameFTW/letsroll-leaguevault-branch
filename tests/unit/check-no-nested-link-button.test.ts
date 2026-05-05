@@ -483,6 +483,124 @@ export function Bad() {
     expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
   });
 
+  it('fails when a wouter <Link> directly contains another wouter <Link> (task #656)', () => {
+    const dir = makeFixture({
+      'client/src/nested-link.tsx': `import { Link } from 'wouter';
+export function Nested() {
+  return (
+    <Link href="/outer">
+      <Link href="/inner">Inner</Link>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Link>/);
+    expect(r.stderr).toMatch(/client\/src\/nested-link\.tsx:4/);
+    expect(r.stderr).toMatch(/<a><a><\/a><\/a>/);
+    expect(r.stderr).toMatch(/Collapse to a single <Link>/);
+  });
+
+  it('fails when a wouter <Link> directly contains a plain <a> (task #656)', () => {
+    const dir = makeFixture({
+      'client/src/nested-anchor.tsx': `import { Link } from 'wouter';
+export function Nested() {
+  return (
+    <Link href="/outer">
+      <a href="/inner">Inner</a>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <a>/);
+    expect(r.stderr).toMatch(/client\/src\/nested-anchor\.tsx:4/);
+  });
+
+  it('fails when a wouter <Link> wraps a <div> wrapping another <Link> (task #656)', () => {
+    const dir = makeFixture({
+      'client/src/nested-link-wrapped.tsx': `import { Link } from 'wouter';
+export function Nested() {
+  return (
+    <Link href="/outer">
+      <div className="rounded p-4">
+        <Link href="/inner">Inner</Link>
+      </div>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Link>/);
+    expect(r.stderr).toMatch(/client\/src\/nested-link-wrapped\.tsx:4/);
+  });
+
+  it('fails when a wouter <Link> wraps a <span> wrapping a plain <a> (task #656)', () => {
+    const dir = makeFixture({
+      'client/src/nested-anchor-wrapped.tsx': `import { Link } from 'wouter';
+export function Nested() {
+  return (
+    <Link href="/outer">
+      <span className="inline-flex">
+        <a href="/inner">Inner</a>
+      </span>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <a>/);
+  });
+
+  it('does NOT flag an outer <a> wrapping a wouter <Link> (out of scope — only outer <Link> is checked)', () => {
+    // Only the outer-<Link>-containing-anchor shape is in
+    // scope for task #656; an outer plain <a> is left to other
+    // guards / human review.
+    const dir = makeFixture({
+      'client/src/anchor-outer.tsx': `import { Link } from 'wouter';
+export function Outer() {
+  return (
+    <a href="/outer">
+      <Link href="/inner">Inner</Link>
+    </a>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('does NOT flag <Link><Link/></Link> in files that import Link from elsewhere', () => {
+    const dir = makeFixture({
+      'client/src/other-nested-link.tsx': `import { Link } from 'react-router-dom';
+export function Other() {
+  return (
+    <Link to="/outer">
+      <Link to="/inner">Inner</Link>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
   it('reports multiple violations across the same file', () => {
     const dir = makeFixture({
       'client/src/many.tsx': `import { Link } from 'wouter';

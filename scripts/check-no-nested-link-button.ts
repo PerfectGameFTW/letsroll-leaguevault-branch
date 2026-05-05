@@ -20,6 +20,12 @@
  *   (b) A `<button>` or `<Button>` whose direct JSX children
  *       contain a `<Link>` element (in a file that imports
  *       `Link` from `'wouter'`).
+ *   (c) A wouter `<Link>` whose direct JSX children contain
+ *       another `<Link>` or a plain `<a>` element (task #656).
+ *       Two stacked anchors render `<a><a></a></a>`, which is
+ *       just as invalid as `<a><button></button></a>`, breaks
+ *       middle/cmd-click on the inner navigation, and confuses
+ *       screen readers the same way.
  *
  * Skipped (intentionally good patterns):
  *   - `<Button asChild><Link/></Button>` — the canonical fix.
@@ -379,6 +385,37 @@ function scanFile(filePath: string, violations: Violation[]): void {
                   `<${tag}> directly contains a wouter <Link>. ` +
                   'This produces invalid HTML (<button><a></a></button>) ' +
                   'and breaks keyboard / screen-reader semantics.',
+                snippet: snippetAt(sf, node),
+              });
+              break;
+            }
+          }
+        }
+
+        // (c) wouter <Link> directly containing another <Link>
+        // or a plain <a> (task #656). Both render an inner
+        // anchor inside the outer anchor (`<a><a></a></a>`),
+        // which is invalid HTML, breaks middle/cmd-click on the
+        // inner navigation, and confuses screen readers the same
+        // way as the <Link>/<Button> shapes above.
+        if (tag === 'Link' && linkIsWouter && !parentHasAsChild) {
+          for (const child of childOpenings) {
+            const childTag = getJsxTagName(child);
+            if (childTag === 'Link' || childTag === 'a') {
+              const { line, character } = sf.getLineAndCharacterOfPosition(
+                node.getStart(sf),
+              );
+              violations.push({
+                file: relFile,
+                line: line + 1,
+                column: character + 1,
+                reason:
+                  `<Link> from 'wouter' directly contains <${childTag}>. ` +
+                  'This produces invalid HTML (<a><a></a></a>), ' +
+                  'breaks middle/cmd-click "open in new tab" on the inner ' +
+                  'navigation, and confuses screen readers. Collapse to a ' +
+                  'single <Link> (or move one of the navigations out of ' +
+                  'the other).',
                 snippet: snippetAt(sf, node),
               });
               break;
