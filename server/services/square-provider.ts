@@ -189,14 +189,16 @@ export function buildSquareClient(
  *     guard against drift; this runtime probe is defense-in-depth and
  *     must not break unit tests that mock the `square` module.
  */
-type ProbeResult =
-  | { ok: true; version: string; reason?: undefined }
-  | { ok: true; version: undefined; reason: 'no-captured-request' }
-  | { ok: false; version: string | undefined; reason: 'drift' };
+import {
+  registerThirdPartyPin,
+  verifyThirdPartyPin,
+  _setThirdPartyPinProbeForTests,
+  _resetThirdPartyPinsForTests,
+  type PinProbeResult,
+  type PinProbeFn,
+} from './third-party-pin-verifier';
 
-type ProbeFn = () => Promise<ProbeResult>;
-
-async function defaultProbeSquareSdkVersion(): Promise<ProbeResult> {
+async function defaultProbeSquareSdkVersion(): Promise<PinProbeResult> {
   const captured: Array<Record<string, unknown>> = [];
   // Mirrors the fake fetcher pattern in
   // `__tests__/square-version-header.test.ts`: capture the headers
@@ -229,7 +231,7 @@ async function defaultProbeSquareSdkVersion(): Promise<ProbeResult> {
   } catch {
     // SDK couldn't be constructed at all (e.g. constructor signature
     // changed). Don't fail-shut — the CI test will catch real drift.
-    return { ok: true, version: undefined, reason: 'no-captured-request' };
+    return { ok: true, actual: undefined, reason: 'no-captured-request' };
   }
 
   try {
@@ -243,7 +245,7 @@ async function defaultProbeSquareSdkVersion(): Promise<ProbeResult> {
 
   const headers = captured[0];
   if (!headers) {
-    return { ok: true, version: undefined, reason: 'no-captured-request' };
+    return { ok: true, actual: undefined, reason: 'no-captured-request' };
   }
   // Per the test (and Square's fetcher impl), header keys are
   // lowercased before dispatch. Wire literal is `Square-Version`;
@@ -251,13 +253,51 @@ async function defaultProbeSquareSdkVersion(): Promise<ProbeResult> {
   const raw = headers['square-version'];
   const version = typeof raw === 'string' ? raw : undefined;
   if (version !== SQUARE_EXPECTED_VERSION) {
-    return { ok: false, version, reason: 'drift' };
+    return { ok: false, actual: version, reason: 'drift' };
   }
-  return { ok: true, version };
+  return { ok: true, actual: version };
 }
 
-let _verificationPromise: Promise<{ ok: boolean; version: string | undefined }> | null = null;
-let _probeImpl: ProbeFn = defaultProbeSquareSdkVersion;
+/**
+ * Register Square against the generic third-party pin verifier
+ * framework (task #651). Square keeps its own legacy log lines
+ * (so the on-call grep convention `[PAGE] Square SDK Square-Version
+ * header drift` from task #627 stays stable) instead of using
+ * `makeDefaultPinOnResult`. New providers should prefer the default
+ * formatter unless they have a similar back-compat constraint.
+ */
+const SQUARE_REMEDIATION =
+  'Pin the `square` package back to a version whose Square-Version equals SQUARE_EXPECTED_VERSION, or re-run the audit in §1/§5 and update SQUARE_EXPECTED_VERSION + §1 in the same commit.';
+
+registerThirdPartyPin({
+  provider: 'square',
+  pinName: 'Square-Version header',
+  expected: SQUARE_EXPECTED_VERSION,
+  probe: defaultProbeSquareSdkVersion,
+  runbook: 'docs/square-api-version-audit.md §6',
+  onResult: (outcome) => {
+    if (outcome.ok && outcome.actual === undefined) {
+      log.info(
+        'Square SDK Square-Version probe could not capture an outgoing request — runtime version check skipped (CI test #614 remains the canonical guard).',
+      );
+    } else if (outcome.ok) {
+      log.info('Square SDK Square-Version verified at runtime', {
+        version: outcome.actual,
+        expected: SQUARE_EXPECTED_VERSION,
+      });
+    } else {
+      log.error(
+        '[PAGE] Square SDK Square-Version header drift detected at runtime — refusing to initialize Square provider',
+        {
+          expected: SQUARE_EXPECTED_VERSION,
+          actual: outcome.actual ?? null,
+          runbook: 'docs/square-api-version-audit.md §6',
+          remediation: SQUARE_REMEDIATION,
+        },
+      );
+    }
+  },
+});
 
 /**
  * Reset the memoized verification result and the probe implementation.
@@ -266,18 +306,41 @@ let _probeImpl: ProbeFn = defaultProbeSquareSdkVersion;
  * starts from a clean cache.
  */
 export function _resetSquareSdkVersionVerificationForTests(): void {
-  _verificationPromise = null;
-  _probeImpl = defaultProbeSquareSdkVersion;
+  _resetThirdPartyPinsForTests('square');
 }
 
 /**
  * Replace the probe implementation. Test-only — used to inject a
  * synthetic captured Square-Version header without standing up a
  * real `SquareClient`. Pass `null` to restore the default probe.
+ *
+ * The legacy probe-result shape (`{ok, version, reason?}`) is
+ * adapted into the generic `PinProbeResult` shape (`{ok, actual,
+ * reason?}`) so existing test cases keep compiling.
  */
-export function _setSquareSdkVersionProbeForTests(probe: ProbeFn | null): void {
-  _probeImpl = probe ?? defaultProbeSquareSdkVersion;
-  _verificationPromise = null;
+type LegacyProbeResult =
+  | { ok: true; version: string; reason?: undefined }
+  | { ok: true; version: undefined; reason: 'no-captured-request' }
+  | { ok: false; version: string | undefined; reason: 'drift' };
+
+export function _setSquareSdkVersionProbeForTests(
+  probe: (() => Promise<LegacyProbeResult>) | null,
+): void {
+  if (!probe) {
+    _setThirdPartyPinProbeForTests('square', null);
+    return;
+  }
+  const adapted: PinProbeFn = async () => {
+    const r = await probe();
+    if (r.ok && r.reason === 'no-captured-request') {
+      return { ok: true, actual: undefined, reason: 'no-captured-request' };
+    }
+    if (r.ok) {
+      return { ok: true, actual: r.version };
+    }
+    return { ok: false, actual: r.version, reason: 'drift' };
+  };
+  _setThirdPartyPinProbeForTests('square', adapted);
 }
 
 /**
@@ -286,46 +349,16 @@ export function _setSquareSdkVersionProbeForTests(probe: ProbeFn | null): void {
  * `getSquareClient()` — the first caller wins, every subsequent
  * caller awaits the same promise.
  *
- * Returns `{ ok, version }`. Callers should treat `ok: false` as
- * "refuse to talk to Square at all" — see `getSquareClient` below.
+ * Returns `{ ok, version }` for back-compat with existing call
+ * sites; the underlying outcome flows through the generic
+ * `verifyThirdPartyPin('square')`.
  */
 export async function verifySquareSdkVersion(): Promise<{
   ok: boolean;
   version: string | undefined;
 }> {
-  if (_verificationPromise) return _verificationPromise;
-  _verificationPromise = _probeImpl().then((result) => {
-    if (result.ok && result.reason === 'no-captured-request') {
-      // Non-conclusive (mocked SDK, weird build). Logged at info so
-      // a real prod drift doesn't get drowned out by noise from
-      // tests / dev runs that legitimately can't probe.
-      log.info(
-        'Square SDK Square-Version probe could not capture an outgoing request — runtime version check skipped (CI test #614 remains the canonical guard).',
-      );
-    } else if (result.ok) {
-      log.info('Square SDK Square-Version verified at runtime', {
-        version: result.version,
-        expected: SQUARE_EXPECTED_VERSION,
-      });
-    } else {
-      // Structured, paging-priority alert. The `[PAGE]` prefix
-      // matches the convention on-call uses to triage `error` lines
-      // at-a-glance; the runbook pointer keeps the responder one
-      // click from the documented recovery path.
-      log.error(
-        '[PAGE] Square SDK Square-Version header drift detected at runtime — refusing to initialize Square provider',
-        {
-          expected: SQUARE_EXPECTED_VERSION,
-          actual: result.version ?? null,
-          runbook: 'docs/square-api-version-audit.md §6',
-          remediation:
-            'Pin the `square` package back to a version whose Square-Version equals SQUARE_EXPECTED_VERSION, or re-run the audit in §1/§5 and update SQUARE_EXPECTED_VERSION + §1 in the same commit.',
-        },
-      );
-    }
-    return { ok: result.ok, version: result.version };
-  });
-  return _verificationPromise;
+  const outcome = await verifyThirdPartyPin('square');
+  return { ok: outcome.ok, version: outcome.actual };
 }
 
 export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, WalletProvider {

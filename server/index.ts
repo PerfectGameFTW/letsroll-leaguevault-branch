@@ -16,6 +16,13 @@ import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
 import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
 import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
 import { verifySquareSdkVersion } from './services/square-provider';
+import { verifyAllThirdPartyPins } from './services/third-party-pin-verifier';
+// Side-effect import: registers BowlNow / Clover / SendGrid pin
+// verifiers (and re-exposes Square's via the shared registry) so
+// `verifyAllThirdPartyPins()` below sees a fully-populated registry.
+// See `server/services/third-party-pins.ts` for the registrations
+// and `docs/third-party-pins.md` for the audit table + runbooks.
+import './services/third-party-pins';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
@@ -344,6 +351,21 @@ async function startServer() {
       // can't take down the rest of startup.
       verifySquareSdkVersion().catch((err) => {
         log.error('Square SDK version probe threw at boot:', err);
+      });
+
+      // Eagerly run every other registered third-party pin verifier
+      // (task #651) — BowlNow `Version` header, Clover webhook
+      // signature scheme, SendGrid SDK major + base URL, plus any
+      // future pin registered in `server/services/third-party-pins.ts`.
+      // Each verifier emits its own paging-priority structured log
+      // line on drift; we never throw here so a failed probe can't
+      // take down the rest of startup. The Square verifier is
+      // included in this pass too (it's registered in the same
+      // shared registry) — calling both `verifySquareSdkVersion()`
+      // above and `verifyAllThirdPartyPins()` here is harmless
+      // because the underlying outcome is memoized per provider.
+      verifyAllThirdPartyPins().catch((err) => {
+        log.error('Third-party pin verifier sweep threw at boot:', err);
       });
 
       // Pre-create the Square customer-custom-attribute definitions

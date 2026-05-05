@@ -67,6 +67,19 @@ const DISPUTE_TYPES = new Set([
 ]);
 
 const SIGNATURE_HEADER = 'x-clover-signature';
+const SIGNATURE_ALGORITHM = 'sha256';
+
+/**
+ * Probe seam for the third-party pin verifier (task #651). Re-derives
+ * the signature scheme literal directly from the constants the
+ * receiver actually uses, so a hand-edit to `SIGNATURE_HEADER` /
+ * `SIGNATURE_ALGORITHM` immediately drifts from the pinned value
+ * registered in `server/services/third-party-pins.ts`. Production
+ * code never calls this.
+ */
+export function describeCloverSignatureSchemeForPinVerifier(): string {
+  return `hmac-${SIGNATURE_ALGORITHM}(${SIGNATURE_HEADER})`;
+}
 
 interface CloverWebhookEventObject {
   id?: string;
@@ -113,7 +126,7 @@ function verifyCloverSignature(req: Request, res: Response, next: NextFunction):
     sendError(res, 'Cannot verify signature', 500, 'WEBHOOK_RAW_BODY_MISSING');
     return;
   }
-  const expected = createHmac('sha256', secret).update(raw).digest('hex');
+  const expected = createHmac(SIGNATURE_ALGORITHM, secret).update(raw).digest('hex');
   const a = Buffer.from(expected, 'utf8');
   const b = Buffer.from(presented, 'utf8');
   if (a.length !== b.length || !timingSafeEqual(a, b)) {

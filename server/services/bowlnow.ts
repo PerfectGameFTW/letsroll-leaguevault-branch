@@ -8,7 +8,19 @@ const log = createLogger("BowlNowService");
 
 const BN_API_BASE = 'https://services.leadconnectorhq.com';
 const DEFAULT_BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
+/**
+ * The `Version` header value BowlNow's HighLevel API expects on
+ * every request. Audited and pinned in `docs/third-party-pins.md`
+ * (task #651). The runtime drift guard at the bottom of this file
+ * re-derives the header via `getHeaders()` and compares it back
+ * against this constant, so a typo in `getHeaders` (e.g. someone
+ * dropping the `Version` field) or a one-line `BN_API_VERSION = '...'`
+ * bump that ships without a re-audit will fail-loud at boot
+ * instead of silently changing the wire shape. Update path: bump
+ * this constant in the same commit as the audit table.
+ */
 const BN_API_VERSION = '2021-07-28';
+export const BOWLNOW_EXPECTED_API_VERSION = BN_API_VERSION;
 
 // Platform-default custom-field IDs for the canonical BowlNow
 // location. Per-org overrides live on
@@ -73,6 +85,17 @@ function getHeaders(apiKey: string): Record<string, string> {
     'Version': BN_API_VERSION,
     'Content-Type': 'application/json',
   };
+}
+
+/**
+ * Test seam: re-derive the headers `getHeaders()` would build for
+ * a synthetic API key. Exported only so the third-party pin
+ * verifier (and its tests) can read the `Version` header without
+ * issuing a real request. Production code uses `getHeaders()`
+ * directly.
+ */
+export function _bowlnowProbeHeadersForPinVerifier(): Record<string, string> {
+  return getHeaders('PIN_VERIFIER_PROBE_NOT_A_REAL_KEY');
 }
 
 function splitName(fullName: string): { firstName: string; lastName: string } {
