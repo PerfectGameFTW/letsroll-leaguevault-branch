@@ -49,7 +49,38 @@
  *   EXPECTED_RESOLVED_IP   the public egress IP of this caller; if
  *                          set, the script asserts an exact match
  *                          against `live.resolvedIp`.
- *   PROBE_TIMEOUT_MS       default 10000.
+ *   PROBE_TIMEOUT_MS       default 10000 (per attempt).
+ *   PROBE_MAX_ATTEMPTS     default 4. Bounded retry cap for transient
+ *                          transport failures (5xx and network errors
+ *                          only; assertion failures still fail on the
+ *                          first observation). Set to 1 to disable
+ *                          retries entirely.
+ *   PROBE_RETRY_BASE_MS    default 500. Base delay for exponential
+ *                          backoff with jitter between retries. The
+ *                          worst-case wall time stays well under the
+ *                          5-min `timeout-minutes` of the workflow.
+ *
+ * Retry policy
+ * ------------
+ *   The Replit deploy edge / Cloud Run frontend will occasionally
+ *   return a plain "Internal server error. Correlation ID: <uuid>"
+ *   page when the container is briefly unavailable (cold start, brief
+ *   restart, transient edge hiccup). Those are not real regressions
+ *   but historically paged on-call. To avoid that, the probe retries
+ *   bounded with exponential backoff + jitter on:
+ *     - any HTTP 5xx response, AND
+ *     - any `fetch` rejection (network/DNS/abort that wasn't the
+ *       deliberate per-attempt timeout).
+ *   A deliberate per-attempt timeout exhaustion is treated as
+ *   terminal (not retried) — extend `PROBE_TIMEOUT_MS` instead if
+ *   the live deploy is genuinely slow.
+ *   It does NOT retry on any other status (4xx or 200) — every
+ *   assertion failure (401, synthetic.ok=false, private resolvedIp,
+ *   EXPECTED_RESOLVED_IP mismatch, malformed JSON) still fails on
+ *   the first observation. The final failure message distinguishes
+ *   "edge returned 5xx after N attempts (likely transient infra)"
+ *   from "handler returned a JSON error" so the next on-call doesn't
+ *   have to repeat this investigation.
  *
  * Exit codes
  * ----------
@@ -194,6 +225,22 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
     const n = raw ? Number(raw) : NaN;
     return Number.isFinite(n) && n > 0 ? n : 10_000;
   })();
+  // Bounded retry cap for transient transport failures only. Default
+  // of 4 keeps the worst-case wall time (10s timeout × 4 attempts +
+  // ~7s of backoff) comfortably under the workflow's 5-min ceiling.
+  const maxAttempts = (() => {
+    const raw = env.PROBE_MAX_ATTEMPTS?.trim();
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 4;
+  })();
+  // Base delay for exponential backoff: attempt k waits
+  // base * 2^(k-1) ± jitter. With base=500ms and 4 attempts that's
+  // ~500 + ~1000 + ~2000 = 3.5s of sleep total in the worst case.
+  const retryBaseMs = (() => {
+    const raw = env.PROBE_RETRY_BASE_MS?.trim();
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : 500;
+  })();
 
   if (!baseUrl) fail('BASE_URL is required (e.g. https://app.example.com)', 2);
   if (!probeToken && !adminCookie) {
@@ -237,18 +284,46 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
     fail('no credentials available (unreachable)', 2);
   }
 
-  info(`Probing ${url.toString()} (auth=${authMode})`);
+  info(`Probing ${url.toString()} (auth=${authMode}, maxAttempts=${maxAttempts})`);
 
-  // Wrapping the fetch + status/JSON parse in helpers lets each step
-  // narrow `Response` and `ProbeResponse` through the function's
-  // return type, instead of leaving us with `let res: Response` whose
-  // first assignment is inside a try/catch (which TS cannot narrow,
-  // forcing `res!` everywhere downstream).
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  const fetchOrFail = async (): Promise<Response> => {
+  // Single-attempt fetch with its own AbortController/timeout. We
+  // recreate both per attempt so a timeout abort on attempt N doesn't
+  // leak into attempt N+1.
+  type AttemptOk = { kind: 'ok'; res: Response; bodyText: string };
+  type AttemptRetryable =
+    | { kind: 'network'; message: string }
+    | { kind: 'http5xx'; status: number; bodyText: string; isEdgePage: boolean };
+  type AttemptTerminal = { kind: 'terminal'; res: Response; bodyText: string };
+  type AttemptResult = AttemptOk | AttemptRetryable | AttemptTerminal;
+
+  // The Replit deploy edge / Cloud Run frontend returns a plain-text
+  // or HTML "Internal server error. Correlation ID: <uuid>" page when
+  // it can't get a clean response from the container. Our app's
+  // `sendError` always returns JSON (`{success:false, error:{...}}`).
+  // Sniff the response so the final failure message can tell on-call
+  // whether they're chasing an infra blip or a real handler bug.
+  const looksLikeEdgeErrorPage = (contentType: string | null, bodyText: string): boolean => {
+    const ct = (contentType ?? '').toLowerCase();
+    if (ct.includes('application/json')) return false;
+    // The hallmark phrasing the deploy edge uses; case-insensitive
+    // because exact casing has changed across Cloud Run revisions.
+    if (/internal server error/i.test(bodyText)) return true;
+    if (/correlation id/i.test(bodyText)) return true;
+    // Anything non-JSON in a 5xx is more likely edge than handler —
+    // the handler always serializes JSON, even on its 500 path.
+    return !ct.includes('application/json');
+  };
+
+  const attemptOnce = async (): Promise<AttemptResult> => {
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, timeoutMs);
+    let res: Response;
     try {
-      return await fetch(url.toString(), {
+      res = await fetch(url.toString(), {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -258,26 +333,112 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
         redirect: 'manual',
       });
     } catch (err) {
-      fail(`request failed: ${err instanceof Error ? err.message : String(err)}`);
+      // The task spec calls out that a deliberate per-attempt
+      // timeout exhaustion should NOT be retried — only
+      // network/DNS/connection-level errors should. Detect the
+      // timeout-driven abort via the local flag and surface it as
+      // terminal so the loop stops immediately.
+      if (timedOut) {
+        fail(
+          `request timed out after ${timeoutMs}ms (per-attempt timeout, not retried; ` +
+            `set PROBE_TIMEOUT_MS to extend if the live deploy is genuinely slow)`,
+        );
+      }
+      return {
+        kind: 'network',
+        message: err instanceof Error ? err.message : String(err),
+      };
     } finally {
       clearTimeout(timer);
     }
+    if (res.status >= 500 && res.status <= 599) {
+      const bodyText = await res.text().catch(() => '<unreadable body>');
+      const isEdgePage = looksLikeEdgeErrorPage(res.headers.get('content-type'), bodyText);
+      return { kind: 'http5xx', status: res.status, bodyText, isEdgePage };
+    }
+    if (res.status !== 200) {
+      const bodyText = await res.text().catch(() => '<unreadable body>');
+      return { kind: 'terminal', res, bodyText };
+    }
+    const bodyText = await res.text().catch(() => '');
+    return { kind: 'ok', res, bodyText };
   };
-  const res = await fetchOrFail();
 
-  if (res.status !== 200) {
-    const body = await res.text().catch(() => '<unreadable body>');
-    fail(`HTTP ${res.status} from probe endpoint. Body: ${body.slice(0, 500)}`);
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  let lastRetryable: AttemptRetryable | null = null;
+  let okAttempt: AttemptOk | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await attemptOnce();
+    if (result.kind === 'ok') {
+      okAttempt = result;
+      break;
+    }
+    if (result.kind === 'terminal') {
+      // 4xx or other non-200 non-5xx — fail-fast, no retry. This
+      // catches 401 INVALID_PROBE_TOKEN, expired admin cookies, 403,
+      // 404 (route missing), etc.
+      fail(
+        `HTTP ${result.res.status} from probe endpoint. ` +
+          `Body: ${result.bodyText.slice(0, 500)}`,
+      );
+    }
+    lastRetryable = result;
+    const detail =
+      result.kind === 'network'
+        ? `network error: ${result.message}`
+        : `HTTP ${result.status} (${result.isEdgePage ? 'edge page' : 'JSON'})`;
+    if (attempt < maxAttempts) {
+      // Exponential backoff with up to ±25% jitter so concurrent
+      // probes (shouldn't happen — workflow has concurrency:1 — but
+      // belt+braces) don't synchronize their retries.
+      const base = retryBaseMs * 2 ** (attempt - 1);
+      const jitter = base * 0.25 * (Math.random() * 2 - 1);
+      const delay = Math.max(0, Math.round(base + jitter));
+      info(
+        `attempt ${attempt}/${maxAttempts} failed (${detail}); ` +
+          `retrying in ${delay}ms`,
+      );
+      await sleep(delay);
+    } else {
+      info(`attempt ${attempt}/${maxAttempts} failed (${detail}); no retries left`);
+    }
   }
 
-  const parseJsonOrFail = async (): Promise<ProbeResponse> => {
+  if (!okAttempt) {
+    // All attempts exhausted on transient transport failures. Label
+    // the final message so on-call can immediately tell edge blip
+    // from a real handler regression.
+    if (lastRetryable && lastRetryable.kind === 'http5xx') {
+      const where = lastRetryable.isEdgePage
+        ? 'edge returned'
+        : 'handler returned';
+      const hint = lastRetryable.isEdgePage
+        ? ' (likely transient infra — non-JSON edge error page)'
+        : '';
+      fail(
+        `${where} HTTP ${lastRetryable.status} after ${maxAttempts} attempts${hint}. ` +
+          `Body: ${lastRetryable.bodyText.slice(0, 500)}`,
+      );
+    }
+    if (lastRetryable && lastRetryable.kind === 'network') {
+      fail(
+        `request failed after ${maxAttempts} attempts (network/transport): ${lastRetryable.message}`,
+      );
+    }
+    // Defensive — loop must have produced one of the above.
+    fail(`request failed after ${maxAttempts} attempts (no result captured)`);
+  }
+
+  const okBody = okAttempt.bodyText;
+  const parseJsonOrFail = (): ProbeResponse => {
     try {
-      return (await res.json()) as ProbeResponse;
+      return JSON.parse(okBody) as ProbeResponse;
     } catch (err) {
       fail(`response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
-  const body = await parseJsonOrFail();
+  const body = parseJsonOrFail();
 
   if (!body.success || !body.data) {
     fail(`response not successful: ${JSON.stringify(body).slice(0, 500)}`);

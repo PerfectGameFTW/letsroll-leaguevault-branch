@@ -135,15 +135,62 @@ describe('runVerifier — env validation (exit 2)', () => {
 });
 
 describe('runVerifier — endpoint failures (exit 1)', () => {
-  it('exits 1 when the probe endpoint returns a non-200', async () => {
-    fetchSpy.mockResolvedValue(new Response('upstream broke', { status: 502 }));
-    await expect(runVerifier(happyEnv())).rejects.toThrow('__EXIT__:1');
-    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/HTTP 502/);
+  // Retries are bounded to PROBE_MAX_ATTEMPTS for transient
+  // transport failures only. The tests in this block force
+  // PROBE_MAX_ATTEMPTS=1 / PROBE_RETRY_BASE_MS=0 unless they're
+  // explicitly exercising the retry behavior, so the suite stays
+  // fast and the assertion is on a single call.
+  it('exits 1 with "edge returned" labeling when the endpoint persistently returns a non-JSON 5xx', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response('Internal server error. Correlation ID: 11111111-2222', {
+        status: 500,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '1', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/edge returned HTTP 500/);
+    expect(msg).toMatch(/likely transient infra/);
+    expect(msg).toMatch(/Correlation ID/);
   });
 
-  it('exits 1 when fetch itself throws (network / DNS error)', async () => {
+  it('exits 1 with "handler returned" labeling when a JSON 5xx exhausts retries', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: false, error: { message: 'boom', code: 'SERVER_ERROR' } }),
+        { status: 500, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '1', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/handler returned HTTP 500/);
+    expect(msg).not.toMatch(/likely transient infra/);
+    expect(msg).toMatch(/SERVER_ERROR/);
+  });
+
+  it('exits 1 (no retry) when the endpoint returns 401 INVALID_PROBE_TOKEN', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: false, error: { message: 'Invalid probe token', code: 'INVALID_PROBE_TOKEN' } }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '4', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/HTTP 401/);
+  });
+
+  it('exits 1 when fetch itself throws repeatedly (network / DNS error)', async () => {
     fetchSpy.mockRejectedValue(new Error('ECONNREFUSED'));
-    await expect(runVerifier(happyEnv())).rejects.toThrow('__EXIT__:1');
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '1', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/request failed.*ECONNREFUSED/);
   });
 
@@ -160,9 +207,44 @@ describe('runVerifier — endpoint failures (exit 1)', () => {
         }),
       }),
     );
-    await expect(runVerifier(happyEnv())).rejects.toThrow('__EXIT__:1');
+    // PROBE_MAX_ATTEMPTS=4 to PROVE the assertion-level failure does
+    // NOT trigger the retry loop — a single fetch must be enough to
+    // page on-call about a real proxy-config regression.
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '4', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/synthetic probe failed/);
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/trust-proxy ate the XFF/);
+  });
+
+  it('exits 1 (no retry) when the probe endpoint times out per-attempt', async () => {
+    // Simulate a per-attempt timeout: the AbortController fires before
+    // the fetch resolves. We surface it as terminal (not retried)
+    // because retrying a real timeout just multiplies wall time.
+    fetchSpy.mockImplementation(async (_url, init) => {
+      const signal = init?.signal;
+      return await new Promise<Response>((_resolve, reject) => {
+        if (!signal) return;
+        signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          (err as Error & { name: string }).name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+    await expect(
+      runVerifier(
+        happyEnv({
+          PROBE_TIMEOUT_MS: '5',
+          PROBE_MAX_ATTEMPTS: '4',
+          PROBE_RETRY_BASE_MS: '0',
+        }),
+      ),
+    ).rejects.toThrow('__EXIT__:1');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/timed out after 5ms/);
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/not retried/);
   });
 
   // Each prefix in PRIVATE_OR_LOOPBACK_PREFIXES (and the 172.16/12
@@ -200,7 +282,13 @@ describe('runVerifier — endpoint failures (exit 1)', () => {
           }),
         }),
       );
-      await expect(runVerifier(happyEnv())).rejects.toThrow('__EXIT__:1');
+      await expect(
+        runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '4', PROBE_RETRY_BASE_MS: '0' })),
+      ).rejects.toThrow('__EXIT__:1');
+      // PROBE_MAX_ATTEMPTS=4 above proves the assertion-level
+      // failure is fail-fast — a real proxy regression must page on
+      // the first observation, never masked by retries.
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(errorSpy.mock.calls[0]?.[0]).toMatch(/loopback\/private address/);
     });
   });
@@ -221,18 +309,83 @@ describe('runVerifier — endpoint failures (exit 1)', () => {
       }),
     );
     await expect(
-      runVerifier(happyEnv({ EXPECTED_RESOLVED_IP: '198.51.100.42' })),
+      runVerifier(
+        happyEnv({
+          EXPECTED_RESOLVED_IP: '198.51.100.42',
+          PROBE_MAX_ATTEMPTS: '4',
+          PROBE_RETRY_BASE_MS: '0',
+        }),
+      ),
     ).rejects.toThrow('__EXIT__:1');
+    // Fail-fast: a mismatched egress IP is a real regression and
+    // retries would only delay the page.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/does not match EXPECTED_RESOLVED_IP/);
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/198\.51\.100\.42/);
   });
 
-  it('exits 1 when the response body is not the success shape', async () => {
+  it('exits 1 when the response body is not the success shape (200 with bad shape)', async () => {
     fetchSpy.mockResolvedValue(
       jsonResponse({ success: false, error: { message: 'no admin session' } }),
     );
-    await expect(runVerifier(happyEnv())).rejects.toThrow('__EXIT__:1');
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '4', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    // 200-with-bad-shape is fail-fast: retries only mask a real
+    // backend bug.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[0]).toMatch(/response not successful/);
+  });
+});
+
+describe('runVerifier — retry behavior', () => {
+  it('retries on a transient 5xx and succeeds on a later attempt', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response('Internal server error. Correlation ID: aaaa', {
+          status: 500,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response('Internal server error. Correlation ID: bbbb', {
+          status: 503,
+          headers: { 'content-type': 'text/html' },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: happyData() }));
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '4', PROBE_RETRY_BASE_MS: '0' })),
+    ).resolves.toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('retries on a transient network error and succeeds on a later attempt', async () => {
+    fetchSpy
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: happyData() }));
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '3', PROBE_RETRY_BASE_MS: '0' })),
+    ).resolves.toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('exits 1 after exhausting retries on persistent 5xx with edge labeling', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response('Internal server error. Correlation ID: cccc', {
+        status: 500,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    await expect(
+      runVerifier(happyEnv({ PROBE_MAX_ATTEMPTS: '3', PROBE_RETRY_BASE_MS: '0' })),
+    ).rejects.toThrow('__EXIT__:1');
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/edge returned HTTP 500 after 3 attempts/);
+    expect(msg).toMatch(/likely transient infra/);
   });
 });
 

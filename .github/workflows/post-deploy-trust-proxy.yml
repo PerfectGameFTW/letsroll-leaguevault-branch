@@ -29,6 +29,34 @@ name: Post-deploy trust-proxy probe
 # repo / org level. Triggering on `workflow_dispatch` lets a release
 # operator run it on demand immediately after pushing a deploy.
 #
+# Transient-error tolerance (task #660):
+#   The Replit deploy edge / Cloud Run frontend will occasionally
+#   return a plain "Internal server error. Correlation ID: <uuid>"
+#   page when the container is briefly unavailable (cold start, brief
+#   restart, transient edge hiccup). To stop those one-off blips from
+#   paging on-call, the script retries a small bounded number of
+#   times with exponential backoff + jitter on transport-level
+#   failures only:
+#     - any HTTP 5xx response
+#     - any `fetch` rejection (network/DNS/abort)
+#   It does NOT retry on any other status. Every assertion-level
+#   failure (401 / synthetic.ok=false / private resolvedIp /
+#   EXPECTED_RESOLVED_IP mismatch / malformed JSON / handler-shape
+#   500) still fails on the FIRST observation — those are real
+#   regressions and must page immediately. The final failure
+#   message labels "edge returned 5xx (likely transient infra)" vs
+#   "handler returned 5xx" so on-call can immediately tell which is
+#   which without re-investigating.
+#
+#   Retry behavior is configurable via env vars (defaults chosen so
+#   the worst-case wall time stays well under the job's
+#   `timeout-minutes: 5`):
+#     PROBE_MAX_ATTEMPTS    default 4. Set to 1 to disable retries.
+#     PROBE_RETRY_BASE_MS   default 500. Base delay for exponential
+#                           backoff (attempt k waits base * 2^(k-1)
+#                           ± jitter).
+#     PROBE_TIMEOUT_MS      default 10000 (per attempt).
+#
 # Repository secrets required:
 #   DEPLOY_BASE_URL    — e.g. https://app.example.com (no trailing /)
 #

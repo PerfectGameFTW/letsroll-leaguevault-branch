@@ -1,81 +1,92 @@
 # LeagueVault
+
 A full-stack bowling league management application with multi-tenant support for managing leagues, teams, bowlers, scores, and financial payments.
 
 ## Run & Operate
-- **Run Dev**: `npm run dev` (Express + Vite on port 5000)
-- **Build**: `npm run build` (for production)
+
+- **Run Dev Server**: `npm run dev` (Express + Vite on port 5000)
+- **Database Push**: `npm run db:push` (applies schema changes from `shared/schema/`)
 - **Typecheck**: `npm run check`
-- **DB Push**: `npm run db:push` (applies schema changes from `shared/schema/`)
-- **Environments**: `APP_ENV` (defaults to `dev` locally, `prod` on Replit deploy; must be `beta` for beta environment).
-- **Environment Variables**:
-    - Required: `DATABASE_URL`, `SESSION_SECRET`
-    - Optional: `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET` (must be 32+ chars, non-repeated)
-    - Square/Clover credentials are configured per location in the admin UI, but environment variables like `SQUARE_ACCESS_TOKEN` can be used as fallbacks.
-- **Post-Pull**: After `git pull` from external changes, run `bash scripts/post-pull.sh`.
+- **Build**: `npm run build`
+- **Lint**: `npm run lint`
+- **Test**: `npm test`
+- **Post-Pull Hook**: `bash scripts/post-pull.sh` (after `git pull` for external changes)
+- **OWASP ZAP Scan**: `bash scripts/zap-scan.sh` (requires Docker)
+- **Required Env Vars**: `DATABASE_URL`, `SESSION_SECRET`
+- **Optional Env Vars**: `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
 
 ## Stack
+
 - **Frontend**: React, Vite, Tailwind CSS, shadcn/ui, TanStack Query, wouter
 - **Backend**: Express, Passport.js, Drizzle ORM
-- **Database**: Neon PostgreSQL (`pg` driver, `drizzle-orm/node-postgres`)
-- **Payments**: Square SDK, Clover Ecommerce (abstracted behind `PaymentProvider` interface)
+- **Database**: Neon PostgreSQL (via `pg` driver)
 - **Runtime**: Node.js 22 LTS
+- **Mobile**: Capacitor
+- **Payments**: Square SDK, Clover Ecommerce
+- **Validation**: Zod (server-side env vars, API schemas)
 - **Build Tool**: Vite
-- **Validation**: Zod
-- **ORM**: Drizzle ORM
 
 ## Where things live
-- `shared/schema/`: Database schema definitions, Zod schemas, API types (source of truth for DB schema)
-- `server/`: Backend code
-    - `server/db.ts`: Database connection
-    - `server/index.ts`: Express server entry point
-    - `server/routes/`: API route definitions
-    - `server/storage/`: Database interaction logic
-    - `server/auth.ts`: Authentication with Passport.js
-    - `server/utils/access-control.ts`: Centralized authorization helpers
-    - `server/services/payment-provider.ts`: Payment provider abstraction
-    - `server/config.ts`: Environment variable validation (source of truth for env vars)
-- `client/`: Frontend code
-    - `client/src/App.tsx`: Frontend routing
-    - `client/src/pages/`: Page components
-    - `client/src/components/`: Reusable UI components
-    - `client/public/manifest.json`: PWA manifest
-- `scripts/`: Utility scripts (e.g., `zap-scan.sh`, `seed.ts`)
-- `.well-known/apple-developer-merchantid-domain-association`: Apple Pay domain verification file
+
+- `shared/schema/`: Database schema, Zod schemas, API types (source of truth for DB schema: `shared/schema/index.ts`)
+- `server/`: Backend code (API routes, services, storage, auth)
+- `client/src/`: Frontend code (pages, components, hooks, lib)
+- `scripts/`: Utility scripts (DB seed, ZAP scan, validation checks)
+- `.well-known/`: Apple Pay domain verification file
+- `capacitor.config.ts`: Capacitor configuration for native apps
+- `ios/`, `android/`: Native Capacitor projects
+- `vitest.config.ts`: Vitest test configuration
+- `docs/BETA_ENVIRONMENT_SETUP.md`: Full beta runbook
+- `docs/log-debug-pii-audit.md`: PII audit for `log.debug` calls
 
 ## Architecture decisions
-- **Multi-tenancy**: Implemented via subdomain routing (`subdomain.leaguevault.app`) with `organizationId` scoping all data. `orgSessionGuard` prevents session leakage.
-- **Payment Provider Abstraction**: Supports multiple payment gateways (Square, Clover) through a common `PaymentProvider` interface, allowing easy switching and extension.
-- **Org-less Resource Policy**: Access control helpers explicitly deny access to any rows with a `NULL` `organizationId` (even for system admins) to prevent PII leakage and surface data integrity issues. A system admin UI for data integrity allows explicit management of such "orphaned" data.
-- **Avatar Storage**: Avatars are stored on disk and streamed through a secured API endpoint (`/api/user/avatar/:userId`) rather than being served statically, preventing enumeration and enforcing access control.
-- **Shared Rate Limit Store**: Utilizes a PostgreSQL-backed rate limit store to ensure consistent rate limiting across multiple backend replicas, preventing circumvention of limits in scaled deployments.
-- **Apple Pay Worker Lease-Based Recovery**: Background worker for Apple Pay domain registration uses lease-based claiming (`claimed_at`) to ensure at-most-once processing across rolling restarts, preventing duplicate calls to payment providers.
+
+- **Multi-Tenant Org-less Data Policy**: All access control helpers deny access to any row with a `NULL` `organizationId`, even for `system_admin`. Org-less rows are considered bugs/stale data. A system-admin "Data integrity" surface exists at `/admin/data-integrity` to count, list, reassign, or delete orphaned data.
+- **Environment Promotion Workflow**: Features flow `main` → `beta` → `main` (for production release). Beta environment (`APP_ENV=beta`) has strict boot guards refusing to start with live payment credentials.
+- **Server-Side Pagination**: API endpoints like `/api/payments` support `page` and `limit` query parameters for paginated results, falling back to full results if not provided.
+- **Avatar Storage**: Avatars are stored on disk at `/uploads/avatars/` and served via a gated `GET /api/user/avatar/:userId` endpoint, preventing enumeration. Legacy DB storage and direct static file serving have been migrated/removed.
+- **Subdomain Multi-Tenancy**: Organizations can have custom subdomains (`subdomain` field) for branding. A middleware (`server/middleware/subdomain.ts`) resolves the organization and an `orgSessionGuard` prevents session leakage across subdomains.
 
 ## Product
-- **League Management**: Create and manage bowling leagues, teams, and bowlers.
-- **Score Tracking**: Record and manage game scores.
-- **Financial Payments**: Handle bowler payments, including one-time, recurring, and saved card payments. Supports Apple Pay and Google Pay.
-- **Refund System**: Admins can process full refunds for payments.
-- **User & Role Management**: System admins and organization admins can manage users and their roles (system_admin, org_admin, user).
-- **Email Communications**: Automated email templates for invites, registration, and bowler claims.
-- **CRM Integration**: One-way sync of bowler contact data to BowlNow CRM.
-- **Season Management**: Create new league seasons, carrying over teams and rosters.
-- **PWA Support**: Installable as a Progressive Web App on mobile and desktop.
-- **Native Mobile Apps**: Wraps web app for iOS and Android distribution using Capacitor.
+
+- Bowling league management with multi-tenant support.
+- Manage leagues, teams, bowlers, scores, and financial payments.
+- Supports Apple Pay & Google Pay via Square Web Payments SDK.
+- Saved card payments for bowlers.
+- BowlNow CRM integration for bowler contact sync.
+- New Season feature to carry over league settings, teams, and rosters.
+- Payment refund system for admins.
+- Bowler-to-User auto-linking and self-service bowler claiming.
+- Bulk league invites via templated emails.
+- PWA (Progressive Web App) for installable experience.
+- Native mobile apps (iOS/Android) via Capacitor.
 
 ## User preferences
-- **Follow-Up Task Policy**: Do NOT propose any follow-up tasks unless there is a critical, actionable problem (security vulnerability, data integrity risk, production incident, customer regression, or unblocking an in-flight feature). Do not propose for minor tech debt, doc polish, refactoring, or anything non-critical.
-- **Pre-Existing Errors Policy**: Always fix pre-existing errors (typecheck, tests, lint) before marking a task complete, even if unrelated to the current change. The baseline must remain clean.
+
+- **The default is: do NOT propose any follow-up task.**
+- Only propose a follow-up when there is a real, actionable problem that genuinely needs its own task.
+- Do NOT propose follow-ups for: nice-to-haves, minor tech debt, doc polish, refactoring opportunities, additional test coverage on already-tested code, "would be nice to extend X to Y" suggestions, identical-pattern fixes in sibling code paths, code-reviewer non-blocking comments, lint/log warnings, or anything you noticed in passing while doing the real task.
+- **Do not relabel a non-critical observation as "critical" to slip it past this rule.**
+- When in doubt, skip the propose step entirely.
+- **Always fix pre-existing errors before completing a task.**
+- Run the full repo-wide checks (typecheck + the relevant test suites) at the end of every task.
+- If anything is failing, fix it as part of the same task before calling `mark_task_complete`.
+- The only acceptable exceptions are: (a) a failure that genuinely cannot be reproduced locally and clearly belongs to infrastructure rather than code, or (b) a failure that requires user input the agent does not have. Both must be called out explicitly in the task completion notes.
 
 ## Gotchas
-- **Database Migrations**: After modifying `shared/schema/`, always run `npm run db:push`.
-- **`SETUP_SECRET`**: Required for disaster recovery admin bootstrap endpoints. Must be strong (32+ chars, non-repeated).
-- **Environment Variables for Beta**: When `APP_ENV=beta`, ensure all Square credentials are for the sandbox environment. The boot guard will prevent the server from starting with live credentials in beta.
-- **Apple Pay Domain Verification**: Requires `/.well-known/apple-developer-merchantid-domain-association` file to be accessible for Square.
-- **Subdomain Branding**: While the app name is always "LeagueVault", in-app branding (logos, colors) customizes per organization subdomain.
-- **Server Startup Order**: Routes, middleware, and authorization setup are modularized; avoid duplicate setup.
+
+- **DB Schema Changes**: Modify `shared/schema/` files, then `npm run db:push`.
+- **`APP_ENV=beta` Safety**: Beta environment refuses to start if live Square payment credentials are detected.
+- **`SETUP_SECRET` Strength**: Must be at least 32 characters and not a single repeated character.
+- **`log.debug` in Production**: PII audit ensures no sensitive data is logged at `debug` level. Default `LOG_LEVEL` is `info` in production.
+- **Test-Fixture Leak Tripwire**: `tests/api/orphaned-data-audits.test.ts` has specific cleanup and checks to prevent test data from leaking. Use `SKIP_AUDIT_LEAK_CHECK=1` for local debugging only.
+- **Background Worker Kick Suppression in Tests**: New background workers must be suppressible via `x-test-suppress-<worker>-kick` headers to prevent race conditions in tests.
 
 ## Pointers
-- **Validation Gates**: The agent has 8 named validation commands mirroring `.github/workflows/ci.yml`. Refer to the validation table for specific commands and their purposes.
-- **Beta Environment Setup**: `docs/BETA_ENVIRONMENT_SETUP.md` for a full runbook.
-- **Native Mobile Build Guide**: `NATIVE_BUILD.md` for step-by-step instructions.
-- **PII Audit**: `docs/log-debug-pii-audit.md` for details on PII handling in debug logs.
+
+- **Replit Docs**: _Populate as you build_
+- **Drizzle ORM Docs**: _Populate as you build_
+- **React Docs**: _Populate as you build_
+- **Tailwind CSS Docs**: _Populate as you build_
+- **Capacitor Docs**: _Populate as you build_
+- **Square SDK Docs**: _Populate as you build_
