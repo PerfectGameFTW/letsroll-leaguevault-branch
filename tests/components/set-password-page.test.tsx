@@ -39,7 +39,7 @@ function installFetchMock() {
       return new Response(
         JSON.stringify({
           success: true,
-          data: { name: 'Pat Bowler', email: 'pat@example.com' },
+          data: { email: 'p***@example.com' },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );

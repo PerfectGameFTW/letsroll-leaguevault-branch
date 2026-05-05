@@ -36,7 +36,10 @@ export default function SetPasswordPage() {
   const [token, setToken] = useState('');
   const [validating, setValidating] = useState(true);
   const [valid, setValid] = useState(false);
-  const [userName, setUserName] = useState('');
+  // The validate-invite endpoint returns only a masked email
+  // (e.g. j***@example.com). Token-gated, but the link can still
+  // be forwarded; we surface enough to confirm "this link is for
+  // you" without disclosing the full address or the user's name.
   const [userEmail, setUserEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -91,7 +94,6 @@ export default function SetPasswordPage() {
       .then(data => {
         if (data.success) {
           setValid(true);
-          setUserName(data.data.name);
           setUserEmail(data.data.email);
         } else {
           setErrorMessage(data.error?.message || 'Invalid invitation link');
@@ -151,7 +153,7 @@ export default function SetPasswordPage() {
 
       const data = await response.json();
       if (data.success) {
-        toast({ title: 'Password set successfully', description: userName ? 'Welcome to LeagueVault!' : 'You can now log in with your new password.' });
+        toast({ title: 'Password set successfully', description: 'You can now log in with your new password.' });
         window.location.href = '/';
       } else {
         toast({ title: 'Error', description: data.error?.message || 'Failed to set password', variant: 'destructive' });
@@ -195,13 +197,9 @@ export default function SetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">
-            {userName ? 'Set Your Password' : 'Reset Your Password'}
-          </CardTitle>
+          <CardTitle className="text-2xl">Set Your Password</CardTitle>
           <CardDescription>
-            {userName
-              ? `Welcome, ${userName}! Create a password for your account (${userEmail}).`
-              : `Create a new password for your account (${userEmail}).`}
+            Create a password for your account ({userEmail}).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -304,8 +302,7 @@ export default function SetPasswordPage() {
                   <span data-testid="text-set-password-retry-in">
                     {formatCountdown(remainingSeconds)}
                   </span>
-                  . Please try again then — your{" "}
-                  {userName ? 'invitation' : 'reset'} link is still valid,
+                  . Please try again then — your link is still valid,
                   so you don't need to request a new one.
                 </AlertDescription>
               </Alert>

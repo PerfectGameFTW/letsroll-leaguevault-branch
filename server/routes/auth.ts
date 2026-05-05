@@ -14,6 +14,7 @@ import { createLogger } from "../logger";
 import { hashPassword, safeTokenCompare } from "../lib/password";
 import { destroyOtherSessionsForUser } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl, sendPasswordChangedNotification } from "../services/email.js";
+import { maskEmail } from "../utils/pii.js";
 import { createSharedRateLimitStore } from "../utils/rate-limit-store";
 // Same allowlist account.ts uses for /api/account/profile (task #420).
 // We pull it from the password-changed email bundle directly rather
@@ -646,7 +647,14 @@ export function registerAuthRoutes(app: Express): void {
         return sendError(res, "This invitation link has expired", 400, "TOKEN_EXPIRED");
       }
 
-      return sendSuccess(res, { name: user.name, email: user.email });
+      // Token-gated, but the link can still be forwarded (family
+      // member, browser sync, support-ticket screenshot). Return
+      // only the masked email so the form can confirm "this link
+      // is for you" without disclosing the full address or the
+      // user's name to anyone who reads the URL over their
+      // shoulder. The bearer of a valid token can already complete
+      // signup; this avoids broadening that disclosure.
+      return sendSuccess(res, { email: maskEmail(user.email) });
     } catch (error) {
       log.error('Validate invite error:', error);
       sendError(res, "Failed to validate invite", 500, "SERVER_ERROR");
