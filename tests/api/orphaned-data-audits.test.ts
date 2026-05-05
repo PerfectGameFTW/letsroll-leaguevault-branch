@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { sql, eq, and, gt, asc } from 'drizzle-orm';
+import { sql, eq, and, gt, gte, asc } from 'drizzle-orm';
 import { insertOrphanUser } from '../helpers/orphan-staging';
 import { db } from '../../server/db';
 import {
@@ -85,6 +85,17 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
   // under test without depending on prior history.
   let auditWatermark = 0;
 
+  // Captured at the start of `beforeAll`, used by the afterAll safety-net
+  // delete. Even when the per-id registry loop misses a row (e.g. a flaky
+  // worker termination interrupted the loop, or a future test variant
+  // forgot to push into `inserted`), the time-windowed sweep below
+  // catches every audit row this suite's admin authored during the run
+  // and prevents leaks from reaching the global teardown tripwire (#629).
+  // String form because `orphan_cleanup_audits.created_at` is declared
+  // with `mode: "string"` in shared/schema/orphan-cleanup-audits.ts; the
+  // drizzle column expects a string for comparisons.
+  let suiteStartedAt = '1970-01-01 00:00:00';
+
   async function refreshWatermark() {
     const [row] = await db
       .select({ value: sql<number>`coalesce(max(${orphanCleanupAudits.id}), 0)::int` })
@@ -110,6 +121,9 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
   }
 
   beforeAll(async () => {
+    // Captured BEFORE any login/insert so the safety-net sweep in
+    // afterAll covers every audit row this suite could possibly create.
+    suiteStartedAt = new Date().toISOString().replace('T', ' ').replace('Z', '');
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
     orgAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
 
@@ -267,6 +281,28 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         db.delete(orphanCleanupAudits).where(and(
           eq(orphanCleanupAudits.resourceType, type),
           eq(orphanCleanupAudits.resourceId, id),
+        )),
+      );
+    }
+
+    // Safety net: the per-id loop above is the documented contract, but
+    // it has historically leaked rows under full-suite runs (#636) when
+    // a transient failure mid-loop or a registry-vs-route mismatch let
+    // a single audit row escape. The global teardown tripwire (#629)
+    // then fails the whole `npm test` invocation. To keep the contract
+    // self-healing without weakening it, we follow up with an
+    // unconditional sweep of any `orphan_cleanup_audits` row written by
+    // *this suite's admin* between `suiteStartedAt` and now. The window
+    // is tight enough to never touch rows from sibling suites
+    // (`orphaned-data.test.ts` runs in the same serial worker but
+    // strictly *after* this file by alphabetical order, so its writes
+    // fall outside this window), and the admin scope is the same admin
+    // that authored every audit row this suite produced.
+    if (admin?.user?.id) {
+      await tryRun('orphan_cleanup_audits safety-net by admin+window', () =>
+        db.delete(orphanCleanupAudits).where(and(
+          eq(orphanCleanupAudits.adminUserId, admin.user.id),
+          gte(orphanCleanupAudits.createdAt, suiteStartedAt),
         )),
       );
     }
