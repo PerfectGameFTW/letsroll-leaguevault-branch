@@ -171,6 +171,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     form.setValue('squarePrizeFundItemId', null);
     form.setValue('prizeFundItemVariationId', null);
     form.setValue('squarePrizeFundItemName', null);
+    form.setValue('lineageFee', null);
+    form.setValue('prizeFundFee', null);
   };
 
   const handleSeasonStartChange = () => {
