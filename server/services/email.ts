@@ -741,6 +741,81 @@ export async function sendSquareCatalogCapAlert(
 }
 
 /**
+ * Notify a league's org_admins that a Square item variation referenced by
+ * the league (Lineage and/or Prize Fund) is no longer present in the live
+ * Square catalog (task #654). Mirrors the in-page warning surface in
+ * `client/src/components/league-square-catalog.tsx`, but for the case where
+ * an admin hasn't opened the Edit-League dialog since the catalog change.
+ */
+export async function sendLeagueSquareCatalogMissingAlert(
+  toEmails: string[],
+  details: {
+    leagueId: number;
+    leagueName: string;
+    organizationName: string | null;
+    missing: { kind: 'lineage' | 'prizeFund'; itemName: string | null; variationId: string }[];
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send league Square-catalog missing alert — SENDGRID_API_KEY not configured');
+    return false;
+  }
+  if (toEmails.length === 0) return false;
+
+  const baseUrl = getBaseUrl();
+  const editUrl = `${baseUrl}/leagues?editLeague=${details.leagueId}`;
+  const safeLeague = escapeHtml(details.leagueName);
+  const safeOrg = escapeHtml(details.organizationName || 'your organization');
+  const rows = details.missing.map((m) => {
+    const label = m.kind === 'lineage' ? 'Lineage' : 'Prize fund';
+    const safeName = escapeHtml(m.itemName || '(unnamed item)');
+    const safeVar = escapeHtml(m.variationId);
+    return `<tr><td style="padding: 6px 0; color: #666; width: 140px;">${label}</td><td style="padding: 6px 0;">${safeName} <span style="color:#999; font-size:12px;">(${safeVar})</span></td></tr>`;
+  }).join('');
+
+  const msg = {
+    to: toEmails,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: `[LeagueVault] Square item missing for league "${details.leagueName}"`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #1a1a2e; margin-top: 0;">A Square item used by your league is no longer available</h2>
+        <p style="font-size: 14px; color: #333;">
+          The league <strong>${safeLeague}</strong> in ${safeOrg} references one or
+          more Square catalog items that can no longer be found in your live Square
+          catalog. New bowler payments for this league will fail until the league
+          is re-pointed at a current Square item.
+        </p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #333;">
+          ${rows}
+        </table>
+        <div style="margin: 24px 0;">
+          <a href="${escapeHtml(editUrl)}" style="background-color: #1a1a2e; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; display: inline-block;">Open league settings</a>
+        </div>
+        <p style="font-size: 12px; color: #999;">
+          You're receiving this because you're an admin for ${safeOrg}. We will not
+          re-send this alert for the same league for at least 24 hours.
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await dispatchMail(msg, true);
+    log.info(
+      `League Square-catalog missing alert sent to ${toEmails.length} admin(s) for league ${details.leagueId}`,
+    );
+    return true;
+  } catch (error) {
+    log.error('Failed to send league Square-catalog missing alert:', describeMailError(error));
+    return false;
+  }
+}
+
+/**
  * Resend a Square hosted-receipt link. Tries the DB-driven
  * 'payment_receipt_resend' template first, falling back to the
  * inline HTML below on fresh installs.

@@ -333,6 +333,20 @@ export async function getUsers(): Promise<User[]> {
   return db.select().from(users).orderBy(users.id);
 }
 
+/**
+ * Return the org_admin users for an organization. Used by background
+ * notifiers (e.g. the league Square-catalog audit, task #654) that
+ * need to email the league's admins when a saved Square variation id
+ * disappears from the live catalog.
+ */
+export async function getOrgAdmins(organizationId: number): Promise<User[]> {
+  return db
+    .select()
+    .from(users)
+    .where(and(eq(users.organizationId, organizationId), eq(users.role, 'org_admin')))
+    .orderBy(users.id);
+}
+
 export async function updateUserRole(
   userId: number,
   role: UserRole,

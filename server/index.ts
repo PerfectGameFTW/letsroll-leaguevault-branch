@@ -24,6 +24,7 @@ import { verifyAllThirdPartyPins } from './services/third-party-pin-verifier';
 // and `docs/third-party-pins.md` for the audit table + runbooks.
 import './services/third-party-pins';
 import { applePayWorker } from './services/apple-pay-worker';
+import { startLeagueSquareCatalogAudit } from './services/league-square-catalog-audit';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
 import { createLogger } from './logger';
@@ -382,6 +383,13 @@ async function startServer() {
       applePayWorker.resumeOnStartup().catch((err) => {
         log.error('Apple Pay worker resume failed:', err);
       });
+
+      // Daily audit (#654) that emails league admins when one of the
+      // league's saved Square Lineage / Prize Fund variation ids
+      // disappears from the live catalog. Runs every 24h with the
+      // first sweep deferred 5s after boot so signups / health checks
+      // aren't blocked by Square HTTP work on startup.
+      startLeagueSquareCatalogAudit();
     } catch (error) {
       log.error('Error initializing schedulers:', error);
     }
