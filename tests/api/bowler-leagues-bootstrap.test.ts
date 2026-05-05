@@ -320,6 +320,10 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     // without going through the route gates.
     expect(leagueId).not.toBeNull();
     expect(teamId).not.toBeNull();
+    const raceLeagueId = leagueId;
+    const raceTeamId = teamId;
+    if (raceLeagueId == null) throw new Error('leagueId fixture is required');
+    if (raceTeamId == null) throw new Error('teamId fixture is required');
 
     const bowlerRes = await apiPost<Bowler>(
       '/api/bowlers',
@@ -339,8 +343,8 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
       Array.from({ length: concurrency }, () =>
         createBowlerLeagueIfBowlerFree({
           bowlerId,
-          leagueId: leagueId!,
-          teamId: teamId!,
+          leagueId: raceLeagueId,
+          teamId: raceTeamId,
           active: true,
           order: 0,
         }),

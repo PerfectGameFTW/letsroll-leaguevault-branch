@@ -520,13 +520,21 @@ describe('Organization Isolation', () => {
     beforeAll(async () => {
       // Need the org B league — this is set in the outermost beforeAll.
       expect(orgBLeagueId, 'org B league fixture is required').not.toBeNull();
+      const leagueIdForOrgB = orgBLeagueId;
+      if (leagueIdForOrgB == null) {
+        throw new Error('org B league fixture is required');
+      }
 
       // Resolve org B's organization id by looking at the org B league row.
       const leagueRow = await db.query.leagues.findFirst({
-        where: (l, { eq }) => eq(l.id, orgBLeagueId!),
+        where: (l, { eq }) => eq(l.id, leagueIdForOrgB),
       });
       orgBId = leagueRow?.organizationId ?? null;
       expect(orgBId, 'expected org B league to have an organizationId').not.toBeNull();
+      const orgBOrgId = orgBId;
+      if (orgBOrgId == null) {
+        throw new Error('expected org B league to have an organizationId');
+      }
 
       const { locations: locationsTable, leagues: leaguesTable, payments: paymentsTable } =
         await import('@shared/schema');
@@ -537,7 +545,7 @@ describe('Organization Isolation', () => {
       const [createdLocation] = await db
         .insert(locationsTable)
         .values({
-          organizationId: orgBId!,
+          organizationId: orgBOrgId,
           name: `Vitest Iso Location ${stamp}`,
           paymentProvider: 'square',
         })
@@ -547,7 +555,7 @@ describe('Organization Isolation', () => {
         await db
           .update(leaguesTable)
           .set({ locationId: orgBLocationId })
-          .where(eq(leaguesTable.id, orgBLeagueId!));
+          .where(eq(leaguesTable.id, leagueIdForOrgB));
       }
 
       // Create an org B team + bowler + bowler-league link so /api/bowlers
