@@ -2,7 +2,7 @@ import { storage } from "../storage";
 import { createLogger } from "../logger";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import { sendLeagueSquareCatalogMissingAlert } from "./email";
-import type { League } from "@shared/schema";
+import type { League, LeagueSquareMissingAlerterSummary } from "@shared/schema";
 
 const log = createLogger("LeagueSquareCatalogAudit");
 
@@ -46,6 +46,17 @@ export interface AuditDeps {
     kind: string,
     minIntervalMs: number,
   ) => Promise<{ claimed: boolean; suppressedCount: number }>;
+  /**
+   * Persist a per-league summary of the most recent missing-variation
+   * alert so the leagues-page banner (Task #657) can describe what
+   * just fired without operators having to dig the email back out.
+   * Mirrors the apple-pay / square-catalog-cap alerter pattern (#272,
+   * #644). Best-effort: failure here does not flip the send result.
+   */
+  recordSummary: (
+    kind: string,
+    summary: LeagueSquareMissingAlerterSummary,
+  ) => Promise<void>;
   send: typeof sendLeagueSquareCatalogMissingAlert;
   throttleMs: () => number;
 }
@@ -112,6 +123,7 @@ const defaultDeps: AuditDeps = {
     return org?.name ?? null;
   },
   tryClaimSlot: (kind, ms) => storage.tryClaimAlerterSlot(kind, ms),
+  recordSummary: (kind, summary) => storage.recordAlerterSummary(kind, summary),
   send: sendLeagueSquareCatalogMissingAlert,
   throttleMs: () => DEFAULT_THROTTLE_MS,
 };
@@ -241,6 +253,29 @@ export class LeagueSquareCatalogAuditor {
       organizationName: orgName,
       missing,
     });
+
+    if (sent) {
+      // Persist the summary so the leagues-page banner (#657) can
+      // describe what just fired without operators re-reading the
+      // email. Best-effort: a persist failure does not flip `sent`
+      // back — the email already went out.
+      try {
+        const summary: LeagueSquareMissingAlerterSummary = {
+          leagueId: league.id,
+          leagueName: league.name,
+          organizationId: league.organizationId ?? null,
+          missing,
+          suppressedSinceLastAlert: claim.suppressedCount,
+        };
+        await this.deps.recordSummary(kind, summary);
+      } catch (err) {
+        log.warn(
+          `Failed to persist league Square-catalog alert summary for league ${league.id}`,
+          { err: err instanceof Error ? err.message : String(err) },
+        );
+      }
+    }
+
     return sent ? "sent" : "send-failed";
   }
 }

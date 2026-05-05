@@ -44,13 +44,40 @@ export interface SquareCatalogCapAlerterSummary {
 }
 
 /**
+ * Summary persisted when the daily league Square-catalog audit
+ * (Task #654) finds a saved Lineage / Prize Fund variation id that
+ * is no longer in the live Square catalog. One row per league: the
+ * `kind` is `"league_square_missing:<leagueId>"` so each affected
+ * league surfaces independently and is independently rate-limited.
+ *
+ * The leagues-page banner (Task #657) reads
+ * `listRecentAlerterEventsByPrefix("league_square_missing:")` and
+ * pairs each row with the current `League` row so it can auto-clear
+ * the moment the admin re-points the league at a live variation id
+ * (the saved variation id no longer matches what was reported
+ * missing).
+ */
+export interface LeagueSquareMissingAlerterSummary {
+  leagueId: number;
+  leagueName: string;
+  organizationId: number | null;
+  missing: Array<{
+    kind: "lineage" | "prizeFund";
+    itemName: string | null;
+    variationId: string;
+  }>;
+  suppressedSinceLastAlert: number;
+}
+
+/**
  * Discriminated by shape, not by an explicit tag — older rows
  * predate the union, and the JSONB column is read by code that
  * already knows which `kind` it asked for.
  */
 export type AlerterSummary =
   | ApplePayRecoveryAlerterSummary
-  | SquareCatalogCapAlerterSummary;
+  | SquareCatalogCapAlerterSummary
+  | LeagueSquareMissingAlerterSummary;
 
 export const alerterState = pgTable("alerter_state", {
   kind: text("kind").primaryKey(),

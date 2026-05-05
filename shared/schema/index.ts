@@ -79,6 +79,7 @@ export type {
   AlerterSummary,
   ApplePayRecoveryAlerterSummary,
   SquareCatalogCapAlerterSummary,
+  LeagueSquareMissingAlerterSummary,
 } from "./alerter-state";
 
 export { sessions } from "./sessions";

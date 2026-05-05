@@ -4,7 +4,7 @@ import {
   type AuditDeps,
 } from "../league-square-catalog-audit";
 import type { sendLeagueSquareCatalogMissingAlert } from "../email";
-import type { League } from "@shared/schema";
+import type { League, LeagueSquareMissingAlerterSummary } from "@shared/schema";
 
 type SendFn = typeof sendLeagueSquareCatalogMissingAlert;
 
@@ -73,6 +73,9 @@ describe("LeagueSquareCatalogAuditor", () => {
   let send: ReturnType<typeof vi.fn<SendFn>>;
   let getAdmins: ReturnType<typeof vi.fn<(orgId: number) => Promise<string[]>>>;
   let getOrgName: ReturnType<typeof vi.fn<(orgId: number) => Promise<string | null>>>;
+  let recordSummary: ReturnType<
+    typeof vi.fn<(kind: string, summary: LeagueSquareMissingAlerterSummary) => Promise<void>>
+  >;
   let nowMs: number;
   let store: FakeSlotStore;
   let throttleMs: number;
@@ -89,6 +92,7 @@ describe("LeagueSquareCatalogAuditor", () => {
       getOrgAdminEmails: (id) => getAdmins(id),
       getOrganizationName: (id) => getOrgName(id),
       tryClaimSlot: store.tryClaim,
+      recordSummary: (kind, summary) => recordSummary(kind, summary),
       send,
       throttleMs: () => throttleMs,
       ...overrides,
@@ -104,6 +108,9 @@ describe("LeagueSquareCatalogAuditor", () => {
     getOrgName = vi
       .fn<(orgId: number) => Promise<string | null>>()
       .mockResolvedValue("Acme Bowl");
+    recordSummary = vi
+      .fn<(kind: string, summary: LeagueSquareMissingAlerterSummary) => Promise<void>>()
+      .mockResolvedValue(undefined);
     store = new FakeSlotStore(() => nowMs);
   });
 
@@ -212,6 +219,47 @@ describe("LeagueSquareCatalogAuditor", () => {
 
     expect(summary.results).toEqual([{ leagueId: 1, result: "no-recipients" }]);
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("persists the per-league summary after a successful send so the banner can render", async () => {
+    const league = makeLeague({});
+    const liveIds = new Map([[200, new Set<string>(["var-pf"])]]); // lineage missing
+    const auditor = buildAuditor([league], liveIds);
+
+    await auditor.runOnce();
+
+    expect(recordSummary).toHaveBeenCalledTimes(1);
+    expect(recordSummary).toHaveBeenCalledWith("league_square_missing:1", {
+      leagueId: 1,
+      leagueName: "Monday League",
+      organizationId: 100,
+      missing: [
+        { kind: "lineage", itemName: "Lineage Item", variationId: "var-lineage" },
+      ],
+      suppressedSinceLastAlert: 0,
+    });
+  });
+
+  it("does not persist a summary when the send itself fails", async () => {
+    send.mockResolvedValueOnce(false);
+    const league = makeLeague({});
+    const liveIds = new Map([[200, new Set<string>(["var-pf"])]]);
+    const auditor = buildAuditor([league], liveIds);
+
+    await auditor.runOnce();
+
+    expect(recordSummary).not.toHaveBeenCalled();
+  });
+
+  it("still returns sent when persisting the summary throws (banner is best-effort)", async () => {
+    recordSummary.mockRejectedValueOnce(new Error("db down"));
+    const league = makeLeague({});
+    const liveIds = new Map([[200, new Set<string>(["var-pf"])]]);
+    const auditor = buildAuditor([league], liveIds);
+
+    const summary = await auditor.runOnce();
+
+    expect(summary.results).toEqual([{ leagueId: 1, result: "sent" }]);
   });
 
   it("fetches the catalog at most once per location even with many leagues", async () => {

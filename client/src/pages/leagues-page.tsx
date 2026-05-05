@@ -25,6 +25,7 @@ import { Plus, Upload } from "lucide-react";
 import { LeaguesTableSkeleton } from "@/components/page-states";
 import { BulkBowlerImport } from "@/components/bulk-bowler-import";
 import { LeaguesTable } from "@/components/leagues-table";
+import { LeagueSquareMissingBanner } from "@/components/league-square-missing-banner";
 import { ConfirmArchiveDialog } from "@/components/confirm-archive-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import type { League, Team, Location } from "@shared/schema";
@@ -151,6 +152,11 @@ export default function LeaguesPage() {
             </Button>
           </div>
         </div>
+
+        <LeagueSquareMissingBanner
+          leagues={allLeagues}
+          onEditLeague={(league) => { setSelectedLeague(league); setShowForm(true); }}
+        />
 
         <div className="rounded-md border mb-8">
           <div className="flex items-center justify-between gap-4 p-3 border-b">

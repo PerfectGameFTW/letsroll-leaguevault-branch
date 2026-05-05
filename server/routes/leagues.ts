@@ -72,6 +72,99 @@ router.get("/", async (req: Request, res) => {
   }
 });
 
+/**
+ * Task #657: feed for the leagues-page banner that surfaces leagues
+ * whose last Square-catalog audit (#654) flagged a saved Lineage /
+ * Prize Fund variation id as missing from the live catalog. The
+ * banner pairs the email alert with an in-app indicator so admins
+ * who don't read the email still see something on the Leagues page.
+ *
+ * Auto-clear semantics: an alert row is suppressed from the response
+ * when the league's currently-saved variation id no longer matches
+ * what was reported missing — i.e. the admin re-pointed the league
+ * at a different (presumably live) item. We do this in the route
+ * rather than mutating `alerter_state` so the underlying row keeps
+ * its rate-limit slot intact for the throttle window.
+ *
+ * Tenant scoping mirrors the rest of this router via
+ * `filterByOrganization`: org-admins see only their own org's
+ * leagues; system-admins see every alerted league. We additionally
+ * intersect against `getLeague` (org-admin) /
+ * `getAllLeaguesSystemAdmin` (system-admin) so a league deleted
+ * after the alert fired never surfaces.
+ *
+ * Mounted before `/:id` so the literal path segment isn't captured
+ * by the `:id` parameter.
+ */
+const RECENT_LEAGUE_SQUARE_MISSING_WINDOW_MS = 24 * 60 * 60 * 1000;
+router.get("/square-missing-alerts/recent", async (req: Request, res) => {
+  try {
+    const organizationId = getOrganizationFilter(req);
+    const isSystemAdmin = req.user?.role === 'system_admin';
+    if (organizationId === null && !isSystemAdmin) {
+      return sendSuccess(res, { alerts: [] });
+    }
+
+    const visibleLeagues = organizationId !== null
+      ? await storage.getLeagues(organizationId)
+      : await storage.getAllLeaguesSystemAdmin();
+    const leagueById = new Map(visibleLeagues.map((l) => [l.id, l] as const));
+
+    const events = await storage.listRecentAlerterEventsByPrefix(
+      'league_square_missing:',
+      RECENT_LEAGUE_SQUARE_MISSING_WINDOW_MS,
+    );
+
+    type AlertItem = {
+      sentAt: string;
+      leagueId: number;
+      leagueName: string;
+      organizationId: number | null;
+      missing: Array<{ kind: 'lineage' | 'prizeFund'; itemName: string | null; variationId: string }>;
+    };
+
+    const alerts: AlertItem[] = [];
+    for (const e of events) {
+      // Defensive: only surface rows whose summary matches the
+      // expected league-missing shape so an apple-pay / cap-alert
+      // row that happened to share the prefix can never leak in.
+      const s = e.summary as Partial<import('@shared/schema').LeagueSquareMissingAlerterSummary> | null;
+      if (!s || typeof s.leagueId !== 'number' || !Array.isArray(s.missing)) continue;
+
+      const league = leagueById.get(s.leagueId);
+      if (!league) continue; // deleted, archived out of view, or another tenant.
+
+      // Auto-clear: only include the variations that the league
+      // *still* points at. If admin re-picked a live item, the
+      // saved variation id no longer matches and the entry drops
+      // out — when nothing remains, suppress the whole alert.
+      const stillMissing: AlertItem['missing'] = [];
+      for (const m of s.missing) {
+        if (!m || typeof m.variationId !== 'string') continue;
+        if (m.kind === 'lineage' && league.lineageItemVariationId === m.variationId) {
+          stillMissing.push({ kind: 'lineage', itemName: m.itemName ?? null, variationId: m.variationId });
+        } else if (m.kind === 'prizeFund' && league.prizeFundItemVariationId === m.variationId) {
+          stillMissing.push({ kind: 'prizeFund', itemName: m.itemName ?? null, variationId: m.variationId });
+        }
+      }
+      if (stillMissing.length === 0) continue;
+
+      alerts.push({
+        sentAt: e.lastSentAt.toISOString(),
+        leagueId: league.id,
+        leagueName: league.name,
+        organizationId: league.organizationId ?? null,
+        missing: stillMissing,
+      });
+    }
+
+    sendSuccess(res, { alerts });
+  } catch (error) {
+    log.error('League Square-missing recent alerts error:', error);
+    sendError(res, 'Failed to load recent league Square-missing alerts', 500);
+  }
+});
+
 router.get("/:id", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
