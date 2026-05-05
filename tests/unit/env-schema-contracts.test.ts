@@ -237,6 +237,30 @@ describe('DATABASE_URL env-schema entry', () => {
   });
 });
 
+describe('TEST_DATABASE_URL env-schema entry (Task #662)', () => {
+  const field = envSchema.shape.TEST_DATABASE_URL;
+
+  it('accepts any non-empty string', () => {
+    expect(field.safeParse('postgres://u:p@h/test').success).toBe(true);
+  });
+
+  it('accepts undefined (optional at the schema level — runtime guard in server/db.ts)', () => {
+    const result = field.safeParse(undefined);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBeUndefined();
+  });
+
+  it('rejects an empty string with the operator-friendly message', () => {
+    const result = field.safeParse('');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toMatch(
+        /TEST_DATABASE_URL must be a non-empty connection string/i,
+      );
+    }
+  });
+});
+
 describe('SESSION_SECRET env-schema entry', () => {
   const field = envSchema.shape.SESSION_SECRET;
 
