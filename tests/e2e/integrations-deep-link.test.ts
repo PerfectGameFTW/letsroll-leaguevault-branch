@@ -182,17 +182,40 @@ describe.skipIf(!CHROMIUM_PATH)(
     }, 60_000);
 
     afterAll(async () => {
-      // Best-effort cleanup so re-runs don't accumulate test rows. The
-      // suite is still correct if a delete fails (names are unique per
-      // run), so we swallow errors.
-      for (const loc of seededLocations) {
-        try {
-          await apiDelete(`/api/locations/${loc.id}`, adminSession);
-        } catch {
-          /* swallow */
+      // Cleanup contract (#630): every location this suite seeded in
+      // `beforeAll` must be deleted here. The previous
+      // `catch { /* swallow */ }` pattern silently leaked location
+      // rows into the shared dev DB on every run — names are unique
+      // per process+timestamp, so a swallowed delete failure was
+      // invisible AND permanent. Failures are now logged with id
+      // context AND collected so the suite fails at the end. All
+      // deletes are still attempted even when one fails, so a single
+      // bad row doesn't block the rest of cleanup. The browser is
+      // always closed regardless.
+      const failures: Array<{ label: string; error: unknown }> = [];
+      try {
+        for (const loc of seededLocations) {
+          try {
+            await apiDelete(`/api/locations/${loc.id}`, adminSession);
+          } catch (error) {
+            failures.push({ label: `locations:${loc.id}`, error });
+            console.error(
+              `[integrations-deep-link cleanup] locations:${loc.id} failed:`,
+              error,
+            );
+          }
         }
+      } finally {
+        if (browser) await browser.close();
       }
-      if (browser) await browser.close();
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `  - ${f.label}: ${(f.error as Error)?.message ?? String(f.error)}`)
+          .join('\n');
+        throw new Error(
+          `integrations-deep-link afterAll cleanup had ${failures.length} failure(s):\n${summary}`,
+        );
+      }
     }, 30_000);
 
     it(

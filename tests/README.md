@@ -191,3 +191,36 @@ during the `npm test` step. The minimal job ordering looks like:
 - `tests/helpers.ts` — shared `login` / `apiGet` / `apiPost` helpers.
 - `tests/setup/` — globalSetup hook and the idempotent seeder it calls.
 - `server/**/__tests__/*.test.ts` — co-located server unit tests.
+
+## Cleanup contract for new tests (#608, #615, #630)
+
+Tests share a single dev database. Every row a test inserts must be
+deleted by the time the suite ends, OR the test must explain in a
+per-call-site comment why a leak is acceptable. The pattern below is
+enforced across `tests/api/`, `tests/unit/`, `tests/e2e/`, and the
+shared helpers in `tests/helpers.ts` / `tests/helpers/`:
+
+1. **No silent swallows in cleanup.** A bare `try { await
+   db.delete(...) } catch { /* best effort */ }` in `afterAll` /
+   `afterEach` (or in a helper called from one) is forbidden. The
+   reference loud-failure pattern lives in
+   `tests/api/orphaned-data-audits.test.ts` — collect each delete
+   failure into an array, log it with table+id context, attempt every
+   remaining delete, and throw a summary error at the end so the
+   suite fails on the next run instead of leaking rows forever.
+
+2. **Helpers re-throw.** `releaseFixtureOrg` in `tests/helpers.ts`
+   has no `catch` — any FK or trigger failure surfaces directly to
+   the calling test's `afterAll`. Don't wrap it.
+
+3. **Per-call-site justification when a swallow is unavoidable.**
+   The only sanctioned exception today is
+   `validateLeagueFk` in `tests/helpers/orphan-staging.ts`, which
+   re-validates a temporarily-relaxed FK constraint (no row delete
+   involved) and documents inline why a swallow is safe.
+
+4. **Tripwire.** `tests/setup/global-setup.ts` runs an
+   orphan-audit leak check on teardown (#629) and fails the workflow
+   if rows from any prior `afterAll` survived. New tests that touch
+   audit / orphan tables should add their own targeted tripwire if
+   the existing one doesn't cover them.
