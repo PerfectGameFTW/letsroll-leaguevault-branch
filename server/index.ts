@@ -174,33 +174,27 @@ app.use('/api', apiHeaders);
 app.get('/api/csrf-token', csrfTokenEndpoint);
 app.use('/api', csrfProtection);
 
-app.get('/api/health', async (req, res) => {
+// Public liveness probe for the load balancer / uptime monitor /
+// `wait-for-port`. Intentionally minimal — no port, hostname,
+// uptime, db-response-time, app-env, or commit SHA. Returning any
+// of those to anonymous callers gave away enough fingerprinting
+// info to confirm "this is the beta env, commit abc1234, running
+// on host X". The BETA banner now reads `appEnv` / `commit` from
+// `/api/org-context` (which already runs on every page load), and
+// per-request diagnostics belong on a system_admin-gated endpoint
+// like `/api/system-admin/trust-proxy-status` if we ever need them
+// surfaced over HTTP.
+app.get('/api/health', async (_req, res) => {
   try {
-    const dbStart = Date.now();
     await testConnection();
-    const dbDuration = Date.now() - dbStart;
-
     res.json({
       status: 'healthy',
-      port: PORT,
       timestamp: new Date().toISOString(),
-      // Surfaced to the client so the BETA banner (Task #652) can
-      // render without a separate round-trip. Stable contract:
-      // `appEnv` is the resolved selector (dev|beta|prod) and
-      // `commit` is a short SHA / deploy id (or "unknown").
-      appEnv,
-      commit: commitSha,
-      diagnostics: {
-        database_response_time: `${dbDuration}ms`,
-        uptime: process.uptime(),
-        hostname: req.hostname,
-      }
     });
   } catch (error) {
     log.error('Health check error:', error);
     res.status(503).json({
       status: 'unhealthy',
-      error: 'Service unavailable'
     });
   }
 });

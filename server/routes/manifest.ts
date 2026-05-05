@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { appEnv } from '../config';
+import { commitSha } from '../utils/build-info';
 import { createLogger } from '../logger';
 
 const log = createLogger("Manifest");
@@ -64,15 +66,23 @@ router.get('/manifest.json', (req: Request, res: Response) => {
 router.get('/api/org-context', (req: Request, res: Response) => {
   const org = req.subdomainOrg;
 
+  // `appEnv` and `commit` ride along here (instead of `/api/health`)
+  // so the BETA banner can render without giving anonymous callers
+  // a dedicated fingerprinting endpoint. Surfaced at the top level
+  // (alongside `data`) so consumers that already destructure `data`
+  // for the org payload keep working unchanged.
+  const envelope = {
+    success: true as const,
+    appEnv,
+    commit: commitSha,
+  };
+
   if (!org) {
-    return res.json({
-      success: true,
-      data: null,
-    });
+    return res.json({ ...envelope, data: null });
   }
 
   res.json({
-    success: true,
+    ...envelope,
     data: {
       id: org.id,
       name: org.name,

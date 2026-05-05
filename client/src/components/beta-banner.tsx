@@ -3,19 +3,26 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { isAppEnv, type AppEnv } from "@shared/app-env";
 
-interface HealthResponse {
-  status: string;
+interface OrgContextResponse {
+  success: boolean;
   appEnv?: AppEnv | string;
   commit?: string;
+  data?: unknown;
 }
 
 const BANNER_HEIGHT_PX = 28;
 
 /**
  * Persistent BETA banner (Task #652). Renders a non-dismissible
- * yellow strip across the top of every page when `/api/health`
+ * yellow strip across the top of every page when `/api/org-context`
  * reports `appEnv: "beta"`. Includes the deploy's short commit SHA
  * so a tester filing a bug can pin "I saw this on commit abc1234".
+ *
+ * Reads from `/api/org-context` rather than `/api/health` so the
+ * deploy's app-env / commit isn't exposed on a dedicated public
+ * fingerprinting endpoint. `/api/org-context` already runs on every
+ * page load via `useSubdomainOrg`, so this query just shares the
+ * cache key.
  *
  * The banner is `position: fixed` and uses a `--beta-banner-height`
  * CSS variable so the admin sidebar (fixed-positioned), bowler
@@ -27,13 +34,8 @@ const BANNER_HEIGHT_PX = 28;
  * runtimes pay zero layout cost.
  */
 export function BetaBanner() {
-  const { data } = useQuery<HealthResponse>({
-    queryKey: ['/api/health'],
-    queryFn: async () => {
-      const res = await fetch('/api/health', { credentials: 'include' });
-      if (!res.ok) throw new Error('health check failed');
-      return res.json();
-    },
+  const { data } = useQuery<OrgContextResponse>({
+    queryKey: ['/api/org-context'],
     staleTime: 1000 * 60 * 60,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),

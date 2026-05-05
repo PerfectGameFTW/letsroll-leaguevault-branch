@@ -1,6 +1,6 @@
 /**
  * Build / commit identification surfaced to operators (and to the
- * BETA banner via /api/health). Resolved once at module load and
+ * BETA banner via /api/org-context). Resolved once at module load and
  * cached — `git rev-parse` is fast but we don't want to fork a
  * subprocess on every health-check hit.
  *
