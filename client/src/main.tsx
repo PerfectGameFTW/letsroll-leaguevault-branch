@@ -37,8 +37,8 @@ if ('serviceWorker' in navigator && !isNativeApp()) {
 fetch('/api/org-context', { credentials: 'include' })
   .then(res => res.json())
   .then(({ data }) => {
-    if (data?.id && (data.appIcon || data.logo)) {
-      const iconUrl = `/api/organizations/${data.id}/app-icon`;
+    if (data?.slug && (data.appIcon || data.logo)) {
+      const iconUrl = `/api/organizations/slug/${data.slug}/app-icon`;
       const appleTouch = document.querySelector('link[rel="apple-touch-icon"]');
       if (appleTouch) appleTouch.setAttribute('href', iconUrl);
     }

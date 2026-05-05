@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError, handleUserOrgError } from '../utils/api.js';
-import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { validateDataUri } from '../utils/image-magic-bytes.js';
 import { storage } from '../storage';
 import { 
@@ -75,38 +74,6 @@ router.get('/', requireAdmin, async (req, res) => {
   } catch (error) {
     log.error('Error fetching organizations:', error);
     sendError(res, 'Failed to fetch organizations', 500, 'ServerError');
-  }
-});
-
-router.get('/:id/logo', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      return sendError(res, 'Invalid organization ID', 400, 'INVALID_ID');
-    }
-    const organization = await storage.getOrganization(id);
-    if (!organization || !organization.logo) {
-      return sendError(res, 'Logo not found', 404, 'NOT_FOUND');
-    }
-
-    const logo = organization.logo;
-    if (logo.startsWith('data:')) {
-      const result = validateDataUri(logo);
-      if (!result.valid) {
-        return sendError(res, result.error, 400, 'INVALID_FORMAT');
-      }
-      res.set('Content-Type', result.mimeType);
-      res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(result.buffer);
-    }
-
-    if (!isAllowedRedirectUrl(logo)) {
-      return sendError(res, 'Logo URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
-    }
-    return res.redirect(logo);
-  } catch (error) {
-    log.error('Error serving organization logo:', error);
-    sendError(res, 'Failed to serve logo', 500);
   }
 });
 
@@ -252,7 +219,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
           admin_name: firstName,
           invite_link: setupUrl,
           organization_name: organization.name,
-          organization_logo_url: getOrgLogoUrl(organization.id),
+          organization_logo_url: getOrgLogoUrl(organization),
         };
         await sendTemplatedEmail('org_admin_invite', adminData.email, variables);
         

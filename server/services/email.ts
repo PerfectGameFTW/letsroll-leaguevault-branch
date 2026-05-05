@@ -259,9 +259,10 @@ function sanitizeTemplateBody(html: string): string {
   });
 }
 
-export function getOrgLogoUrl(orgId: number | string): string {
+export function getOrgLogoUrl(org: { slug: string } | null | undefined): string {
+  if (!org?.slug) return '';
   const baseUrl = getBaseUrl();
-  return `${baseUrl}/api/organizations/${orgId}/logo`;
+  return `${baseUrl}/api/organizations/slug/${org.slug}/logo`;
 }
 
 function convertLinksToButtons(html: string): string {
@@ -358,7 +359,12 @@ export async function sendInviteEmail(
     variables.organization_name = organizationName;
   }
   if (organizationId) {
-    variables.organization_logo_url = getOrgLogoUrl(organizationId);
+    const orgForLogo = await storage.getOrganization(
+      typeof organizationId === 'number' ? organizationId : parseInt(String(organizationId), 10),
+    );
+    if (orgForLogo) {
+      variables.organization_logo_url = getOrgLogoUrl(orgForLogo);
+    }
   }
 
   const sent = await sendTemplatedEmail('bulk_invite', toEmail, variables);
@@ -431,7 +437,7 @@ export async function sendInviteEmail(
 export async function sendTestEmail(
   template: { subject: string; body: string; slug: string },
   toEmail: string,
-  organization?: { id: number; name: string; logo?: string | null } | null
+  organization?: { id: number; name: string; slug: string; logo?: string | null } | null
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
     log.error('Cannot send test email — SENDGRID_API_KEY not configured');
@@ -443,7 +449,7 @@ export async function sendTestEmail(
     admin_name: 'Jane Admin',
     user_name: 'Alex User',
     organization_name: organization?.name || 'Sample Bowling Center',
-    organization_logo_url: organization?.logo ? getOrgLogoUrl(organization.id) : '',
+    organization_logo_url: organization?.logo ? getOrgLogoUrl(organization) : '',
     league_name: 'Wednesday Night Mixed',
     invite_link: getBaseUrl() + '/set-password?token=sample-test-token',
     login_link: getBaseUrl() + '/login',

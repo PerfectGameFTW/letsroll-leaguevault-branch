@@ -13,7 +13,7 @@ import { csrfProtection } from "../middleware/csrf";
 import { createLogger } from "../logger";
 import { hashPassword, safeTokenCompare } from "../lib/password";
 import { destroyOtherSessionsForUser } from "../auth";
-import { sendTemplatedEmail, getBaseUrl, sendPasswordChangedNotification } from "../services/email.js";
+import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl, sendPasswordChangedNotification } from "../services/email.js";
 import { createSharedRateLimitStore } from "../utils/rate-limit-store";
 // Same allowlist account.ts uses for /api/account/profile (task #420).
 // We pull it from the password-changed email bundle directly rather
@@ -182,7 +182,7 @@ export function registerAuthRoutes(app: Express): void {
                 sendTemplatedEmail('self_register_linked', result.data.email, {
                   bowler_name: bowler.name,
                   organization_name: org?.name || '',
-                  organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
+                  organization_logo_url: org?.logo ? getOrgLogoUrl(org) : '',
                   league_name: league.name,
                   dashboard_link: `${baseUrl}/bowler-dashboard`,
                 }).catch(err => log.error('Failed to send self_register_linked email:', err));
@@ -615,7 +615,7 @@ export function registerAuthRoutes(app: Express): void {
           sendTemplatedEmail('bowler_claimed', user.email, {
             bowler_name: bowler.name,
             organization_name: org?.name || '',
-            organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
+            organization_logo_url: org?.logo ? getOrgLogoUrl(org) : '',
             league_name: league.name,
             dashboard_link: `${baseUrl}/bowler-dashboard`,
           }).catch(err => log.error('Failed to send bowler_claimed email:', err));

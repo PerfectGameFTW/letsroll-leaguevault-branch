@@ -649,8 +649,8 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
       invite_link: setupUrl,
       organization_name: organization?.name || 'your organization',
     };
-    if (organization?.id) {
-      variables.organization_logo_url = getOrgLogoUrl(organization.id);
+    if (organization?.slug) {
+      variables.organization_logo_url = getOrgLogoUrl(organization);
     }
     const emailSent = await sendTemplatedEmail('org_end_user_invite', email, variables);
 

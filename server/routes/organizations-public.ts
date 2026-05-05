@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import type { Organization } from '@shared/schema';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { validateDataUri } from '../utils/image-magic-bytes.js';
@@ -8,6 +9,37 @@ import { createLogger } from '../logger';
 const log = createLogger("OrganizationsPublic");
 
 const router = Router();
+
+async function serveOrgImage(
+  res: Response,
+  org: Organization | null | undefined,
+  pickField: (o: Organization) => string | null | undefined,
+  notFoundLabel: string,
+): Promise<void> {
+  const data = org ? pickField(org) : null;
+  if (!org || !data) {
+    sendError(res, `${notFoundLabel} not found`, 404, 'NOT_FOUND');
+    return;
+  }
+
+  if (data.startsWith('data:')) {
+    const result = validateDataUri(data);
+    if (!result.valid) {
+      sendError(res, result.error, 400, 'INVALID_FORMAT');
+      return;
+    }
+    res.set('Content-Type', result.mimeType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(result.buffer);
+    return;
+  }
+
+  if (!isAllowedRedirectUrl(data)) {
+    sendError(res, `${notFoundLabel} URL points to an untrusted domain`, 400, 'UNTRUSTED_URL');
+    return;
+  }
+  res.redirect(data);
+}
 
 router.get('/slug/:slug', async (req, res) => {
   try {
@@ -52,32 +84,54 @@ router.get('/slug/:slug/leagues', async (req, res) => {
   }
 });
 
+router.get('/slug/:slug/logo', async (req, res) => {
+  try {
+    const organization = await storage.getOrganizationBySlug(req.params.slug);
+    await serveOrgImage(res, organization, (o) => o.logo, 'Logo');
+  } catch (error) {
+    log.error('Error serving organization logo:', error);
+    sendError(res, 'Failed to serve logo', 500);
+  }
+});
+
+router.get('/slug/:slug/app-icon', async (req, res) => {
+  try {
+    const organization = await storage.getOrganizationBySlug(req.params.slug);
+    await serveOrgImage(res, organization, (o) => o.appIcon || o.logo, 'App icon');
+  } catch (error) {
+    log.error('Error serving organization app icon:', error);
+    sendError(res, 'Failed to serve app icon', 500);
+  }
+});
+
+// By-id variants are kept for backward-compat with already-sent
+// emails / cached PWA manifests that embedded the integer-id URL
+// before we switched to the slug-based form. They are gated to
+// stop a scraper from sweeping ints 1..N to enumerate every tenant
+// on the platform: the caller must either (a) be on the org's
+// subdomain (so `req.subdomainOrg.id` matches the requested id),
+// or (b) be an authenticated user whose `organizationId` matches.
+// Anything else gets a 404 NOT_FOUND — same shape as a missing
+// org, so a probe can't distinguish "doesn't exist" from "exists
+// but you can't see it". Internal callers should use the
+// `/slug/:slug/logo` and `/slug/:slug/app-icon` routes above.
+function isAuthorizedForOrgId(req: Request, id: number): boolean {
+  if (req.subdomainOrg && req.subdomainOrg.id === id) return true;
+  if (req.isAuthenticated?.() && req.user?.organizationId === id) return true;
+  return false;
+}
+
 router.get('/:id/logo', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return sendError(res, 'Invalid organization ID', 400, 'INVALID_ID');
     }
-    const organization = await storage.getOrganization(id);
-    if (!organization || !organization.logo) {
+    if (!isAuthorizedForOrgId(req, id)) {
       return sendError(res, 'Logo not found', 404, 'NOT_FOUND');
     }
-
-    const logo = organization.logo;
-    if (logo.startsWith('data:')) {
-      const result = validateDataUri(logo);
-      if (!result.valid) {
-        return sendError(res, result.error, 400, 'INVALID_FORMAT');
-      }
-      res.set('Content-Type', result.mimeType);
-      res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(result.buffer);
-    }
-
-    if (!isAllowedRedirectUrl(logo)) {
-      return sendError(res, 'Logo URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
-    }
-    return res.redirect(logo);
+    const organization = await storage.getOrganization(id);
+    await serveOrgImage(res, organization, (o) => o.logo, 'Logo');
   } catch (error) {
     log.error('Error serving organization logo:', error);
     sendError(res, 'Failed to serve logo', 500);
@@ -90,26 +144,11 @@ router.get('/:id/app-icon', async (req, res) => {
     if (isNaN(id)) {
       return sendError(res, 'Invalid organization ID', 400, 'INVALID_ID');
     }
-    const organization = await storage.getOrganization(id);
-    const iconData = organization?.appIcon || organization?.logo;
-    if (!organization || !iconData) {
+    if (!isAuthorizedForOrgId(req, id)) {
       return sendError(res, 'App icon not found', 404, 'NOT_FOUND');
     }
-
-    if (iconData.startsWith('data:')) {
-      const result = validateDataUri(iconData);
-      if (!result.valid) {
-        return sendError(res, result.error, 400, 'INVALID_FORMAT');
-      }
-      res.set('Content-Type', result.mimeType);
-      res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(result.buffer);
-    }
-
-    if (!isAllowedRedirectUrl(iconData)) {
-      return sendError(res, 'App icon URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
-    }
-    return res.redirect(iconData);
+    const organization = await storage.getOrganization(id);
+    await serveOrgImage(res, organization, (o) => o.appIcon || o.logo, 'App icon');
   } catch (error) {
     log.error('Error serving organization app icon:', error);
     sendError(res, 'Failed to serve app icon', 500);

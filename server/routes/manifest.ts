@@ -37,7 +37,7 @@ router.get('/manifest.json', (req: Request, res: Response) => {
 
   const icons = [];
   if (org.appIcon || org.logo) {
-    const iconUrl = `/api/organizations/${org.id}/app-icon`;
+    const iconUrl = `/api/organizations/slug/${org.slug}/app-icon`;
     icons.push(
       { src: iconUrl, sizes: "192x192", type: "image/png", purpose: "any" },
       { src: iconUrl, sizes: "512x512", type: "image/png", purpose: "any" },
