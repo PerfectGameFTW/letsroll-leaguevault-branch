@@ -9,7 +9,7 @@ import type { League, LeagueSquareMissingAlerterSummary } from "@shared/schema";
 type SendFn = typeof sendLeagueSquareCatalogMissingAlert;
 
 function makeLeague(overrides: Partial<League>): League {
-  return {
+  const base: League = {
     id: 1,
     name: "Monday League",
     description: null,
@@ -41,8 +41,8 @@ function makeLeague(overrides: Partial<League>): League {
     skipDates: [],
     cancelledDates: [],
     doublePayDates: [],
-    ...overrides,
-  } as League;
+  };
+  return { ...base, ...overrides };
 }
 
 class FakeSlotStore {
@@ -87,8 +87,11 @@ describe("LeagueSquareCatalogAuditor", () => {
   ) =>
     new LeagueSquareCatalogAuditor({
       listLeaguesToAudit: async () => leagues,
-      fetchLiveVariationIdsForLocation: async (locationId) =>
-        liveIds.has(locationId) ? liveIds.get(locationId)! : new Set<string>(),
+      fetchLiveVariationIdsForLocation: async (locationId) => {
+        if (!liveIds.has(locationId)) return new Set<string>();
+        const v = liveIds.get(locationId);
+        return v === undefined ? new Set<string>() : v;
+      },
       getOrgAdminEmails: (id) => getAdmins(id),
       getOrganizationName: (id) => getOrgName(id),
       tryClaimSlot: store.tryClaim,

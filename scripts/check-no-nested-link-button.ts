@@ -27,20 +27,28 @@
  *     `<Link>`'s underlying `<a>`, producing a single
  *     interactive element. The guard skips any parent JSX
  *     element that has an `asChild` prop.
+ *   - `<Link><Button asChild>…</Button></Link>` — the inner
+ *     `<Button asChild>` doesn't render its own `<button>`
+ *     either; Slot merges the styling onto the asChild's
+ *     own child (e.g. a `<span>`), so the resulting DOM is
+ *     just `<a><span class="…">…</span></a>`. The guard
+ *     skips any inner `<button>` / `<Button>` that has an
+ *     `asChild` prop, including when it's reached through
+ *     wrapper divs/spans.
  *   - Files that don't import `Link` from `'wouter'` — a
  *     `<Link>` from another library (e.g. `lucide-react`'s
  *     `Link2` icon, or a project-local `Link` component) is
  *     out of scope for this check.
  *
- * Why "direct children" and not arbitrary descendants: the
- * task's done-looks-like is scoped to "directly contains",
- * matching the canonical fixes in
- * `client/src/pages/profile-settings-page.tsx`,
- * `client/src/pages/bowler-dashboard-page.tsx`, and
- * `client/src/pages/home-page.tsx`. A `<Link>` wrapping a
- * `<div>` wrapping a `<Button>` is uncommon and not what
- * #596 / #601 fixed; a future deliberate use of that shape
- * can extend the walk.
+ * Wrapper handling (task #645): purely presentational JSX
+ * wrappers — host `<div>` / `<span>` and fragments
+ * (`<>…</>` and `<React.Fragment>`) — are walked through.
+ * `<Link><div className="..."><Button/></div></Link>` still
+ * compiles down to `<a><button></button></a>`, so the guard
+ * descends past those wrappers when hunting for the inner
+ * `<button>` / `<Button>` (and vice versa). The walk stops
+ * at the first non-wrapper JSX element so unrelated
+ * components below are out of scope.
  *
  * Usage:
  *   tsx scripts/check-no-nested-link-button.ts            # CI mode (exit 1 on violations)
@@ -140,7 +148,48 @@ function fileImportsLinkFromWouter(sf: ts.SourceFile): boolean {
 function getJsxTagName(opening: ts.JsxOpeningLikeElement): string | null {
   const name = opening.tagName;
   if (ts.isIdentifier(name)) return name.text;
+  if (ts.isPropertyAccessExpression(name)) {
+    // Dotted JSX names like `React.Fragment`. Flatten the chain
+    // so `<React.Fragment>` reads as the string "React.Fragment".
+    const parts: string[] = [];
+    let cur: ts.LeftHandSideExpression = name;
+    while (ts.isPropertyAccessExpression(cur)) {
+      parts.unshift(cur.name.text);
+      cur = cur.expression;
+    }
+    if (ts.isIdentifier(cur)) {
+      parts.unshift(cur.text);
+      return parts.join('.');
+    }
+  }
   return null;
+}
+
+/**
+ * Purely presentational JSX wrappers (task #645). A `<Link>`
+ * wrapping a `<div className="…">` wrapping a `<Button>` still
+ * compiles to `<a><div><button/></div></a>`, which is just as
+ * invalid as the direct `<a><button/></a>`. The guard descends
+ * through these wrappers when looking for the next interactive
+ * element.
+ *
+ * Only host wrappers (`div`, `span`) and fragment forms
+ * (`React.Fragment` / `Fragment`; bare `<>…</>` is handled by
+ * the JsxFragment branch in the walker) count. Custom
+ * components are deliberately out of scope — they can render
+ * anything, and treating `<MyCard>` as transparent would chase
+ * false positives into unrelated subtrees.
+ */
+const WRAPPER_TAGS = new Set<string>([
+  'div',
+  'span',
+  'Fragment',
+  'React.Fragment',
+]);
+
+function isWrapperOpening(opening: ts.JsxOpeningLikeElement): boolean {
+  const tag = getJsxTagName(opening);
+  return tag !== null && WRAPPER_TAGS.has(tag);
 }
 
 function jsxHasAsChildProp(opening: ts.JsxOpeningLikeElement): boolean {
@@ -168,30 +217,48 @@ function jsxHasAsChildProp(opening: ts.JsxOpeningLikeElement): boolean {
 }
 
 /**
- * Direct JSX element children of a JsxElement, ignoring text and
- * comment nodes. JsxExpression children (e.g. `{cond && <X/>}`)
- * are walked one level: a literal `<Button/>` inside a simple
- * conditional or fragment is still "direct" content from the
- * author's perspective.
+ * JSX element descendants of a JsxElement that the author is
+ * effectively nesting "inside" the parent for DOM purposes.
+ * Text and comment children are ignored. JsxExpression
+ * children (e.g. `{cond && <X/>}`) are walked: a literal
+ * `<Button/>` inside a simple conditional or fragment is still
+ * author-visible nesting.
+ *
+ * Task #645: presentational wrappers (`div`, `span`,
+ * fragments, `React.Fragment`) are walked through. The wrapper
+ * itself is still emitted (so the caller can see e.g. the
+ * `<div>`), but the recursion continues into its children so a
+ * `<Button>` buried under one or more styling wrappers is
+ * still detected. Recursion stops at the first non-wrapper
+ * JsxElement so unrelated component subtrees stay out of
+ * scope.
  */
 function directChildJsx(parent: ts.JsxElement): ts.JsxOpeningLikeElement[] {
   const out: ts.JsxOpeningLikeElement[] = [];
+  collectInteractiveDescendants(parent, out);
+  return out;
+}
+
+function collectInteractiveDescendants(
+  parent: ts.JsxElement | ts.JsxFragment,
+  out: ts.JsxOpeningLikeElement[],
+): void {
   for (const child of parent.children) {
-    if (ts.isJsxElement(child)) out.push(child.openingElement);
-    else if (ts.isJsxSelfClosingElement(child)) out.push(child);
-    else if (ts.isJsxFragment(child)) {
-      // <>…</> fragments don't add a DOM node; descend into them.
-      for (const fc of child.children) {
-        if (ts.isJsxElement(fc)) out.push(fc.openingElement);
-        else if (ts.isJsxSelfClosingElement(fc)) out.push(fc);
+    if (ts.isJsxElement(child)) {
+      out.push(child.openingElement);
+      if (isWrapperOpening(child.openingElement)) {
+        collectInteractiveDescendants(child, out);
       }
+    } else if (ts.isJsxSelfClosingElement(child)) {
+      out.push(child);
+    } else if (ts.isJsxFragment(child)) {
+      // Bare `<>…</>` fragments don't render a DOM node; descend
+      // through them as if their children were direct.
+      collectInteractiveDescendants(child, out);
     } else if (ts.isJsxExpression(child) && child.expression) {
-      // Walk one level into expressions: a `<Link>{cond &&
-      // <Button/>}</Link>` is still author-visible nesting.
       collectJsxFromExpression(child.expression, out);
     }
   }
-  return out;
 }
 
 function collectJsxFromExpression(
@@ -200,6 +267,9 @@ function collectJsxFromExpression(
 ): void {
   if (ts.isJsxElement(expr)) {
     out.push(expr.openingElement);
+    if (isWrapperOpening(expr.openingElement)) {
+      collectInteractiveDescendants(expr, out);
+    }
     return;
   }
   if (ts.isJsxSelfClosingElement(expr)) {
@@ -207,10 +277,7 @@ function collectJsxFromExpression(
     return;
   }
   if (ts.isJsxFragment(expr)) {
-    for (const fc of expr.children) {
-      if (ts.isJsxElement(fc)) out.push(fc.openingElement);
-      else if (ts.isJsxSelfClosingElement(fc)) out.push(fc);
-    }
+    collectInteractiveDescendants(expr, out);
     return;
   }
   if (ts.isParenthesizedExpression(expr)) {
@@ -271,6 +338,12 @@ function scanFile(filePath: string, violations: Violation[]): void {
           for (const child of childOpenings) {
             const childTag = getJsxTagName(child);
             if (childTag !== null && BUTTON_TAGS.has(childTag)) {
+              // <Button asChild> doesn't render its own
+              // <button> — Radix's Slot merges its styling onto
+              // the child element (typically the wrapping
+              // <Link>'s underlying <a>). Treat it the same as
+              // the canonical opt-out and skip.
+              if (jsxHasAsChildProp(child)) continue;
               const { line, character } = sf.getLineAndCharacterOfPosition(
                 node.getStart(sf),
               );

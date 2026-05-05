@@ -283,6 +283,206 @@ export function Frag() {
     expect(r.stderr).toMatch(/directly contains <Button>/);
   });
 
+  it('fails when a <Button> is wrapped in a styling <div> inside a <Link> (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/wrapped-div.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Wrapped() {
+  return (
+    <Link href="/x">
+      <div className="rounded p-4 hover:bg-muted">
+        <Button>Go</Button>
+      </div>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
+    expect(r.stderr).toMatch(/client\/src\/wrapped-div\.tsx:5/);
+  });
+
+  it('fails when a <Button> is wrapped in a <span> inside a <Link> (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/wrapped-span.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Wrapped() {
+  return (
+    <Link href="/x">
+      <span className="inline-flex">
+        <Button>Go</Button>
+      </span>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
+  });
+
+  it('fails when a plain <button> is wrapped in nested <div>s inside a <Link> (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/wrapped-deep.tsx': `import { Link } from 'wouter';
+export function Wrapped() {
+  return (
+    <Link href="/x">
+      <div>
+        <div className="inner">
+          <button type="button">Go</button>
+        </div>
+      </div>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <button>/);
+  });
+
+  it('fails when a <Link> is wrapped in a <div> inside a <Button> (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/inverse-wrapped.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Inverse() {
+  return (
+    <Button>
+      <div>
+        <Link href="/x">Go</Link>
+      </div>
+    </Button>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Button> directly contains a wouter <Link>/);
+  });
+
+  it('fails when wrappers use <React.Fragment> explicitly (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/wrapped-react-fragment.tsx': `import * as React from 'react';
+import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Wrapped() {
+  return (
+    <Link href="/x">
+      <React.Fragment>
+        <Button>Go</Button>
+      </React.Fragment>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
+  });
+
+  it('does NOT descend into custom components — <Link><MyCard><Button/></MyCard></Link> stays untouched (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/custom-wrapper.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+function MyCard({ children }: { children: React.ReactNode }) { return <div>{children}</div>; }
+export function Custom() {
+  return (
+    <Link href="/x">
+      <MyCard>
+        <Button>Go</Button>
+      </MyCard>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    // Custom components can render anything (including <a>'s
+    // own slot via Radix), so the guard deliberately stops at
+    // the first non-host wrapper. The MyCard subtree is out of
+    // scope.
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('does NOT false-positive on <Link><Button asChild>…</Button></Link> intentional opt-outs (task #645)', () => {
+    // <Button asChild> doesn't render its own <button> — Radix's
+    // Slot merges Button styling onto the child element (here
+    // the inner <span>), so the resulting DOM is just
+    // <a><span class="…btn styles…">Go</span></a> — a single
+    // interactive element, no nested <button> in <a>. The
+    // guard must let this pass.
+    const dir = makeFixture({
+      'client/src/optout.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function OptOut() {
+  return (
+    <Link href="/x">
+      <Button asChild>
+        <span>Go</span>
+      </Button>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('does NOT false-positive on <Link><div><Button asChild>…</Button></div></Link> wrapped opt-outs (task #645)', () => {
+    const dir = makeFixture({
+      'client/src/optout-wrapped.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function OptOut() {
+  return (
+    <Link href="/x">
+      <div className="p-2">
+        <Button asChild>
+          <span>Go</span>
+        </Button>
+      </div>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect({ status: r.status, stdout: r.stdout }).toMatchObject({
+      status: 0,
+      stdout: expect.stringContaining('[check-no-nested-link-button] OK'),
+    });
+  });
+
+  it('still flags <Link><Button asChild={false}>…</Button></Link> (slot pattern explicitly opted out)', () => {
+    const dir = makeFixture({
+      'client/src/asfalse-inner.tsx': `import { Link } from 'wouter';
+import { Button } from '@/components/ui/button';
+export function Bad() {
+  return (
+    <Link href="/x">
+      <Button asChild={false}>Go</Button>
+    </Link>
+  );
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/<Link>.*directly contains <Button>/);
+  });
+
   it('reports multiple violations across the same file', () => {
     const dir = makeFixture({
       'client/src/many.tsx': `import { Link } from 'wouter';
