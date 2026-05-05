@@ -228,13 +228,14 @@ changes to a production database.
 - Limit is capped at 100 per page server-side; default is 50
 
 ## Avatar Storage
-- User avatars are stored on disk at `/uploads/avatars/<userId>.<ext>`
-- Served via Express static middleware at `/uploads/avatars/` with 1hr cache
-- Upload: `POST /api/user/avatar` (multipart, max 2MB, magic-byte validated)
+- User avatars are stored on disk at `/uploads/avatars/<userId>.<ext>` (filenames are still keyed by userId for cleanup), but the directory is **not** served as a static mount — that was an enumeration vector since IDs are sequential integers.
+- Bytes are streamed through `GET /api/user/avatar/:userId`, mounted under `requireAuth` in `server/routes/index.ts`. Sets `Content-Type` from the on-disk extension, `Cache-Control: private, max-age=3600`, `X-Content-Type-Options: nosniff`.
+- Upload: `POST /api/user/avatar` (multipart, max 2MB, magic-byte validated). Stores `/api/user/avatar/<userId>?v=<Date.now()>` in `users.avatar`. The `?v=<ts>` is a per-upload cache buster — the GET handler ignores the value, it only changes the URL key in the browser cache so a fresh upload doesn't get masked by stale cache.
 - Delete: `DELETE /api/user/avatar`
-- The `users.avatar` column stores the file URL path (e.g., `/uploads/avatars/33.jpg`)
-- On startup: migrates any remaining base64 avatars from `user_avatars` DB table to disk, then drops the table
-- Directory `/uploads/avatars/` is created automatically on startup if missing
+- On startup:
+  1. `migrateAvatarsFromDBToDisk` migrates any remaining base64 avatars from `user_avatars` DB table to disk, then drops the table.
+  2. `migrateDiskUrlsToApiUrls` rewrites legacy `/uploads/avatars/<id>.<ext>` URLs to the gated `/api/user/avatar/<id>?v=<ts>` form. Idempotent (`WHERE avatar LIKE '/uploads/avatars/%'`).
+- Directory `/uploads/avatars/` is created automatically on startup if missing.
 
 ## Workflows
 - **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)

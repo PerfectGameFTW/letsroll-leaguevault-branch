@@ -17,7 +17,7 @@ import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
 import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
 import { verifySquareSdkVersion } from './services/square-provider';
 import { applePayWorker } from './services/apple-pay-worker';
-import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
+import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
@@ -108,13 +108,12 @@ app.use(orgSessionGuard);
 
 app.use(manifestRouter);
 
-app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'uploads', 'avatars'), {
-  maxAge: '1h',
-  immutable: false,
-  setHeaders(res) {
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-  }
-}));
+// Avatars are no longer served as a static directory. They were
+// `${userId}.${ext}` files behind a public mount, which let any
+// anonymous caller enumerate by sweeping integer user IDs and
+// extensions. They now flow through `GET /api/user/avatar/:userId`
+// in `server/routes/user-avatar.ts`, which is mounted under
+// `requireAuth` so only authenticated callers can fetch them.
 
 app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
   res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
@@ -309,7 +308,7 @@ async function startServer() {
     try {
       const dbMigrationOk = await migrateAvatarsFromDBToDisk();
       if (dbMigrationOk) {
-        await migrateApiUrlsToDiskUrls();
+        await migrateDiskUrlsToApiUrls();
       }
     } catch (error) {
       log.error('Error running avatar migration:', error);

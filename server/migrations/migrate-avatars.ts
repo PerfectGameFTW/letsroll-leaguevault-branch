@@ -60,7 +60,7 @@ export async function migrateAvatarsFromDBToDisk(): Promise<boolean> {
       const buffer = Buffer.from(base64Data, "base64");
       fs.writeFileSync(filePath, buffer);
 
-      const avatarUrl = `/uploads/avatars/${filename}`;
+      const avatarUrl = `/api/user/avatar/${userId}?v=${Date.now()}`;
       await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, userId));
 
       log.info(`Migrated avatar for user ${userId} to ${filename}`);
@@ -80,34 +80,37 @@ export async function migrateAvatarsFromDBToDisk(): Promise<boolean> {
   return true;
 }
 
-export async function migrateApiUrlsToDiskUrls(): Promise<void> {
-  const usersWithApiUrls = await db
+// Rewrites legacy `/uploads/avatars/<id>.<ext>` URLs (from when the
+// avatars directory was served statically without auth) to the gated
+// `/api/user/avatar/<id>?v=<ts>` form. The static mount has been
+// removed, so any row still pointing at `/uploads/avatars/...` would
+// 404 in the UI.
+//
+// The `?v=<ts>` query string is a cache buster: browsers that
+// previously cached the static path under the new URL key never see
+// a stale image. The server ignores the query string when serving.
+//
+// Idempotent — only matches rows that still hold the legacy prefix,
+// so re-running the migration is a no-op once everyone has been
+// rewritten. Replaces the prior `migrateApiUrlsToDiskUrls` which did
+// the inverse rollback.
+export async function migrateDiskUrlsToApiUrls(): Promise<void> {
+  const usersWithDiskUrls = await db
     .select({ id: users.id, avatar: users.avatar })
     .from(users)
-    .where(like(users.avatar, "/api/user/avatar/%"));
+    .where(like(users.avatar, "/uploads/avatars/%"));
 
-  if (usersWithApiUrls.length === 0) {
+  if (usersWithDiskUrls.length === 0) {
     return;
   }
 
-  log.info(`Found ${usersWithApiUrls.length} users with old /api/user/avatar/ URLs to update`);
+  log.info(`Rewriting ${usersWithDiskUrls.length} legacy /uploads/avatars/ URLs to gated /api/user/avatar/ form`);
 
-  const PREFERRED_EXTS = ["jpg", "png", "webp", "gif"];
-
-  for (const user of usersWithApiUrls) {
-    const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${user.id}.`));
-    if (files.length > 0) {
-      const sorted = files.sort((a, b) => {
-        const extA = a.split('.').pop() || '';
-        const extB = b.split('.').pop() || '';
-        return PREFERRED_EXTS.indexOf(extA) - PREFERRED_EXTS.indexOf(extB);
-      });
-      const avatarUrl = `/uploads/avatars/${sorted[0]}`;
-      await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, user.id));
-      log.info(`Updated avatar URL for user ${user.id} to ${avatarUrl}`);
-    } else {
-      await db.update(users).set({ avatar: null }).where(eq(users.id, user.id));
-      log.warn(`No disk file found for user ${user.id}, clearing avatar URL`);
-    }
+  const now = Date.now();
+  for (const user of usersWithDiskUrls) {
+    const avatarUrl = `/api/user/avatar/${user.id}?v=${now}`;
+    await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, user.id));
   }
+
+  log.info(`Rewrote ${usersWithDiskUrls.length} avatar URLs`);
 }

@@ -39,6 +39,21 @@ const MAGIC_BYTES: { ext: string; mime: string; check: (buf: Buffer) => boolean 
   },
 ];
 
+// Mirror of MAGIC_BYTES used when serving from disk: extension → MIME.
+// Anything not on this list is rejected at upload time, so the GET
+// handler can safely treat the on-disk extension as authoritative.
+const EXT_TO_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+// Preferred order when more than one variant exists on disk for a
+// given user id (legacy state from older uploads that didn't clear
+// siblings). First match wins.
+const PREFERRED_EXTS = ["jpg", "png", "webp", "gif"];
+
 function detectImageTypeFromBuffer(buf: Buffer): { ext: string; mime: string } | null {
   for (const entry of MAGIC_BYTES) {
     if (buf.length >= 12 && entry.check(buf)) {
@@ -94,7 +109,11 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
     const filePath = path.join(AVATARS_DIR, filename);
     fs.writeFileSync(filePath, req.file.buffer);
 
-    const avatarUrl = `/uploads/avatars/${filename}`;
+    // The `?v=<ts>` query string is a per-upload cache buster. The
+    // GET handler ignores the value — it's only there so a fresh
+    // upload doesn't get masked by a stale browser cache entry
+    // keyed off the previous URL.
+    const avatarUrl = `/api/user/avatar/${userId}?v=${Date.now()}`;
     const { storage } = await import("../storage");
     await storage.updateUser(userId, { avatar: avatarUrl });
 
@@ -105,6 +124,11 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
   }
 });
 
+// Streams the avatar file from disk. Mounted under `requireAuth`
+// in `server/routes/index.ts`, so anonymous callers cannot
+// enumerate by sweeping integer user ids — which was possible
+// when this directory was served statically at `/uploads/avatars`
+// (filenames are `${userId}.${ext}`, fully predictable).
 router.get("/avatar/:userId", async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.userId, 10);
@@ -112,14 +136,46 @@ router.get("/avatar/:userId", async (req: Request, res: Response) => {
       return sendError(res, "Invalid user ID", 400);
     }
 
-    const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${userId}.`));
-    if (files.length > 0) {
-      return res.redirect(302, `/uploads/avatars/${files[0]}`);
+    let files: string[];
+    try {
+      files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${userId}.`));
+    } catch {
+      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
+    }
+    if (files.length === 0) {
+      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
     }
 
-    return sendError(res, "Avatar not found", 404, "NOT_FOUND");
+    const sorted = files.sort((a, b) => {
+      const extA = a.split('.').pop() || '';
+      const extB = b.split('.').pop() || '';
+      return PREFERRED_EXTS.indexOf(extA) - PREFERRED_EXTS.indexOf(extB);
+    });
+    const filename = sorted[0];
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const mime = EXT_TO_MIME[ext];
+    if (!mime) {
+      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
+    }
+
+    const filePath = path.join(AVATARS_DIR, filename);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
+    }
+
+    // Per-user, no-shared-cache. The URL itself carries a `?v=<ts>`
+    // cache buster on every fresh upload, so a 1-hour private cache
+    // is safe.
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Length", stat.size.toString());
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    fs.createReadStream(filePath).pipe(res);
   } catch (error) {
-    log.error("Legacy avatar redirect error:", error);
+    log.error("Serve avatar error:", error);
     return sendError(res, "Failed to serve avatar", 500);
   }
 });
