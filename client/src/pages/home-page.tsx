@@ -21,7 +21,7 @@ function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
   const pastDueRate = bowlerCount > 0 ? Math.round((pastDueBowlerCount / bowlerCount) * 100) : 0;
 
   return (
-    <Link href="/past-due">
+    <Link href="/reports/past-due">
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
         <div className="flex justify-between items-start mb-3">
           <div className="font-semibold text-slate-800 text-sm leading-tight">
@@ -242,7 +242,7 @@ export default function HomePage() {
                 </div>
               </div>
             </Link>
-            <Link href="/past-due">
+            <Link href="/reports/past-due">
               <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Bowlers Past Due
