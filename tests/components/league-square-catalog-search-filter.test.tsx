@@ -396,4 +396,105 @@ describe('LeagueSquareCatalog search filter', () => {
       });
     });
   });
+
+  // Task #641: with the fallback row in place a saved Lineage / Prize Fund
+  // selection that no longer exists in the live Square catalog still renders
+  // its name in the dropdown — silently. The warning indicator surfaces that
+  // mismatch so the admin knows to re-pick before bowlers hit checkout.
+  it('shows a "not in catalog" warning when the saved variation id is missing from the live catalog and hides it once the admin re-picks a live item', async () => {
+    const user = userEvent.setup();
+    renderHarness({
+      // These variation ids are NOT in the mocked catalog (var-1..var-20).
+      savedLineageVariationId: 'var-deleted-l',
+      savedLineageItemId: 'item-deleted-l',
+      savedLineageItemName: 'Deleted Lineage Item',
+      savedLineageFee: 2500,
+      savedPrizeFundVariationId: 'var-deleted-p',
+      savedPrizeFundItemId: 'item-deleted-p',
+      savedPrizeFundItemName: 'Deleted Prize Fund Item',
+      savedPrizeFundFee: 1500,
+    });
+
+    // Wait for the catalog fetch to land — before that, hasCatalogItems is
+    // false and the warning intentionally stays hidden so we don't flash a
+    // false positive while loading.
+    const input = await screen.findByTestId<HTMLInputElement>(
+      'input-catalog-search',
+    );
+    await waitFor(() => expect(input).not.toBeDisabled());
+
+    // Both warnings should now be visible because the saved variations are
+    // not present in the live catalog.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('warn-lineage-missing-from-catalog'),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId('warn-prize-fund-missing-from-catalog'),
+    ).toBeInTheDocument();
+
+    // Re-pick a live Lineage item — its warning disappears, but the Prize
+    // Fund warning is unaffected because we still have a stale selection.
+    await openSelect(user, LINEAGE_TRIGGER_INDEX);
+    await user.click(
+      screen.getByRole('option', { name: /^Monday League Item 1\b/ }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('warn-lineage-missing-from-catalog'),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId('warn-prize-fund-missing-from-catalog'),
+    ).toBeInTheDocument();
+
+    // Re-pick a live Prize Fund item — its warning disappears too.
+    await openSelect(user, PRIZE_FUND_TRIGGER_INDEX);
+    await user.click(
+      screen.getByRole('option', { name: /^Monday League Item 2\b/ }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('warn-prize-fund-missing-from-catalog'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not show the "not in catalog" warning when the saved variation id is present in the live catalog (even if a category filter currently hides it)', async () => {
+    const user = userEvent.setup();
+    // Saved selection points at a real catalog variation (var-1).
+    renderHarness({
+      savedLineageVariationId: 'var-1',
+      savedLineageItemId: 'item-1',
+      savedLineageItemName: 'Monday League Item 1',
+      savedLineageFee: 1500,
+    });
+
+    const input = await screen.findByTestId<HTMLInputElement>(
+      'input-catalog-search',
+    );
+    await waitFor(() => expect(input).not.toBeDisabled());
+
+    // Baseline: no warning because the saved variation exists in the live
+    // catalog.
+    expect(
+      screen.queryByTestId('warn-lineage-missing-from-catalog'),
+    ).not.toBeInTheDocument();
+
+    // Even when a search narrows the visible list to "tuesday" items
+    // (hiding var-1 from the dropdown), the warning must NOT appear —
+    // the comparison is against the unfiltered live catalog, not the
+    // currently-visible list.
+    await user.type(input, 'tuesday');
+    await waitFor(() => {
+      const counter = screen.getByTestId('text-catalog-search-count');
+      expect(counter.textContent).toContain(
+        `${TUESDAY_COUNT} of ${TOTAL_ITEMS}`,
+      );
+    });
+    expect(
+      screen.queryByTestId('warn-lineage-missing-from-catalog'),
+    ).not.toBeInTheDocument();
+  });
 });

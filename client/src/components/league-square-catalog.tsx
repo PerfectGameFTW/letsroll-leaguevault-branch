@@ -154,6 +154,32 @@ export function LeagueSquareCatalog({
     ? readItems(filteredCatalogData?.data)
     : allCatalogItems;
   const hasCatalogItems = allCatalogItems.length > 0;
+
+  // Task #641: a saved Lineage / Prize Fund variation id can quietly point at
+  // an item that was deleted from the Square dashboard (or otherwise removed
+  // from the live catalog). The fallback row keeps the dropdown rendering the
+  // saved name, but with no signal that the item is no longer purchasable —
+  // bowlers then hit checkout failures. We compare the *currently-selected*
+  // variation id against the unfiltered `allCatalogItems` so an active
+  // category filter doesn't produce a false positive, and so the warning
+  // disappears the moment the admin re-picks a live item.
+  const isVariationInLiveCatalog = (variationId: string | null | undefined) => {
+    if (!variationId) return true;
+    return allCatalogItems.some(item =>
+      item.variations.some(v => v.id === variationId),
+    );
+  };
+  const currentLineageVariationId = form.watch('lineageItemVariationId');
+  const currentPrizeFundVariationId = form.watch('prizeFundItemVariationId');
+  const lineageMissingFromCatalog =
+    hasCatalogItems &&
+    !!currentLineageVariationId &&
+    !isVariationInLiveCatalog(currentLineageVariationId);
+  const prizeFundMissingFromCatalog =
+    hasCatalogItems &&
+    !!currentPrizeFundVariationId &&
+    !isVariationInLiveCatalog(currentPrizeFundVariationId);
+
   // Show the truncated banner if either the all-items or the
   // currently-filtered branch came back capped — either way the
   // visible list is incomplete.
@@ -404,7 +430,20 @@ export function LeagueSquareCatalog({
       </FormItem>
 
       <FormItem>
-        <FormLabel>Lineage Item</FormLabel>
+        <FormLabel className="flex items-center gap-2">
+          <span>Lineage Item</span>
+          {lineageMissingFromCatalog && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
+              title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
+              role="status"
+              data-testid="warn-lineage-missing-from-catalog"
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              Not in Square catalog
+            </span>
+          )}
+        </FormLabel>
         <Select
           value={
             !hasCatalogItems
@@ -485,7 +524,20 @@ export function LeagueSquareCatalog({
       </FormItem>
 
       <FormItem>
-        <FormLabel>Prize Fund Item</FormLabel>
+        <FormLabel className="flex items-center gap-2">
+          <span>Prize Fund Item</span>
+          {prizeFundMissingFromCatalog && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
+              title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
+              role="status"
+              data-testid="warn-prize-fund-missing-from-catalog"
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              Not in Square catalog
+            </span>
+          )}
+        </FormLabel>
         <Select
           value={
             !hasCatalogItems
