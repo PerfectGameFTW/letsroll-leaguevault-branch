@@ -47,59 +47,17 @@ function parseAllowlist(raw: string | undefined): readonly string[] {
     .filter((s) => s.length > 0);
 }
 
-/**
- * Returns the connection string this process is *actually* using —
- * `TEST_DATABASE_URL` when `NODE_ENV=test`, otherwise `DATABASE_URL`.
- * Mirrors the resolver in `server/db.ts` but reads from `process.env`
- * directly so destructive scripts (which import this module before
- * `server/db.ts` has booted) get the same answer the connection pool
- * would. Returns `undefined` if the relevant variable is unset so the
- * caller can render the right operator-friendly error.
- */
-export function getActiveDatabaseUrl(): string | undefined {
-  if (process.env.NODE_ENV === 'test') {
-    return process.env.TEST_DATABASE_URL;
-  }
-  return process.env.DATABASE_URL;
-}
-
 export function assertSafeDatabaseHost(scriptName: string): void {
   if (process.env.DEV_DB_OK === '1') return;
 
-  const isTestMode = process.env.NODE_ENV === 'test';
-  const urlVarName = isTestMode ? 'TEST_DATABASE_URL' : 'DATABASE_URL';
-  const url = getActiveDatabaseUrl();
+  const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      `Refusing to run ${scriptName}: ${urlVarName} is not set, so the ` +
+      `Refusing to run ${scriptName}: DATABASE_URL is not set, so the ` +
         'destructive-database guard cannot verify the target host. ' +
-        `Set ${urlVarName} (and DEV_DB_OK=1 if you have verified the ` +
+        'Set DATABASE_URL (and DEV_DB_OK=1 if you have verified the ' +
         'host is a development database).',
     );
-  }
-
-  // Task #662: when NODE_ENV=test, `server/db.ts`'s `resolveDatabaseUrl`
-  // has already proven that TEST_DATABASE_URL is set AND points at a
-  // different host+database than DATABASE_URL. That is a stronger
-  // guarantee than the dev-DB allow-list — the only way to reach this
-  // point in test mode is with a Postgres URL that is, by construction,
-  // not the dev/live tenant — so destructive scripts (the test seeder,
-  // the cleanup scripts) don't need a separate allow-list entry for the
-  // test host. Operators who provision a fresh test DB can run the
-  // suite without also editing DEV_DB_HOST_ALLOWLIST.
-  if (isTestMode && process.env.DATABASE_URL) {
-    try {
-      const testUrl = new URL(url);
-      const devUrl = new URL(process.env.DATABASE_URL);
-      const sameHost =
-        testUrl.hostname.toLowerCase() === devUrl.hostname.toLowerCase();
-      const samePath = testUrl.pathname === devUrl.pathname;
-      if (!(sameHost && samePath)) {
-        return;
-      }
-    } catch {
-      /* fall through to allow-list check below */
-    }
   }
 
   let host: string;

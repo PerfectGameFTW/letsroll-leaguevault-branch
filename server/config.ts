@@ -7,13 +7,6 @@ const log = createLogger("Config");
 
 export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL must be set. Did you forget to provision a database?"),
-  // Dedicated database for the vitest suite (Task #662). Required at
-  // runtime when NODE_ENV=test (enforced in `server/db.ts`'s resolver
-  // so the error message can describe both the missing-secret case
-  // and the same-as-DATABASE_URL case in one place). Optional at the
-  // schema level so the dev server / production boot — which never
-  // run with NODE_ENV=test — don't fail boot when the secret is unset.
-  TEST_DATABASE_URL: z.string().min(1, "TEST_DATABASE_URL must be a non-empty connection string when set.").optional(),
   SESSION_SECRET: z.string().min(1, "SESSION_SECRET must be set. Sessions cannot be secured without a signing key."),
 
   PORT: z.coerce.number().int().positive().default(5000),

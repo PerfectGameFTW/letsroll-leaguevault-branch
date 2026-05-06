@@ -13,7 +13,6 @@ A full-stack bowling league management application with multi-tenant support for
 - **Post-Pull Hook**: `bash scripts/post-pull.sh` (after `git pull` for external changes)
 - **OWASP ZAP Scan**: `bash scripts/zap-scan.sh` (requires Docker)
 - **Required Env Vars**: `DATABASE_URL`, `SESSION_SECRET`
-- **Required for `npm test`**: `TEST_DATABASE_URL` (must point at a separate Postgres DB — see Gotchas)
 - **Optional Env Vars**: `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
 
 ## Stack
@@ -42,7 +41,6 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Architecture decisions
 
-- **Test Database Isolation (Task #662)**: `npm test` runs against `TEST_DATABASE_URL`, NOT `DATABASE_URL`. `server/db.ts`'s `resolveDatabaseUrl()` picks the URL from `NODE_ENV` and refuses to start if the test secret is missing or points at the same physical DB as `DATABASE_URL` (host + database name comparison). This stops vitest workers and the dev server's background workers (apple-pay, payment scheduler, square customer sync) from racing on shared tables.
 - **Multi-Tenant Org-less Data Policy**: All access control helpers deny access to any row with a `NULL` `organizationId`, even for `system_admin`. Org-less rows are considered bugs/stale data. A system-admin "Data integrity" surface exists at `/admin/data-integrity` to count, list, reassign, or delete orphaned data.
 - **Environment Promotion Workflow**: Features flow `main` → `beta` → `main` (for production release). Beta environment (`APP_ENV=beta`) has strict boot guards refusing to start with live payment credentials.
 - **Server-Side Pagination**: API endpoints like `/api/payments` support `page` and `limit` query parameters for paginated results, falling back to full results if not provided.
@@ -77,7 +75,6 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Gotchas
 
-- **Test Database Isolation**: `npm test` requires `TEST_DATABASE_URL` to be set to a connection string for a Postgres database that is *physically distinct* from `DATABASE_URL`. Provision a separate Neon (or other) DB, then push the schema with `DATABASE_URL=$TEST_DATABASE_URL npm run db:push`. The resolver in `server/db.ts` refuses to boot vitest if the secret is missing or matches the dev DB's host + database name. Operator-run cleanup scripts (`scripts/cleanup-test-organizations.ts`, etc) target whichever DB the resolver picks, so prefix them with `NODE_ENV=test` when sweeping the test DB.
 - **DB Schema Changes**: Modify `shared/schema/` files, then `npm run db:push`.
 - **`APP_ENV=beta` Safety**: Beta environment refuses to start if live Square payment credentials are detected.
 - **`SETUP_SECRET` Strength**: Must be at least 32 characters and not a single repeated character.

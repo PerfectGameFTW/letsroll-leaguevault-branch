@@ -6,82 +6,8 @@ import { createLogger } from './logger';
 
 const log = createLogger("Database");
 
-/**
- * Compares two Postgres connection strings on the parts that uniquely
- * identify the underlying database — host (case-insensitive) plus
- * pathname (the `/dbname` segment). Used by both the connection
- * resolver below and `server/utils/db-safety.ts` so the test suite
- * can never accidentally connect to the dev database even when the
- * operator pastes the same URL into both secrets.
- *
- * Returns `true` when the two URLs reference the same physical DB.
- * Returns `false` when either URL fails to parse — the caller is
- * expected to surface a separate "unparseable URL" error in that case.
- */
-export function databaseUrlsTargetSameDb(a: string, b: string): boolean {
-  let ua: URL;
-  let ub: URL;
-  try {
-    ua = new URL(a);
-    ub = new URL(b);
-  } catch {
-    return false;
-  }
-  return (
-    ua.hostname.toLowerCase() === ub.hostname.toLowerCase() &&
-    ua.pathname === ub.pathname
-  );
-}
-
-/**
- * Picks the Postgres connection string this process should use.
- *
- * Task #662: vitest workers and the dev server's background workers
- * (apple-pay, payment scheduler, square customer sync) used to share
- * the dev DB and race on the same tables. With this resolver in
- * place, any process that boots with `NODE_ENV=test` (vitest,
- * test-only scripts) routes to `TEST_DATABASE_URL` instead. Refuses
- * to start when the test secret is missing or points at the same
- * physical DB as `DATABASE_URL` so a misconfigured CI job fails
- * loudly at boot rather than silently corrupting the dev DB.
- */
-export function resolveDatabaseUrl(): string {
-  if (env.NODE_ENV === "test") {
-    if (!env.TEST_DATABASE_URL) {
-      throw new Error(
-        "NODE_ENV=test requires TEST_DATABASE_URL to be set. " +
-          "Provision a separate Postgres database for the vitest suite, " +
-          "push the schema with `DATABASE_URL=$TEST_DATABASE_URL npm run db:push`, " +
-          "and store the connection string as the TEST_DATABASE_URL secret. " +
-          "See replit.md → Gotchas → Test database isolation.",
-      );
-    }
-    if (databaseUrlsTargetSameDb(env.TEST_DATABASE_URL, env.DATABASE_URL)) {
-      throw new Error(
-        "TEST_DATABASE_URL points at the same host+database as DATABASE_URL. " +
-          "The test suite must run against a dedicated database (Task #662). " +
-          "Provision a distinct Postgres DB and update the TEST_DATABASE_URL secret.",
-      );
-    }
-    return env.TEST_DATABASE_URL;
-  }
-  return env.DATABASE_URL;
-}
-
-const connectionString = resolveDatabaseUrl();
-if (env.NODE_ENV === "test") {
-  // Operator-visible breadcrumb so a developer reading the test log
-  // can confirm the suite is hitting the isolated DB. Hostname only —
-  // never the full URL, which contains the credential.
-  try {
-    log.info(`Test mode: connected to TEST_DATABASE_URL host ${new URL(connectionString).hostname}`);
-  } catch {
-    /* host already validated by resolver; ignore */
-  }
-}
-
 export const pool = new pg.Pool({
-  connectionString,
+  connectionString: env.DATABASE_URL,
   max: 50,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,

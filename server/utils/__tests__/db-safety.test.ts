@@ -2,18 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { __testing, assertSafeDatabaseHost } from '../db-safety';
 
 describe('assertSafeDatabaseHost', () => {
-  // NODE_ENV + TEST_DATABASE_URL are saved/restored too because the
-  // resolver added in Task #662 now picks the URL based on NODE_ENV.
-  // Vitest defaults NODE_ENV=test, which would route every assertion
-  // here through the TEST_DATABASE_URL branch and silently change the
-  // var the function actually inspects.
-  const ENV_KEYS = [
-    'DEV_DB_OK',
-    'DATABASE_URL',
-    'TEST_DATABASE_URL',
-    'DEV_DB_HOST_ALLOWLIST',
-    'NODE_ENV',
-  ] as const;
+  const ENV_KEYS = ['DEV_DB_OK', 'DATABASE_URL', 'DEV_DB_HOST_ALLOWLIST'] as const;
   const saved = new Map<string, string | undefined>();
 
   beforeEach(() => {
@@ -22,10 +11,6 @@ describe('assertSafeDatabaseHost', () => {
       saved.set(k, process.env[k]);
       delete process.env[k];
     }
-    // Default each test into the dev-DB branch so the existing
-    // assertions keep exercising DATABASE_URL. The dedicated
-    // describe-block below opts in to NODE_ENV=test explicitly.
-    process.env.NODE_ENV = 'development';
   });
 
   afterEach(() => {
@@ -129,36 +114,6 @@ describe('assertSafeDatabaseHost', () => {
       process.env.DATABASE_URL =
         'postgresql://u:p@EP-DAWN-UNIT-A66ZN28K.us-west-2.aws.neon.tech/db';
       process.env.DEV_DB_HOST_ALLOWLIST = 'ep-dawn-unit-a66zn28k';
-      expect(() => assertSafeDatabaseHost('cleanup')).not.toThrow();
-    });
-  });
-
-  describe('NODE_ENV=test branch (Task #662)', () => {
-    beforeEach(() => {
-      process.env.NODE_ENV = 'test';
-    });
-
-    it('refuses when TEST_DATABASE_URL is missing (DATABASE_URL alone is ignored in test mode)', () => {
-      process.env.DATABASE_URL = 'postgresql://u:p@localhost/dev';
-      expect(() => assertSafeDatabaseHost('test-script')).toThrowError(
-        /TEST_DATABASE_URL is not set/,
-      );
-    });
-
-    it('inspects TEST_DATABASE_URL host (not DATABASE_URL) when in test mode', () => {
-      process.env.DATABASE_URL = 'postgresql://u:p@localhost/dev';
-      process.env.TEST_DATABASE_URL =
-        'postgresql://u:p@ep-cool-bird-99999999.us-west-2.aws.neon.tech/db';
-      expect(() => assertSafeDatabaseHost('cleanup')).toThrowError(
-        /not on the dev-database allow-list/,
-      );
-    });
-
-    it('honours DEV_DB_HOST_ALLOWLIST against the TEST_DATABASE_URL host', () => {
-      process.env.DATABASE_URL = 'postgresql://u:p@db-prod.example.com/db';
-      process.env.TEST_DATABASE_URL =
-        'postgresql://u:p@ep-test-host-12345.us-west-2.aws.neon.tech/db';
-      process.env.DEV_DB_HOST_ALLOWLIST = 'ep-test-host-12345';
       expect(() => assertSafeDatabaseHost('cleanup')).not.toThrow();
     });
   });

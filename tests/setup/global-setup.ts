@@ -38,21 +38,6 @@ import { cleanup as closeDbPool } from '../../server/db';
 import { installDbInvariants } from '../../server/db-invariants';
 
 export default async function setup() {
-  // Task #662: refuse to run the suite without an isolated test
-  // database. `server/db.ts`'s resolver throws the same message at
-  // first import, but importing the seeder below pulls db.ts in via
-  // a transitive chain — surfacing the guard here gives the operator
-  // a single-line failure at the very top of the test log instead of
-  // a deep stack trace from inside drizzle.
-  if (!process.env.TEST_DATABASE_URL) {
-    throw new Error(
-      'TEST_DATABASE_URL is required to run the vitest suite (Task #662). ' +
-        'Provision a Postgres database dedicated to tests, push the schema ' +
-        'with `DATABASE_URL=$TEST_DATABASE_URL npm run db:push`, and store ' +
-        'the connection string as the TEST_DATABASE_URL secret.',
-    );
-  }
-
   await installDbInvariants();
 
   if (process.env.SKIP_TEST_SEED !== '1') {
