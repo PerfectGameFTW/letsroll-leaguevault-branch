@@ -78,6 +78,30 @@ export function assertSafeDatabaseHost(scriptName: string): void {
     );
   }
 
+  // Task #662: when NODE_ENV=test, `server/db.ts`'s `resolveDatabaseUrl`
+  // has already proven that TEST_DATABASE_URL is set AND points at a
+  // different host+database than DATABASE_URL. That is a stronger
+  // guarantee than the dev-DB allow-list — the only way to reach this
+  // point in test mode is with a Postgres URL that is, by construction,
+  // not the dev/live tenant — so destructive scripts (the test seeder,
+  // the cleanup scripts) don't need a separate allow-list entry for the
+  // test host. Operators who provision a fresh test DB can run the
+  // suite without also editing DEV_DB_HOST_ALLOWLIST.
+  if (isTestMode && process.env.DATABASE_URL) {
+    try {
+      const testUrl = new URL(url);
+      const devUrl = new URL(process.env.DATABASE_URL);
+      const sameHost =
+        testUrl.hostname.toLowerCase() === devUrl.hostname.toLowerCase();
+      const samePath = testUrl.pathname === devUrl.pathname;
+      if (!(sameHost && samePath)) {
+        return;
+      }
+    } catch {
+      /* fall through to allow-list check below */
+    }
+  }
+
   let host: string;
   try {
     host = new URL(url).hostname.toLowerCase();
