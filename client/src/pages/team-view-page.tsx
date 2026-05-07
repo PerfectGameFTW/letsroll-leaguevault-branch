@@ -79,6 +79,7 @@ export default function TeamViewPage() {
     },
     onSuccess: (updatedTeam) => {
       queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/details`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       setShowEditDialog(false);
       toast({
         title: "Team updated",
