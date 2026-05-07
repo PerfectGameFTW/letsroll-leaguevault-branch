@@ -72,7 +72,9 @@ router.get('/public-leagues', async (_req, res) => {
 router.get('/slug/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const organization = await storage.getOrganizationBySlug(slug);
+    const organization =
+      (await storage.getOrganizationBySubdomain(slug)) ??
+      (await storage.getOrganizationBySlug(slug));
 
     if (!organization) {
       return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
@@ -95,7 +97,9 @@ router.get('/slug/:slug', async (req, res) => {
 router.get('/slug/:slug/leagues', async (req, res) => {
   try {
     const { slug } = req.params;
-    const organization = await storage.getOrganizationBySlug(slug);
+    const organization =
+      (await storage.getOrganizationBySubdomain(slug)) ??
+      (await storage.getOrganizationBySlug(slug));
 
     if (!organization) {
       return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
