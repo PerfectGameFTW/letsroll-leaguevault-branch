@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { organizations, leagues } from '@shared/schema';
-import { apiGet, acquireFixtureOrg, releaseFixtureOrg } from '../helpers';
+import { apiGet, acquireFixtureOrg, releaseFixtureOrg, BASE_URL } from '../helpers';
 
 // Task #663: the public sign-up endpoints `/api/organizations/slug/:slug`
 // and `/api/organizations/slug/:slug/leagues` must accept the org's
@@ -12,6 +12,12 @@ import { apiGet, acquireFixtureOrg, releaseFixtureOrg } from '../helpers';
 const FIXTURE_SLUG = 'vitest-pubslug-mismatch';
 const FIXTURE_SUBDOMAIN = 'vitestpubsub';
 
+// Smallest valid 1x1 PNG, used so /logo and /app-icon don't 404 when the
+// org row exists but has no image.
+const PNG_DATA_URI =
+  'data:image/png;base64,' +
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
 describe('Public org-by-slug endpoints accept subdomain (#663)', () => {
   let orgId: number;
   let leagueId: number;
@@ -20,7 +26,7 @@ describe('Public org-by-slug endpoints accept subdomain (#663)', () => {
     orgId = await acquireFixtureOrg(FIXTURE_SLUG, 'Vitest Public Slug Mismatch Org');
     await db
       .update(organizations)
-      .set({ subdomain: FIXTURE_SUBDOMAIN })
+      .set({ subdomain: FIXTURE_SUBDOMAIN, logo: PNG_DATA_URI, appIcon: PNG_DATA_URI })
       .where(eq(organizations.id, orgId));
 
     const [league] = await db
@@ -78,4 +84,24 @@ describe('Public org-by-slug endpoints accept subdomain (#663)', () => {
     const list = data.data as Array<{ id: number; name: string }>;
     expect(list.some((l) => l.id === leagueId)).toBe(true);
   });
+
+  // Task #665: the /logo and /app-icon variants must also accept the
+  // subdomain value, mirroring the two endpoints above.
+  for (const which of ['logo', 'app-icon'] as const) {
+    it(`serves /${which} when called with subdomain (not slug)`, async () => {
+      const res = await fetch(
+        `${BASE_URL}/api/organizations/slug/${FIXTURE_SUBDOMAIN}/${which}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toMatch(/^image\/png/);
+    });
+
+    it(`serves /${which} when called with the slug`, async () => {
+      const res = await fetch(
+        `${BASE_URL}/api/organizations/slug/${FIXTURE_SLUG}/${which}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toMatch(/^image\/png/);
+    });
+  }
 });

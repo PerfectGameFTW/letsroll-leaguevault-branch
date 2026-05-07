@@ -118,7 +118,10 @@ router.get('/slug/:slug/leagues', async (req, res) => {
 
 router.get('/slug/:slug/logo', async (req, res) => {
   try {
-    const organization = await storage.getOrganizationBySlug(req.params.slug);
+    const { slug } = req.params;
+    const organization =
+      (await storage.getOrganizationBySubdomain(slug)) ??
+      (await storage.getOrganizationBySlug(slug));
     await serveOrgImage(res, organization, (o) => o.logo, 'Logo');
   } catch (error) {
     log.error('Error serving organization logo:', error);
@@ -128,7 +131,10 @@ router.get('/slug/:slug/logo', async (req, res) => {
 
 router.get('/slug/:slug/app-icon', async (req, res) => {
   try {
-    const organization = await storage.getOrganizationBySlug(req.params.slug);
+    const { slug } = req.params;
+    const organization =
+      (await storage.getOrganizationBySubdomain(slug)) ??
+      (await storage.getOrganizationBySlug(slug));
     await serveOrgImage(res, organization, (o) => o.appIcon || o.logo, 'App icon');
   } catch (error) {
     log.error('Error serving organization app icon:', error);

@@ -126,47 +126,6 @@ router.get('/check-slug/:slug', async (req, res) => {
   }
 });
 
-// Get organization public info by slug (no auth required — used by sign-up page)
-router.get('/slug/:slug', async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const organization = await storage.getOrganizationBySlug(slug);
-    
-    if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
-    }
-
-    sendSuccess(res, {
-      id: organization.id,
-      name: organization.name,
-      slug: organization.slug,
-      logo: organization.logo,
-      darkLogo: organization.darkLogo,
-    });
-  } catch (error) {
-    log.error(`Error fetching organization with slug ${req.params.slug}:`, error);
-    sendError(res, 'Failed to fetch organization', 500, 'ServerError');
-  }
-});
-
-// Get leagues for an organization by slug (public — used by sign-up page)
-router.get('/slug/:slug/leagues', async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const organization = await storage.getOrganizationBySlug(slug);
-    
-    if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
-    }
-
-    const leagues = await storage.getLeagues(organization.id);
-    const activeLeagues = leagues.filter(l => l.active !== false);
-    sendSuccess(res, activeLeagues);
-  } catch (error) {
-    log.error(`Error fetching leagues for org slug ${req.params.slug}:`, error);
-    sendError(res, 'Failed to fetch organization leagues', 500, 'ServerError');
-  }
-});
 
 // Create a new organization (admin only)
 router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res) => {
