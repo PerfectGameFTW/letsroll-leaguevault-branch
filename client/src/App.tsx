@@ -40,6 +40,8 @@ const ConfirmEmailChangePage = lazy(() => import("@/pages/confirm-email-change-p
 const ChangePasswordRequiredPage = lazy(() => import("@/pages/change-password-required-page"));
 const ProfileSettingsPage = lazy(() => import("@/pages/profile-settings-page"));
 const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
+const RegistrationCompletePage = lazy(() => import("@/pages/registration-complete-page"));
+const AdminUnclaimedUsersPage = lazy(() => import("@/pages/admin-unclaimed-users-page"));
 const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy-page"));
@@ -136,6 +138,7 @@ function Router() {
         <Route path="/privacy-policy" component={PrivacyPolicyPage} />
         <Route path="/delete-account" component={DeleteAccountPage} />
         <Route path="/claim-bowler">{guard('auth', <ClaimBowlerPage />)}</Route>
+        <Route path="/registration-complete">{guard('auth', <RegistrationCompletePage />)}</Route>
         <Route path="/not-found" component={NotFound} />
 
         {/* Root route with redirect handler */}
@@ -171,6 +174,7 @@ function Router() {
         <Route path="/reports/past-due">{guard('orgAdmin', <PastDuePage />)}</Route>
         <Route path="/integrations">{guard('orgAdmin', <IntegrationsPage />)}</Route>
         <Route path="/messaging">{guard('orgAdmin', <MessagingPage />)}</Route>
+        <Route path="/admin/unclaimed-users">{guard('orgAdmin', <AdminUnclaimedUsersPage />)}</Route>
 
         {/* System Admin routes */}
         <Route path="/organizations">{guard('systemAdmin', <OrganizationsPage />)}</Route>

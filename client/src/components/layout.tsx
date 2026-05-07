@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning, UserPlus } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -117,6 +117,12 @@ const navItems: NavItem[] = [
     href: "/messaging",
     orgAdminOnly: true
   },
+  {
+    icon: UserPlus,
+    label: "Unclaimed Users",
+    href: "/admin/unclaimed-users",
+    orgAdminOnly: true
+  },
   // System-admin-only grouping pinned to the bottom of the sidebar.
   // The parent has no landing page; clicking it expands the sub-menu.
   // Pending-count badges from the children are aggregated onto the
@@ -176,6 +182,7 @@ const pageLabels: Record<string, string> = {
   "/admin/apple-pay-jobs": "Apple Pay Jobs",
   "/admin/data-integrity": "Data Integrity",
   "/admin/email-change-audits": "Email Change Audits",
+  "/admin/unclaimed-users": "Unclaimed Users",
   "/leagues": "Leagues",
   "/bowlers": "Bowlers",
   "/payments": "Payments",

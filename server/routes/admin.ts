@@ -1,12 +1,21 @@
 import { Router, Request, Response } from 'express';
+import { sql, eq, and, isNull } from 'drizzle-orm';
 import { storage } from '../storage';
+import { db } from '../db.js';
+import {
+  users,
+  bowlers,
+  bowlerLeagues,
+  teams,
+  leagues,
+} from '@shared/schema';
 import { sendSuccess, sendError, handleZodError, sanitizeUser, sanitizePayments, handleUserOrgError } from '../utils/api';
 import { z } from 'zod';
-import type { User as SelectUser } from '@shared/schema';
 import { updateEmailTemplateSchema } from '@shared/schema/email-templates';
 import { requireAdmin } from '../middleware/admin';
-import { sendTestEmail } from '../services/email';
+import { sendTestEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { emailTestLimiter } from '../middleware/rate-limit';
+import { cacheInvalidate } from '../utils/cache';
 import { createLogger } from '../logger';
 
 const log = createLogger("Admin");
@@ -39,7 +48,10 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
       makeSystemAdmin: req.body.isAdmin ?? req.body.makeSystemAdmin
     });
 
-    const requestingUser = req.user as SelectUser;
+    const requestingUser = req.user;
+    if (!requestingUser) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
     if (requestingUser.id === parsedData.userId) {
       log.error('User attempted to change their own admin status');
       return sendError(res, 'Cannot modify your own admin status', 403, 'SELF_MODIFICATION_DENIED');
@@ -201,5 +213,406 @@ router.post('/email-templates/:id/send-test', requireAdmin, emailTestLimiter, as
     sendError(res, 'Failed to send test email');
   }
 });
+
+// =============================================================================
+// Task #667: Admin claim of self-registered users
+//
+// When a bowler self-registers via /api/auth/register but the system can't
+// auto-link them to an existing roster bowler (different name spelling, new
+// to the league, etc.), the user is left with `bowlerId = null` and parked
+// on /registration-complete. These routes give org_admin / system_admin a
+// surface to triage that backlog: list the unlinked self-registered users
+// for their org, then either CREATE a fresh bowler row (when the user
+// genuinely is new) or LINK to an existing unlinked bowler (when the user
+// already has a roster entry under a different spelling).
+//
+// Both write paths assign a league + team in the same atomic transaction
+// as the bowler/link mutation so a partial failure can't leave a bowler
+// unassigned. After the write commits the user is notified by templated
+// email (`admin_claim_complete`); send is best-effort — silent no-op if
+// the template isn't configured (matches existing sendTemplatedEmail
+// contract — `false` return on missing slug).
+//
+// Authorization: this router is mounted behind `requireOrgAdmin` so any
+// authenticated org_admin or system_admin can reach these routes. The
+// helper below ALSO scopes by organizationId for org_admins (system_admin
+// may pass `?organizationId=N` to target a specific org). Cross-org
+// targets are rejected with 403.
+// =============================================================================
+
+function resolveAdminOrgId(
+  req: Request,
+  res: Response,
+): { orgId: number; isSystemAdmin: boolean } | null {
+  const actor = req.user;
+  if (!actor) {
+    sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    return null;
+  }
+  const isSystemAdmin = actor.role === 'system_admin';
+  const queryOrgIdRaw = req.query.organizationId;
+  const queryOrgId = typeof queryOrgIdRaw === 'string' ? parseInt(queryOrgIdRaw, 10) : NaN;
+
+  if (isSystemAdmin) {
+    if (Number.isFinite(queryOrgId) && queryOrgId > 0) {
+      return { orgId: queryOrgId, isSystemAdmin };
+    }
+    if (actor.organizationId) {
+      return { orgId: actor.organizationId, isSystemAdmin };
+    }
+    sendError(res, 'organizationId is required for system_admin requests', 400, 'ORG_REQUIRED');
+    return null;
+  }
+
+  // org_admin: ignore any query org override and use their own org.
+  if (!actor.organizationId) {
+    sendError(res, 'Organization context missing', 403, 'ORG_REQUIRED');
+    return null;
+  }
+  return { orgId: actor.organizationId, isSystemAdmin };
+}
+
+const createBowlerForUserSchema = z.object({
+  leagueId: z.number().int().positive(),
+  teamId: z.number().int().positive(),
+});
+
+const linkExistingBowlerSchema = z.object({
+  bowlerId: z.number().int().positive(),
+  leagueId: z.number().int().positive().optional(),
+  teamId: z.number().int().positive().optional(),
+}).refine(
+  (v) => (v.leagueId === undefined) === (v.teamId === undefined),
+  { message: 'leagueId and teamId must be provided together', path: ['teamId'] },
+);
+
+interface UnlinkedUserRow {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  organizationId: number | null;
+  createdAt?: string | null;
+}
+
+/**
+ * List self-registered users that have not yet been linked to a bowler.
+ * Scoped to the actor's organization (or `?organizationId=` for
+ * system_admin). Filters to role='user' so admins (who never have a
+ * bowlerId either by design) don't pollute the list.
+ */
+router.get('/unclaimed-users', async (req, res) => {
+  try {
+    const ctx = resolveAdminOrgId(req, res);
+    if (!ctx) return;
+
+    const rows = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        organizationId: users.organizationId,
+      })
+      .from(users)
+      .where(and(
+        isNull(users.bowlerId),
+        eq(users.role, 'user'),
+        eq(users.organizationId, ctx.orgId),
+      ))
+      .orderBy(users.id);
+
+    sendSuccess(res, rows as UnlinkedUserRow[]);
+  } catch (error) {
+    log.error('Error listing unclaimed users:', error);
+    sendError(res, 'Failed to list unclaimed users');
+  }
+});
+
+async function notifyAccountReady(opts: {
+  toEmail: string;
+  toName: string;
+  bowlerName: string;
+  leagueName: string;
+  teamName: string;
+  organizationId: number | null;
+}): Promise<void> {
+  try {
+    const organization = opts.organizationId
+      ? await storage.getOrganization(opts.organizationId)
+      : undefined;
+    const baseUrl = getBaseUrl(organization?.slug ?? undefined);
+    await sendTemplatedEmail('admin_claim_complete', opts.toEmail, {
+      user_name: opts.toName,
+      bowler_name: opts.bowlerName,
+      league_name: opts.leagueName,
+      team_name: opts.teamName,
+      organization_name: organization?.name ?? '',
+      organization_logo_url: organization ? getOrgLogoUrl(organization) : '',
+      dashboard_link: `${baseUrl}/bowler-dashboard`,
+      login_link: `${baseUrl}/login`,
+    });
+  } catch (err) {
+    // Best-effort notify — never fail the admin write because of email.
+    log.warn('admin_claim_complete email failed (non-fatal):', err);
+  }
+}
+
+/**
+ * Create a new bowler for an unlinked user and assign them to the
+ * requested league/team — atomically with the user→bowler link.
+ *
+ * The whole flow runs inside a single `db.transaction(...)` that:
+ *   1. Re-reads the target user FOR UPDATE and re-asserts org match +
+ *      bowlerId IS NULL inside the lock so racing requests can't both
+ *      create a bowler.
+ *   2. Validates league + team belong to the same org as the user.
+ *   3. Inserts the bowler (org-stamped from the user).
+ *   4. Locks the team row and inserts the bowler_leagues row at
+ *      max(order)+1, mirroring `createBowlerLeagueIfNotInLeague`.
+ *   5. Sets users.bowler_id = newBowler.id.
+ *
+ * If any step throws, the whole txn rolls back — no orphaned bowlers,
+ * no half-linked users.
+ */
+router.post('/unclaimed-users/:userId/create-bowler', async (req, res) => {
+  try {
+    const ctx = resolveAdminOrgId(req, res);
+    if (!ctx) return;
+
+    const userId = parseInt(req.params.userId, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return sendError(res, 'Invalid user ID', 400, 'InvalidRequest');
+    }
+    const body = createBowlerForUserSchema.parse(req.body);
+
+    const result = await db.transaction(async (tx) => {
+      // Lock the user row so concurrent admin requests serialize.
+      await tx.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+
+      const [targetUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!targetUser) {
+        throw new HttpError(404, 'NOT_FOUND', 'User not found');
+      }
+      if (targetUser.organizationId !== ctx.orgId) {
+        throw new HttpError(403, 'CROSS_ORG_DENIED', 'User belongs to a different organization');
+      }
+      if (targetUser.bowlerId !== null) {
+        throw new HttpError(409, 'ALREADY_LINKED', 'User is already linked to a bowler');
+      }
+
+      const [league] = await tx.select().from(leagues).where(eq(leagues.id, body.leagueId)).limit(1);
+      if (!league || league.organizationId !== ctx.orgId) {
+        throw new HttpError(400, 'INVALID_LEAGUE', 'League not found in this organization');
+      }
+      const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId)).limit(1);
+      if (!team || team.leagueId !== body.leagueId) {
+        throw new HttpError(400, 'INVALID_TEAM', 'Team not found in the selected league');
+      }
+
+      const [newBowler] = await tx
+        .insert(bowlers)
+        .values({
+          name: targetUser.name,
+          email: targetUser.email,
+          phone: targetUser.phone ?? null,
+          active: true,
+          organizationId: ctx.orgId,
+        })
+        .returning();
+
+      // Lock team for max(order) computation, mirroring createBowlerLeague.
+      await tx.execute(sql`SELECT id FROM ${teams} WHERE id = ${body.teamId} FOR UPDATE`);
+      const [maxOrder] = await tx
+        .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
+        .from(bowlerLeagues)
+        .where(eq(bowlerLeagues.teamId, body.teamId));
+      const order = (maxOrder?.maxOrder ?? -1) + 1;
+
+      await tx.insert(bowlerLeagues).values({
+        bowlerId: newBowler.id,
+        leagueId: body.leagueId,
+        teamId: body.teamId,
+        active: true,
+        order,
+      });
+
+      await tx
+        .update(users)
+        .set({ bowlerId: newBowler.id })
+        .where(eq(users.id, userId));
+
+      return { user: targetUser, bowler: newBowler, league, team };
+    });
+
+    cacheInvalidate('bowlers:');
+    cacheInvalidate(`user:${userId}`);
+
+    await notifyAccountReady({
+      toEmail: result.user.email,
+      toName: result.user.name,
+      bowlerName: result.bowler.name,
+      leagueName: result.league.name,
+      teamName: result.team.name,
+      organizationId: ctx.orgId,
+    });
+
+    sendSuccess(res, {
+      userId: result.user.id,
+      bowlerId: result.bowler.id,
+      leagueId: result.league.id,
+      teamId: result.team.id,
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return sendError(res, error.message, error.status, error.code);
+    }
+    if (error instanceof z.ZodError) {
+      return handleZodError(res, error);
+    }
+    log.error('Error creating bowler for unclaimed user:', error);
+    sendError(res, 'Failed to create bowler');
+  }
+});
+
+/**
+ * Link an unlinked self-registered user to an existing UNLINKED bowler in
+ * the same organization. Optionally adds the bowler to a league/team in
+ * the same atomic txn.
+ */
+router.post('/unclaimed-users/:userId/link-existing', async (req, res) => {
+  try {
+    const ctx = resolveAdminOrgId(req, res);
+    if (!ctx) return;
+
+    const userId = parseInt(req.params.userId, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return sendError(res, 'Invalid user ID', 400, 'InvalidRequest');
+    }
+    const body = linkExistingBowlerSchema.parse(req.body);
+
+    const result = await db.transaction(async (tx) => {
+      // Lock both rows so concurrent admin claims for either side serialize.
+      await tx.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+      await tx.execute(sql`SELECT id FROM ${bowlers} WHERE id = ${body.bowlerId} FOR UPDATE`);
+
+      const [targetUser] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!targetUser) {
+        throw new HttpError(404, 'NOT_FOUND', 'User not found');
+      }
+      if (targetUser.organizationId !== ctx.orgId) {
+        throw new HttpError(403, 'CROSS_ORG_DENIED', 'User belongs to a different organization');
+      }
+      if (targetUser.bowlerId !== null) {
+        throw new HttpError(409, 'ALREADY_LINKED', 'User is already linked to a bowler');
+      }
+
+      const [targetBowler] = await tx.select().from(bowlers).where(eq(bowlers.id, body.bowlerId)).limit(1);
+      if (!targetBowler) {
+        throw new HttpError(404, 'BOWLER_NOT_FOUND', 'Bowler not found');
+      }
+      if (targetBowler.organizationId !== ctx.orgId) {
+        throw new HttpError(403, 'CROSS_ORG_DENIED', 'Bowler belongs to a different organization');
+      }
+
+      // Refuse if some other user already claims this bowler.
+      const [conflict] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.bowlerId, body.bowlerId))
+        .limit(1);
+      if (conflict) {
+        throw new HttpError(409, 'BOWLER_TAKEN', 'Bowler is already linked to another user');
+      }
+
+      let assignedLeague: { id: number; name: string } | null = null;
+      let assignedTeam: { id: number; name: string } | null = null;
+
+      if (body.leagueId !== undefined && body.teamId !== undefined) {
+        const [league] = await tx.select().from(leagues).where(eq(leagues.id, body.leagueId)).limit(1);
+        if (!league || league.organizationId !== ctx.orgId) {
+          throw new HttpError(400, 'INVALID_LEAGUE', 'League not found in this organization');
+        }
+        const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId)).limit(1);
+        if (!team || team.leagueId !== body.leagueId) {
+          throw new HttpError(400, 'INVALID_TEAM', 'Team not found in the selected league');
+        }
+        assignedLeague = { id: league.id, name: league.name };
+        assignedTeam = { id: team.id, name: team.name };
+
+        const existingLink = await tx
+          .select({ id: bowlerLeagues.id })
+          .from(bowlerLeagues)
+          .where(and(
+            eq(bowlerLeagues.bowlerId, body.bowlerId),
+            eq(bowlerLeagues.leagueId, body.leagueId),
+            eq(bowlerLeagues.active, true),
+          ))
+          .limit(1);
+
+        if (existingLink.length === 0) {
+          await tx.execute(sql`SELECT id FROM ${teams} WHERE id = ${body.teamId} FOR UPDATE`);
+          const [maxOrder] = await tx
+            .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
+            .from(bowlerLeagues)
+            .where(eq(bowlerLeagues.teamId, body.teamId));
+          const order = (maxOrder?.maxOrder ?? -1) + 1;
+          await tx.insert(bowlerLeagues).values({
+            bowlerId: body.bowlerId,
+            leagueId: body.leagueId,
+            teamId: body.teamId,
+            active: true,
+            order,
+          });
+        }
+      }
+
+      await tx
+        .update(users)
+        .set({ bowlerId: body.bowlerId })
+        .where(eq(users.id, userId));
+
+      return { user: targetUser, bowler: targetBowler, league: assignedLeague, team: assignedTeam };
+    });
+
+    cacheInvalidate('bowlers:');
+    cacheInvalidate(`user:${userId}`);
+
+    await notifyAccountReady({
+      toEmail: result.user.email,
+      toName: result.user.name,
+      bowlerName: result.bowler.name,
+      leagueName: result.league?.name ?? '',
+      teamName: result.team?.name ?? '',
+      organizationId: ctx.orgId,
+    });
+
+    sendSuccess(res, {
+      userId: result.user.id,
+      bowlerId: result.bowler.id,
+      leagueId: result.league?.id ?? null,
+      teamId: result.team?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return sendError(res, error.message, error.status, error.code);
+    }
+    if (error instanceof z.ZodError) {
+      return handleZodError(res, error);
+    }
+    log.error('Error linking unclaimed user to existing bowler:', error);
+    sendError(res, 'Failed to link bowler');
+  }
+});
+
+class HttpError extends Error {
+  constructor(public status: number, public code: string, message: string) {
+    super(message);
+  }
+}
 
 export default router;
