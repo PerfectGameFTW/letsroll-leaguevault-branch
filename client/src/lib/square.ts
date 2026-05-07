@@ -41,7 +41,7 @@ export interface SquarePaymentRequest {
 }
 
 export interface SquareWalletPayment {
-  attach(selectorOrElement: string | HTMLElement): Promise<void>;
+  attach(selectorOrElement: string | HTMLElement, options?: Record<string, unknown>): Promise<void>;
   tokenize(): Promise<TokenizeResult>;
   destroy(): void;
 }

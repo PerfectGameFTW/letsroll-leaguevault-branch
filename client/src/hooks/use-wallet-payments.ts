@@ -187,7 +187,11 @@ export function useWalletPayments({
             if (!googlePayRef.current) {
               googleResult = 'ref-not-ready';
             } else {
-              await googlePay.attach(googlePayRef.current);
+              await googlePay.attach(googlePayRef.current, {
+                buttonColor: 'black',
+                buttonType: 'long',
+                buttonSizeMode: 'fill',
+              });
               googlePayInstanceRef.current = googlePay;
               setGooglePayAvailable(true);
               googleAttached = true;

@@ -157,8 +157,8 @@ export function PaymentCreditCardSection({
         {!googlePayTokenizeOnly && (
           <div
             ref={googlePayRef}
-            className={googlePayAvailable ? "min-h-[40px]" : undefined}
-            style={googlePayAvailable ? undefined : { display: 'none' }}
+            className={googlePayAvailable ? "w-full" : undefined}
+            style={googlePayAvailable ? { width: '100%', height: '44px' } : { display: 'none' }}
             onClick={googlePayAvailable ? onGooglePayClick : undefined}
           />
         )}
