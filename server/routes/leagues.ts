@@ -545,9 +545,10 @@ router.delete("/:id", async (req: Request, res) => {
     // attribute strings so Smart Lists drop them (task #429).
     fireBowlersExternalResync(affectedBowlerIds, req.user?.organizationId);
 
-    sendSuccess(res, null, 204);
+    sendSuccess(res, null);
   } catch (error) {
-    sendError(res, 'Failed to delete league');
+    log.error('Error deleting league:', error);
+    sendError(res, 'Failed to delete league', 500);
   }
 });
 

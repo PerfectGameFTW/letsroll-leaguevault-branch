@@ -579,7 +579,7 @@ router.delete("/:id", async (req, res) => {
     }
 
     await storage.deleteBowler(id);
-    sendSuccess(res, null, 204);
+    sendSuccess(res, null);
   } catch (error) {
     log.error('Error deleting bowler:', error);
     sendError(res, 'Failed to delete bowler', 500);

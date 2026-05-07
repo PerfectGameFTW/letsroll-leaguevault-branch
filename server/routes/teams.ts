@@ -3,7 +3,9 @@ import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError, parseOptionalIntParam, sanitizeBowler } from '../utils/api.js';
+import { createLogger } from '../logger';
 
+const log = createLogger("Teams");
 const router = Router();
 
 router.get("/", async (req, res) => {
@@ -326,9 +328,10 @@ router.delete("/:id", async (req, res) => {
     const leagueId = team.leagueId;
     await storage.deleteTeam(id);
     await storage.renumberActiveTeams(leagueId);
-    sendSuccess(res, null, 204);
+    sendSuccess(res, null);
   } catch (error) {
-    sendError(res, 'Failed to delete team');
+    log.error('Error deleting team:', error);
+    sendError(res, 'Failed to delete team', 500);
   }
 });
 

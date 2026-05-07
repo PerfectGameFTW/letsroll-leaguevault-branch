@@ -660,7 +660,7 @@ describe('DELETE /api/leagues/:id → fires resync against the pre-captured bowl
     mockStorage.getBowler.mockImplementation(async (id: number) => bowlerById.get(id) ?? null);
 
     const res = await del(`/api/leagues/${league.id}`);
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
 
     await waitForUpserts(2);
     expect(mockSyncCustomerLeagueAttributes).toHaveBeenCalledTimes(2);
