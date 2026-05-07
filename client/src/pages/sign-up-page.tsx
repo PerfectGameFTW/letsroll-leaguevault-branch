@@ -190,41 +190,6 @@ const SignUpPage: FC = () => {
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
-      const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
-      if (!existingUsersResponse.ok) {
-        throw new Error("Failed to verify email availability");
-      }
-      const existingUserData = await existingUsersResponse.json();
-
-      if (existingUserData.exists) {
-        toast({
-          title: "Account Already Exists",
-          description: "An account with this email already exists. Please sign in instead.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const bowlersResponse = await fetch("/api/bowlers");
-      if (!bowlersResponse.ok) {
-        throw new Error("Failed to check existing bowlers");
-      }
-      const bowlersData = await bowlersResponse.json();
-
-      const bowlersList = (bowlersData?.data ?? []) as Array<{ name?: string | null; email?: string | null }>;
-      const existingBowler = bowlersList.find((bowler) =>
-        bowler.name?.toLowerCase() === data.name.toLowerCase() &&
-        bowler.email?.toLowerCase() === data.email.toLowerCase()
-      );
-
-      if (existingBowler) {
-        toast({
-          title: "Existing Bowler Found",
-          description: "We've matched your information with an existing bowler profile.",
-          variant: "default",
-        });
-      }
-
       const registerBody: Record<string, unknown> = { ...data };
       const selectedLeagueId = Number(data.leagueId);
       const selectedLeague = leagues.find((l) => l.id === selectedLeagueId);
@@ -243,6 +208,14 @@ const SignUpPage: FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (errorData?.error?.code === "DUPLICATE_EMAIL") {
+          toast({
+            title: "Account Already Exists",
+            description: "An account with this email already exists. Please sign in instead.",
+            variant: "destructive",
+          });
+          return;
+        }
         throw new Error(errorData.error?.message || "Failed to sign up. Please try again.");
       }
 
