@@ -63,12 +63,6 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: perfectGameOrgResponse } = useQuery<ApiResponse<Organization>>({
-    queryKey: ["/api/organizations/slug/perfect-game"],
-    staleTime: 1000 * 60 * 60,
-    enabled: true
-  });
-
   const userOrgId = currentUserResponse?.data?.organizationId;
   const { data: userOrgResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations", userOrgId],
@@ -85,7 +79,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     retry: false,
   });
 
-  const organization = userOrgResponse?.data || (subdomainOrg ? { ...subdomainOrg, darkLogo: subdomainOrg.darkLogo } as Organization : undefined) || perfectGameOrgResponse?.data;
+  const organization = userOrgResponse?.data || (subdomainOrg ? { ...subdomainOrg, darkLogo: subdomainOrg.darkLogo } as Organization : undefined);
   const orgName = organization?.name || "Organization";
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
 

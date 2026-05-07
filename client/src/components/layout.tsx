@@ -647,11 +647,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: perfectGameOrgResponse } = useQuery<ApiResponse<Organization>>({
-    queryKey: ["/api/organizations/slug/perfect-game"],
-    staleTime: 1000 * 60 * 5,
-  });
-
   const userRole = currentUserResponse?.data?.role;
   const isAdmin = userRole === 'system_admin';
   const isSystemAdmin = userRole === 'system_admin';
@@ -714,7 +709,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => mql.removeEventListener("change", handler);
   }, []);
 
-  const organization = organizationResponse?.data || perfectGameOrgResponse?.data;
+  const organization = organizationResponse?.data;
   const orgName = organization?.name || "LeagueVault";
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
 
