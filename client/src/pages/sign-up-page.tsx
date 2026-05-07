@@ -93,6 +93,8 @@ interface OrgInfo {
 interface League {
   id: number;
   name: string;
+  organizationId?: number;
+  organizationName?: string;
 }
 
 const PasswordRequirements: FC<{ errors: Record<string, unknown> }> = ({ errors }) => {
@@ -170,14 +172,21 @@ const SignUpPage: FC = () => {
     enabled: !!orgSlug,
   });
 
-  const { data: allLeaguesResponse } = useQuery<{ success: boolean; data: League[] }>({
-    queryKey: ["/api/leagues"],
+  const { data: publicLeaguesResponse } = useQuery<{ success: boolean; data: League[] }>({
+    queryKey: ["/api/organizations/public-leagues"],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/public-leagues`);
+      if (!res.ok) throw new Error("Failed to fetch leagues");
+      return res.json();
+    },
     enabled: !orgSlug,
   });
 
   const leagues = orgSlug
     ? (orgLeaguesResponse?.data ?? [])
-    : (allLeaguesResponse?.data ?? []);
+    : (publicLeaguesResponse?.data ?? []);
+
+  const showOrgInLabel = !orgSlug;
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
@@ -217,8 +226,11 @@ const SignUpPage: FC = () => {
       }
 
       const registerBody: Record<string, unknown> = { ...data };
-      if (orgInfo?.id) {
-        registerBody.organizationId = orgInfo.id;
+      const selectedLeagueId = Number(data.leagueId);
+      const selectedLeague = leagues.find((l) => l.id === selectedLeagueId);
+      const resolvedOrgId = orgInfo?.id ?? selectedLeague?.organizationId;
+      if (resolvedOrgId) {
+        registerBody.organizationId = resolvedOrgId;
       }
 
       const response = await fetch("/api/auth/register", {
@@ -354,9 +366,11 @@ const SignUpPage: FC = () => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.isArray(leagues) ? leagues.map((league: { id: number; name: string }) => (
+                        {Array.isArray(leagues) ? leagues.map((league) => (
                           <SelectItem key={league.id} value={league.id.toString()}>
-                            {league.name}
+                            {showOrgInLabel && league.organizationName
+                              ? `${league.organizationName} — ${league.name}`
+                              : league.name}
                           </SelectItem>
                         )) : null}
                       </SelectContent>

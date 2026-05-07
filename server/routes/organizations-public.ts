@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
+import { eq, and, isNotNull } from 'drizzle-orm';
 import type { Organization } from '@shared/schema';
+import { leagues, organizations } from '@shared/schema';
+import { db } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { validateDataUri } from '../utils/image-magic-bytes.js';
@@ -40,6 +43,31 @@ async function serveOrgImage(
   }
   res.redirect(data);
 }
+
+router.get('/public-leagues', async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: leagues.id,
+        name: leagues.name,
+        organizationId: leagues.organizationId,
+        organizationName: organizations.name,
+        organizationSlug: organizations.slug,
+      })
+      .from(leagues)
+      .innerJoin(organizations, eq(organizations.id, leagues.organizationId))
+      .where(and(
+        eq(leagues.allowPublicSignup, true),
+        eq(leagues.active, true),
+        isNotNull(leagues.organizationId),
+      ))
+      .orderBy(organizations.name, leagues.name);
+    sendSuccess(res, rows);
+  } catch (error) {
+    log.error('Error fetching public leagues:', error);
+    sendError(res, 'Failed to fetch public leagues', 500, 'ServerError');
+  }
+});
 
 router.get('/slug/:slug', async (req, res) => {
   try {
