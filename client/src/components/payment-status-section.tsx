@@ -133,11 +133,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [maxPayableWeeks]);
 
   const calculateTotalAmount = useCallback(() => {
+    if (league.paymentMode === 'upfront') {
+      return financials.fullSeasonAmount;
+    }
     if (selectedSchedule === 'custom') {
       return fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
     }
     return weeklyFee;
-  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
+  }, [league.paymentMode, financials.fullSeasonAmount, selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     try {
