@@ -161,7 +161,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             squareError={squareError}
             storeCard={storeCard}
             setStoreCard={setStoreCard}
-            showStoreCardOption={selectedSchedule === 'custom'}
+            showStoreCardOption={league.paymentMode === 'upfront' || selectedSchedule === 'custom'}
             cleanupCard={cleanupCard}
             applePayAvailable={applePayAvailable}
             googlePayAvailable={googlePayAvailable}

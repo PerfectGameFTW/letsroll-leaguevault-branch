@@ -796,7 +796,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         // Idempotency key shape preserved across the v40 SDK upgrade
         // so post-deploy retries dedupe against any pre-upgrade
         // saveCardOnFile request still in flight on Square's side.
-        idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex'),
+        idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex').slice(0, 40),
         sourceId,
         card: {
           customerId,
@@ -960,7 +960,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           // Idempotency key shape preserved across the v40 SDK upgrade
           // so a retry post-deploy still dedupes against the in-flight
           // pre-upgrade request on Square's side.
-          idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex'),
+          idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex').slice(0, 40),
           givenName: firstName,
           familyName: lastName || '',
           emailAddress: email.toLowerCase(),

@@ -99,46 +99,34 @@ export function useBowlerPaymentSubmit({
 
       if (isUpfront) {
         const upfrontAmount = financials.fullSeasonAmount;
-        let paymentCardId: string;
+        const trimmedBuyerEmail = (buyerEmail ?? '').trim();
 
         if (cardMode === 'saved' && selectedSavedCardId) {
-          paymentCardId = selectedSavedCardId;
-        } else {
-          const token = await tokenizeCard(card);
-          const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
+          const response = await csrfFetch('/api/payments-provider/payments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: token, leagueId: league.id }),
+            body: JSON.stringify({
+              sourceId: selectedSavedCardId,
+              amount: upfrontAmount,
+              bowlerId: bowler.id,
+              leagueId: league.id,
+              storeCard: false,
+              ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
+            }),
           });
-          const saveData = await saveResponse.json();
-          await throwApiErrorIfNotOk(saveResponse, saveData, 'Your card could not be saved. Please try again.');
-          if (!saveData.data?.savedCardId) {
-            throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
+          const responseData = await response.json();
+          await throwApiErrorIfNotOk(response, responseData, 'Payment failed');
+        } else {
+          const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
+          await createPayment(upfrontAmount, card!, bowler.id, league.id, storeCard, overrideEmail);
+          if (storeCard) {
+            queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
           }
-          paymentCardId = saveData.data.savedCardId;
-          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
 
-        const scheduleResponse = await csrfFetch('/api/payment-schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bowlerId: bowler.id,
-            leagueId: league.id,
-            frequency: 'upfront',
-            amount: upfrontAmount,
-            nextPaymentDate: new Date(),
-            paymentCardId,
-          }),
-        });
-        if (!scheduleResponse.ok) {
-          const scheduleData = await scheduleResponse.json();
-          throw new Error(scheduleData.error?.message || 'Failed to set up payment schedule');
-        }
-        queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
         toast({
-          title: "Payment Scheduled",
-          description: `Your card has been saved and your full season payment of ${formatCurrency(upfrontAmount)} will be processed momentarily.`,
+          title: "Payment Successful",
+          description: `Your full season payment of ${formatCurrency(upfrontAmount)} has been processed.`,
         });
         setShowPaymentSetup(false);
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
