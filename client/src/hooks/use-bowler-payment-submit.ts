@@ -108,7 +108,7 @@ export function useBowlerPaymentSubmit({
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: token }),
+            body: JSON.stringify({ sourceId: token, leagueId: league.id }),
           });
           const saveData = await saveResponse.json();
           await throwApiErrorIfNotOk(saveResponse, saveData, 'Your card could not be saved. Please try again.');
@@ -158,7 +158,7 @@ export function useBowlerPaymentSubmit({
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: token }),
+            body: JSON.stringify({ sourceId: token, leagueId: league.id }),
           });
           const saveData = await saveResponse.json();
           await throwApiErrorIfNotOk(saveResponse, saveData, 'Failed to save card');

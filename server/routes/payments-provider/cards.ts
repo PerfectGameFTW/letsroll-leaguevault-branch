@@ -47,10 +47,23 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
     }
 
-    const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
+    const rawLeagueId = req.body.leagueId;
+    let resolvedLeagueId: number | null = null;
+    if (rawLeagueId !== undefined && rawLeagueId !== null && rawLeagueId !== '') {
+      const parsed = parseInt(rawLeagueId);
+      if (isNaN(parsed)) {
+        return sendError(res, 'Invalid league ID format', 400);
+      }
+      resolvedLeagueId = parsed;
+    } else {
+      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
+      if (bowlerLeagues.length > 0) {
+        resolvedLeagueId = bowlerLeagues[0].leagueId;
+      }
+    }
 
-    const provider = cardLeagueId
-      ? await getProviderForLeague(cardLeagueId)
+    const provider = resolvedLeagueId
+      ? await getProviderForLeague(resolvedLeagueId)
       : await getPaymentProvider(null);
     // Bootstrap a provider customer on first save (task #573). Without
     // this, a brand-new Clover bowler — who never went through the
