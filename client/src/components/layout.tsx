@@ -101,6 +101,12 @@ const navItems: NavItem[] = [
     href: "/bowlers"
   },
   {
+    icon: CreditCard,
+    label: "Payments",
+    href: "/payments",
+    orgAdminOnly: true
+  },
+  {
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
