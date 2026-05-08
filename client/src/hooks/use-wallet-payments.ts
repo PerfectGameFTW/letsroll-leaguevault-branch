@@ -19,6 +19,44 @@ function isCancelError(errors: TokenizeError[] | undefined): boolean {
   );
 }
 
+// task #670: Google Pay can never render in iOS Safari (no GPay
+// support on iOS), but Square's `payments.googlePay()` still
+// resolves and `attach()` still succeeds — leaving us with an
+// empty black bar. Gate availability on the underlying browser
+// support (PaymentRequest API present + not iOS Safari) so we
+// skip the attach entirely when it can't possibly paint.
+function isGooglePaySupportedInBrowser(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+  if (typeof (window as { PaymentRequest?: unknown }).PaymentRequest !== 'function') {
+    return false;
+  }
+  const ua = navigator.userAgent || '';
+  const isIOSDevice = /iPad|iPhone|iPod/.test(ua);
+  // iPadOS 13+ reports MacIntel + touch — treat as iOS too.
+  const isIPadOS =
+    navigator.platform === 'MacIntel' &&
+    typeof (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints === 'number' &&
+    ((navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints || 0) > 1;
+  if (isIOSDevice || isIPadOS) {
+    return false;
+  }
+  return true;
+}
+
+// task #670: Defense-in-depth — confirm Square actually injected
+// a visible button into our container after attach(). If the
+// container is empty, treat the wallet as unavailable so we
+// don't show an empty clickable bar even if a future SDK
+// regression silently no-ops `attach()`.
+function hasRenderedWalletContent(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  if (el.childElementCount === 0) return false;
+  const html = el.innerHTML?.trim() ?? '';
+  return html.length > 0;
+}
+
 interface UseWalletPaymentsOptions {
   locationId?: number | null;
   amountCents: number;
@@ -178,30 +216,46 @@ export function useWalletPayments({
         let googleAttached = false;
         try {
           setDebugStatus('trying-google');
-          const googlePay = await payments.googlePay(paymentRequest);
-          if (!googlePay || (typeof googlePay.attach !== 'function' && typeof googlePay.tokenize !== 'function')) {
-            googleResult = `not-available`;
-          } else if (cancelled || !mountedRef.current) {
-            googleResult = `cancelled`;
-          } else if (typeof googlePay.attach === 'function') {
-            if (!googlePayRef.current) {
-              googleResult = 'ref-not-ready';
+          // task #670: Skip Google Pay entirely when the browser
+          // can't render it (e.g. iOS Safari). Square's
+          // `googlePay.attach()` succeeds there but paints
+          // nothing, leaving an empty black bar.
+          if (!isGooglePaySupportedInBrowser()) {
+            googleResult = 'unsupported-browser';
+          } else {
+            const googlePay = await payments.googlePay(paymentRequest);
+            if (!googlePay || (typeof googlePay.attach !== 'function' && typeof googlePay.tokenize !== 'function')) {
+              googleResult = `not-available`;
+            } else if (cancelled || !mountedRef.current) {
+              googleResult = `cancelled`;
+            } else if (typeof googlePay.attach === 'function') {
+              if (!googlePayRef.current) {
+                googleResult = 'ref-not-ready';
+              } else {
+                await googlePay.attach(googlePayRef.current, {
+                  buttonColor: 'black',
+                  buttonType: 'long',
+                  buttonSizeMode: 'fill',
+                });
+                // task #670: Defense-in-depth — verify Square
+                // actually painted a button. If the container is
+                // empty, treat as unavailable and clean up.
+                if (!hasRenderedWalletContent(googlePayRef.current)) {
+                  try { googlePay.destroy(); } catch {}
+                  googleResult = 'attached-but-empty';
+                } else {
+                  googlePayInstanceRef.current = googlePay;
+                  setGooglePayAvailable(true);
+                  googleAttached = true;
+                  googleResult = 'attached';
+                }
+              }
             } else {
-              await googlePay.attach(googlePayRef.current, {
-                buttonColor: 'black',
-                buttonType: 'long',
-                buttonSizeMode: 'fill',
-              });
               googlePayInstanceRef.current = googlePay;
               setGooglePayAvailable(true);
-              googleAttached = true;
-              googleResult = 'attached';
+              setGooglePayTokenizeOnly(true);
+              googleResult = 'tokenize-only';
             }
-          } else {
-            googlePayInstanceRef.current = googlePay;
-            setGooglePayAvailable(true);
-            setGooglePayTokenizeOnly(true);
-            googleResult = 'tokenize-only';
           }
         } catch (googleErr: unknown) {
           googleResult = `ERR:${errorMessage(googleErr)}`;
