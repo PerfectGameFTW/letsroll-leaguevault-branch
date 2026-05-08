@@ -28,6 +28,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Plus } from 'lucide-react';
+import { Link } from 'wouter';
 import { UsersTable, type UsersTableUser, type UsersTableLocation } from '@/components/users-table';
 import { AddUserDialog } from '@/components/add-user-dialog';
 import { passwordSchema } from '@shared/password-validation';
@@ -186,17 +187,30 @@ export default function UsersPage() {
     <Layout>
       <ErrorBoundary level="section">
         <div className="container py-6">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-4xl font-bold">Users</h1>
+          <div className="flex items-start justify-between mb-6 gap-4">
+            <div>
+              <h1 className="text-4xl font-bold">Organization Admins</h1>
+              <p className="text-muted-foreground mt-1">
+                Manage the administrators for your organization. Looking for
+                bowler accounts that signed up themselves?{' '}
+                <Link
+                  href="/admin/unclaimed-users"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  See Unclaimed Users
+                </Link>
+                .
+              </p>
+            </div>
             <Button onClick={() => setAddDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add User
+              Add Admin
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Organization Users</CardTitle>
+              <CardTitle>Organization Admins</CardTitle>
             </CardHeader>
             <CardContent>
               {orgUsersLoading ? (
@@ -206,7 +220,7 @@ export default function UsersPage() {
                   <Skeleton className="h-10 w-full" />
                 </div>
               ) : orgUsers.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No users in this organization yet.</p>
+                <p className="text-muted-foreground text-center py-8">No administrators in this organization yet.</p>
               ) : (
                 <UsersTable
                   users={orgUsers}

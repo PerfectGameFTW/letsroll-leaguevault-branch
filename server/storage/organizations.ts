@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   organizations, leagues, users,
@@ -137,11 +137,19 @@ export async function updateOrgIntegrations(orgId: number, integrations: OrgInte
 }
 
 export async function getOrganizationUsers(organizationId: number): Promise<User[]> {
-  log.info('Getting users for organization:', organizationId);
+  log.info('Getting admin users for organization:', organizationId);
 
+  // Task #672: this listing powers the "Organization Users" admin page,
+  // which manages organization administrators only. Self-registered
+  // bowler-users (role `user`) are triaged on the separate
+  // "Unclaimed Self-Registered Users" surface, so we filter on role
+  // here instead of the previous `bowlerId IS NULL` heuristic.
   return db
     .select()
     .from(users)
-    .where(and(eq(users.organizationId, organizationId), isNull(users.bowlerId)))
+    .where(and(
+      eq(users.organizationId, organizationId),
+      inArray(users.role, ['org_admin', 'system_admin']),
+    ))
     .orderBy(users.name);
 }
