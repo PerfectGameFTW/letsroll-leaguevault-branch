@@ -18,10 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, UserPlus, Link2 } from "lucide-react";
+import { Loader2, UserPlus, Link2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageLoadingState } from "@/components/page-states";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import type { ApiResponse, League, Team, Bowler } from "@shared/schema";
 
 interface UnlinkedUser {
@@ -46,11 +47,34 @@ const AdminUnclaimedUsersPage: FC = () => {
 
   const [creating, setCreating] = useState<UnlinkedUser | null>(null);
   const [linking, setLinking] = useState<UnlinkedUser | null>(null);
+  const [deleting, setDeleting] = useState<UnlinkedUser | null>(null);
 
   const { data: usersResp, isLoading } = useQuery<ApiResponse<UnlinkedUser[]>>({
     queryKey: ["/api/admin/unclaimed-users"],
   });
   const users = usersResp?.data ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      return apiRequest(`/api/admin/unclaimed-users/${userId}`, "DELETE");
+    },
+    onSuccess: () => {
+      const name = deleting?.name ?? "user";
+      toast({
+        title: "User deleted",
+        description: `${name} has been permanently removed.`,
+      });
+      setDeleting(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/unclaimed-users"] });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Failed to delete user",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   return (
     <Layout>
@@ -105,6 +129,16 @@ const AdminUnclaimedUsersPage: FC = () => {
                         <UserPlus className="h-4 w-4 mr-1" />
                         Create Bowler
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleting(u)}
+                        data-testid={`delete-unclaimed-user-${u.id}`}
+                        aria-label={`Delete ${u.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -142,6 +176,25 @@ const AdminUnclaimedUsersPage: FC = () => {
           }}
         />
       )}
+      <ConfirmDeleteDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setDeleting(null);
+        }}
+        title="Delete unclaimed user?"
+        itemLabel="user"
+        itemName={deleting?.name}
+        consequencesIntro="This permanently deletes the self-registered account that never matched a bowler on your roster."
+        consequences={[
+          <>The user&apos;s login (<span className="font-mono">{deleting?.email}</span>) will be removed.</>,
+          <>No bowler, league, team, or score data is touched (this account was never linked to a bowler).</>,
+          <>If the same person signs up again later they&apos;ll appear here as a fresh unclaimed user.</>,
+        ]}
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleting) deleteMutation.mutate(deleting.id);
+        }}
+      />
     </Layout>
   );
 };

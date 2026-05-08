@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { updateEmailTemplateSchema } from '@shared/schema/email-templates';
 import { requireAdmin } from '../middleware/admin';
 import { sendTestEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
-import { emailTestLimiter } from '../middleware/rate-limit';
+import { emailTestLimiter, adminWriteLimiter } from '../middleware/rate-limit';
 import { cacheInvalidate } from '../utils/cache';
 import { createLogger } from '../logger';
 
@@ -606,6 +606,81 @@ router.post('/unclaimed-users/:userId/link-existing', async (req, res) => {
     }
     log.error('Error linking unclaimed user to existing bowler:', error);
     sendError(res, 'Failed to link bowler');
+  }
+});
+
+/**
+ * Permanently delete a self-registered user that is still unclaimed
+ * (role='user', bowlerId IS NULL). This is the third triage option on the
+ * /admin/unclaimed-users page — for spam signups and never-completed
+ * registrations the admin doesn't want to keep.
+ *
+ * Strict guards inside a transaction:
+ *   1. Row-level lock the user FOR UPDATE so we re-read state under the
+ *      lock (a racing claim/link can't slip in after our preflight).
+ *   2. Org match (org_admin can only delete in their own org;
+ *      system_admin already routed via resolveAdminOrgId).
+ *   3. role === 'user' (refuse if they were promoted to org_admin /
+ *      system_admin between page load and click).
+ *   4. bowlerId IS NULL (refuse if a sibling claim/link landed first).
+ *   5. Delegate to storage.deleteUser, which nulls the audit FKs we
+ *      preserve (apple_pay_jobs.created_by, deletion_requests.reviewed_by)
+ *      and refuses on any orphan_cleanup_audits rows.
+ *
+ * Rate-limited via adminWriteLimiter.
+ */
+router.delete('/unclaimed-users/:userId', adminWriteLimiter, async (req, res) => {
+  try {
+    const ctx = resolveAdminOrgId(req, res);
+    if (!ctx) return;
+
+    const userId = parseInt(req.params.userId, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return sendError(res, 'Invalid user ID', 400, 'InvalidRequest');
+    }
+
+    const target = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
+      const [row] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!row) {
+        throw new HttpError(404, 'NOT_FOUND', 'User not found');
+      }
+      if (row.organizationId !== ctx.orgId) {
+        throw new HttpError(403, 'CROSS_ORG_DENIED', 'User belongs to a different organization');
+      }
+      if (row.role !== 'user') {
+        throw new HttpError(409, 'NOT_UNCLAIMED', 'User is not an unclaimed self-registered account');
+      }
+      if (row.bowlerId !== null) {
+        throw new HttpError(409, 'ALREADY_LINKED', 'User has already been linked to a bowler');
+      }
+      return row;
+    });
+
+    const deleted = await storage.deleteUser(target.id);
+
+    cacheInvalidate(`user:${userId}`);
+    log.info('Unclaimed user deleted', {
+      deletedUserId: deleted.id,
+      deletedEmail: deleted.email,
+      actingUserId: req.user?.id,
+      orgId: ctx.orgId,
+    });
+
+    sendSuccess(res, { id: deleted.id, email: deleted.email });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return sendError(res, error.message, error.status, error.code);
+    }
+    const errObj = (error && typeof error === 'object') ? error as { name?: string; message?: string } : {};
+    if (errObj.name === 'CannotDeleteAdminError') {
+      return sendError(res, errObj.message ?? 'Cannot delete admin', 403, 'forbidden');
+    }
+    if (errObj.name === 'UserHasAuditTrailError') {
+      return sendError(res, errObj.message ?? 'Audit trail conflict', 409, 'AUDIT_TRAIL_CONFLICT');
+    }
+    log.error('Error deleting unclaimed user:', error);
+    sendError(res, 'Failed to delete unclaimed user');
   }
 });
 

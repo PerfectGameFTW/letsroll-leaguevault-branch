@@ -13,6 +13,7 @@ import {
   login,
   apiGet,
   apiPost,
+  apiDelete,
   TEST_ORG_A_EMAIL,
   TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
@@ -337,6 +338,59 @@ describe('Admin claim of self-registered users (Task #667)', () => {
 
     const [rr] = await db.select({ bowlerId: users.bowlerId }).from(users).where(eq(users.id, user.id));
     expect(rr.bowlerId).toBeNull();
+  });
+
+  it('DELETE /unclaimed-users/:id permanently deletes an unclaimed user; row is gone afterwards', async () => {
+    const user = await insertUnclaimedUser({ organizationId: orgAId, label: 'delete-happy' });
+
+    const res = await apiDelete<{ id: number; email: string }>(
+      `/api/admin/unclaimed-users/${user.id}`,
+      sessionA,
+    );
+    expect(res.status, JSON.stringify(res.data)).toBe(200);
+    expect(res.data.success).toBe(true);
+    expect(res.data.data?.id).toBe(user.id);
+
+    const reread = await db.select({ id: users.id }).from(users).where(eq(users.id, user.id));
+    expect(reread).toHaveLength(0);
+  });
+
+  it('DELETE /unclaimed-users/:id refuses cross-org targets (org A admin → org B user → 403)', async () => {
+    const userB = await insertUnclaimedUser({ organizationId: orgBId, label: 'delete-xorg' });
+
+    const res = await apiDelete(`/api/admin/unclaimed-users/${userB.id}`, sessionA);
+    expect(res.status).toBe(403);
+    expect(res.data.error?.code).toBe('CROSS_ORG_DENIED');
+
+    const [rr] = await db.select({ id: users.id }).from(users).where(eq(users.id, userB.id));
+    expect(rr?.id).toBe(userB.id);
+  });
+
+  it('DELETE /unclaimed-users/:id refuses a user that has been linked to a bowler (409 ALREADY_LINKED)', async () => {
+    const user = await insertUnclaimedUser({ organizationId: orgAId, label: 'delete-linked' });
+
+    const create = await apiPost<CreateBowlerOk>(
+      `/api/admin/unclaimed-users/${user.id}/create-bowler`,
+      { leagueId, teamId },
+      sessionA,
+    );
+    expect(create.status).toBe(200);
+    const out = create.data.data;
+    if (!out) throw new Error('expected create-bowler to return data');
+    createdBowlerIds.push(out.bowlerId);
+
+    const del = await apiDelete(`/api/admin/unclaimed-users/${user.id}`, sessionA);
+    expect(del.status).toBe(409);
+    expect(del.data.error?.code).toBe('ALREADY_LINKED');
+
+    const [rr] = await db.select({ id: users.id }).from(users).where(eq(users.id, user.id));
+    expect(rr?.id).toBe(user.id);
+  });
+
+  it('DELETE /unclaimed-users/:id returns 404 for an unknown user id', async () => {
+    const res = await apiDelete(`/api/admin/unclaimed-users/2147000111`, sessionA);
+    expect(res.status).toBe(404);
+    expect(res.data.error?.code).toBe('NOT_FOUND');
   });
 
   it('POST /create-bowler rolls the whole thing back when the team belongs to a different league (no orphaned bowler row)', async () => {
