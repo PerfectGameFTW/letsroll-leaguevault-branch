@@ -107,7 +107,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-non-null-assertion/);
-    expect(r.stderr).toMatch(/258 suppressions \(ceiling 250\)/);
+    expect(r.stderr).toMatch(/258 suppressions \(ceiling 249\)/);
   });
 
   it('exits 1 in --strict mode when the total ceiling is exceeded (catches "swap one any for a different rule" workarounds)', () => {
@@ -150,7 +150,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 250\)/,
+      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 249\)/,
     );
     expect(r.stdout).toMatch(/Lower RULE_CEILINGS/);
     expect(r.stdout).toMatch(/RATCHET: total suppressions: 100/);

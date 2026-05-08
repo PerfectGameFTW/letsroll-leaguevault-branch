@@ -184,8 +184,8 @@ describe('useBowlerPaymentSubmit success toasts', () => {
     expect(description).not.toMatch(/selectedSchedule/);
   });
 
-  it('shows the upfront full-season scheduled toast', async () => {
-    csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ ok: true }));
+  it('shows the upfront full-season success toast', async () => {
+    csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ data: { id: 'pmt-1' } }));
 
     const submit = useBowlerPaymentSubmit(
       makeOptions({
@@ -197,9 +197,9 @@ describe('useBowlerPaymentSubmit success toasts', () => {
 
     expect(toastMock).toHaveBeenCalledTimes(1);
     const { title, description } = lastToast();
-    expect(title).toBe('Payment Scheduled');
+    expect(title).toBe('Payment Successful');
     expect(description).toBe(
-      'Your card has been saved and your full season payment of $300.00 will be processed momentarily.',
+      'Your full season payment of $300.00 has been processed.',
     );
   });
 
@@ -263,27 +263,19 @@ describe('useBowlerPaymentSubmit success toasts', () => {
 // silently regress to "Square isn't connected" on Clover leagues.
 describe('useBowlerPaymentSubmit PROVIDER_NOT_CONFIGURED toast (#610)', () => {
   // Helper: drive the upfront-with-new-card branch so the catch block
-  // sees a structured error from `throwApiErrorIfNotOk`. The
-  // `/api/payments-provider/cards/:bowlerId` POST is the only call in
-  // the upfront flow that funnels its non-OK body through
-  // `makeApiError`, which is what preserves the
-  // PROVIDER_NOT_CONFIGURED code for `isProviderNotConfiguredError`.
+  // sees a structured PROVIDER_NOT_CONFIGURED error. After task #672
+  // the upfront new-card flow charges immediately via `createPayment`
+  // (no forced save-card), so we mock that to throw an
+  // ApiErrorLike with the PROVIDER_NOT_CONFIGURED code.
   async function triggerNotConfigured() {
-    tokenizeCardMock.mockResolvedValueOnce('cnon:fake-token');
-    csrfFetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 422,
-      json: () =>
-        Promise.resolve({
-          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Provider not connected' },
-        }),
-    });
+    const err = new Error('Provider not connected') as Error & { code?: string; status?: number };
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.status = 422;
+    createPaymentMock.mockRejectedValueOnce(err);
 
     const submit = useBowlerPaymentSubmit(
       makeOptions({
         league: makeLeague('upfront'),
-        // Force the new-card path so the save-card endpoint runs
-        // (saved-card path short-circuits past the fetch).
         cardMode: 'new',
         card: makeCard(),
         selectedSavedCardId: '',

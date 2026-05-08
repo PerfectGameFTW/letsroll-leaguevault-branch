@@ -57,11 +57,6 @@
       "count": 4
     }
   },
-  "client/src/hooks/use-bowler-payment-submit.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
   "client/src/hooks/use-league-form-data.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

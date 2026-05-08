@@ -90,6 +90,11 @@ export function useBowlerPaymentSubmit({
       toast({ title: "Payment Setup Error", description: "Please select a saved card.", variant: "destructive" });
       return;
     }
+    // After the gate above, if cardMode === 'new' then card is non-null.
+    // Capture into a local so downstream branches can pass it without
+    // a `card!` non-null assertion (lint forbids
+    // `@typescript-eslint/no-non-null-assertion`).
+    const newCard: NonNullable<PaymentCard> | null = cardMode === 'new' && card ? card : null;
 
     const isUpfront = league.paymentMode === 'upfront';
     const isAutoPay = !isUpfront && selectedSchedule !== 'custom';
@@ -118,7 +123,8 @@ export function useBowlerPaymentSubmit({
           await throwApiErrorIfNotOk(response, responseData, 'Payment failed');
         } else {
           const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
-          await createPayment(upfrontAmount, card!, bowler.id, league.id, storeCard, overrideEmail);
+          if (!newCard) throw new Error('Please enter your card details before proceeding.');
+          await createPayment(upfrontAmount, newCard, bowler.id, league.id, storeCard, overrideEmail);
           if (storeCard) {
             queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
           }
@@ -178,7 +184,8 @@ export function useBowlerPaymentSubmit({
         const shouldStore = isAutoPay || storeCard;
         const trimmedBuyerEmail = (buyerEmail ?? '').trim();
         const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
-        const paymentResult = await createPayment(amount, card!, bowler.id, league.id, shouldStore, overrideEmail);
+        if (!newCard) throw new Error('Please enter your card details before proceeding.');
+        const paymentResult = await createPayment(amount, newCard, bowler.id, league.id, shouldStore, overrideEmail);
         if (shouldStore) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
