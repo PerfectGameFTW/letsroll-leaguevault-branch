@@ -639,7 +639,11 @@ router.delete('/unclaimed-users/:userId', adminWriteLimiter, async (req, res) =>
       return sendError(res, 'Invalid user ID', 400, 'InvalidRequest');
     }
 
-    const target = await db.transaction(async (tx) => {
+    // Hold the row lock end-to-end across both the precondition checks
+    // and storage.deleteUser so a concurrent /create-bowler or
+    // /link-existing can't slip a bowlerId onto this user between the
+    // check and the delete.
+    const deleted = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`);
       const [row] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
       if (!row) {
@@ -654,10 +658,8 @@ router.delete('/unclaimed-users/:userId', adminWriteLimiter, async (req, res) =>
       if (row.bowlerId !== null) {
         throw new HttpError(409, 'ALREADY_LINKED', 'User has already been linked to a bowler');
       }
-      return row;
+      return storage.deleteUser(row.id, tx);
     });
-
-    const deleted = await storage.deleteUser(target.id);
 
     cacheInvalidate(`user:${userId}`);
     log.info('Unclaimed user deleted', {

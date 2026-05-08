@@ -517,8 +517,15 @@ export async function setUserInviteToken(userId: number, token: string, expiry: 
  * `CannotDeleteAdminError` or `UserHasAuditTrailError` for the typed
  * refusal cases above. (#268)
  */
-export async function deleteUser(userId: number): Promise<User> {
-  return db.transaction(async (tx) => {
+export async function deleteUser(
+  userId: number,
+  executor?: UserDbExecutor,
+): Promise<User> {
+  // When the caller passes their own transaction executor we run the
+  // deletion inside that transaction so any row locks they took remain
+  // held end-to-end (avoids the TOCTOU window between a precondition
+  // check and the actual delete). Otherwise we open our own txn.
+  const run = async (tx: UserDbExecutor): Promise<User> => {
     const [target] = await tx.select().from(users).where(eq(users.id, userId));
     if (!target) {
       throw new Error(`User with ID ${userId} not found`);
@@ -558,7 +565,12 @@ export async function deleteUser(userId: number): Promise<User> {
     cacheInvalidate(`user:${userId}`);
     log.info('Deleted user', { id: deleted.id, email: deleted.email });
     return deleted;
-  });
+  };
+
+  if (executor) {
+    return run(executor);
+  }
+  return db.transaction(async (tx) => run(tx));
 }
 
 export async function clearUserInviteToken(userId: number): Promise<User> {
