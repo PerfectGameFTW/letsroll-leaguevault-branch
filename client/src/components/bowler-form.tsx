@@ -205,6 +205,10 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       if (result === null) return;
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      if (bowler) {
+        queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowler.id}/details`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowler.id}`] });
+      }
       if (defaultTeamId) {
         queryClient.invalidateQueries({ queryKey: [`/api/teams/${defaultTeamId}/details`] });
       }

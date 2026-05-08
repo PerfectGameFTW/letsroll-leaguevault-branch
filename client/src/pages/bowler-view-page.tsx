@@ -3,8 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
+import { Button } from "@/components/ui/button";
+import { BowlerForm } from "@/components/bowler-form";
+import type { User } from "@shared/schema";
 import {
   Select,
   SelectContent,
@@ -24,6 +27,14 @@ export default function BowlerViewPage() {
   const params = useParams();
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+
+  const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+  });
+  const currentUserRole = currentUserResponse?.data?.role;
+  const canEditBowler = currentUserRole === "system_admin" || currentUserRole === "org_admin";
 
   const search = useSearch();
   const explicitBackLink = useMemo(() => {
@@ -159,11 +170,22 @@ export default function BowlerViewPage() {
           </Link>
         ) : null}
         <div className="flex flex-col gap-2 mb-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold">{bowler?.name}</h1>
             <Badge variant={bowler?.active ? "default" : "secondary"}>
               {bowler?.active ? "Active" : "Inactive"}
             </Badge>
+            {canEditBowler && bowler && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditDialog(true)}
+                data-testid="button-edit-bowler"
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit Bowler
+              </Button>
+            )}
             {bnConfigured && (
               <Badge
                 variant={bowler?.bnContactId ? "default" : "outline"}
@@ -218,6 +240,15 @@ export default function BowlerViewPage() {
           locationId={league?.locationId ?? null}
         />
       </ErrorBoundary>
+
+      {bowler && (
+        <BowlerForm
+          key={`edit-${bowler.id}`}
+          open={showEditDialog}
+          bowler={bowler}
+          onClose={() => setShowEditDialog(false)}
+        />
+      )}
     </Layout>
   );
 }

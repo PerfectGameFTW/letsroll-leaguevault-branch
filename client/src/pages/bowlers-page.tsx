@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff, Search, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search, RefreshCw, CheckCircle2, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Bowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +54,7 @@ function BowlerTableSkeleton() {
 
 export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
+  const [editingBowler, setEditingBowler] = useState<Bowler | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
@@ -155,12 +156,13 @@ export default function BowlersPage() {
                 <TableHead className="hidden md:table-cell">Square Account</TableHead>
                 <TableHead>Status</TableHead>
                 {bnConfigured && <TableHead>BowlNow</TableHead>}
+                <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={bnConfigured ? 6 : 5} className="text-center py-4">
+                  <TableCell colSpan={bnConfigured ? 7 : 6} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -229,6 +231,17 @@ export default function BowlersPage() {
                           </Badge>
                         </TableCell>
                       )}
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditingBowler(bowler)}
+                          aria-label={`Edit ${bowler.name}`}
+                          data-testid={`button-edit-bowler-${bowler.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -242,6 +255,15 @@ export default function BowlersPage() {
         open={showForm}
         onClose={() => {
           setShowForm(false);
+        }}
+      />
+
+      <BowlerForm
+        key={editingBowler?.id ?? "edit-none"}
+        open={!!editingBowler}
+        bowler={editingBowler ?? undefined}
+        onClose={() => {
+          setEditingBowler(null);
         }}
       />
       </ErrorBoundary>
