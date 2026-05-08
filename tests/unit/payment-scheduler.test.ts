@@ -77,6 +77,7 @@ function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule
     createdAt: '2026-04-01 23:30:00',
     cancelledAt: null,
     cancelReason: null,
+    additionalBowlerIds: null,
     ...overrides,
   };
 }

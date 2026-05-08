@@ -11,6 +11,38 @@ import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { createLogger } from '../logger';
 import { isTestKickSuppressed, PAYMENT_SCHEDULER_KICK_HEADER } from '../utils/test-suppression';
+import { getAcceptedPartnerBowlerIds } from '../storage/bowler-payment-links';
+
+/**
+ * Task #678: validate `additionalBowlerIds` (combined autopay).
+ * - de-duplicates and removes self
+ * - rejects ids that aren't accepted-linked partners of the payer in the org
+ * - rejects ids whose bowler row is in a different org or org-less
+ * Returns sanitized list (may be empty) or an error message.
+ */
+async function validateAdditionalBowlerIds(
+  payerBowlerId: number,
+  organizationId: number,
+  raw: unknown,
+): Promise<{ ok: true; ids: number[] } | { ok: false; message: string }> {
+  if (raw === undefined || raw === null) return { ok: true, ids: [] };
+  if (!Array.isArray(raw)) return { ok: false, message: 'additionalBowlerIds must be an array' };
+  const cleaned = Array.from(
+    new Set(
+      raw
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n > 0 && n !== payerBowlerId),
+    ),
+  );
+  if (cleaned.length === 0) return { ok: true, ids: [] };
+  const partners = new Set(await getAcceptedPartnerBowlerIds(payerBowlerId, organizationId));
+  for (const id of cleaned) {
+    if (!partners.has(id)) {
+      return { ok: false, message: `Bowler ${id} is not an accepted payment partner` };
+    }
+  }
+  return { ok: true, ids: cleaned };
+}
 
 const log = createLogger("PaymentSchedules");
 
@@ -76,9 +108,24 @@ router.post('/', adminWriteLimiter, async (req, res) => {
           league.cancelledDates ?? []
         );
 
+    let cleanedAdditional: number[] = [];
+    if (req.body.additionalBowlerIds !== undefined && req.body.additionalBowlerIds !== null) {
+      if (!league.organizationId) {
+        return sendError(res, 'Combined autopay requires an org-stamped league', 400, 'ORG_REQUIRED');
+      }
+      const v = await validateAdditionalBowlerIds(
+        req.body.bowlerId,
+        league.organizationId,
+        req.body.additionalBowlerIds,
+      );
+      if (!v.ok) return sendError(res, v.message, 400, 'INVALID_PARTNER');
+      cleanedAdditional = v.ids;
+    }
+
     const validationResult = insertPaymentScheduleSchema.safeParse({
       ...req.body,
       nextPaymentDate,
+      additionalBowlerIds: cleanedAdditional.length > 0 ? cleanedAdditional : null,
     });
 
     if (!validationResult.success) {
@@ -213,6 +260,20 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
         league.skipDates ?? [],
         league.cancelledDates ?? []
       );
+    }
+
+    if (req.body.additionalBowlerIds !== undefined) {
+      const league2 = await storage.getLeague(schedule.leagueId);
+      if (!league2?.organizationId) {
+        return sendError(res, 'Combined autopay requires an org-stamped league', 400, 'ORG_REQUIRED');
+      }
+      const v = await validateAdditionalBowlerIds(
+        schedule.bowlerId,
+        league2.organizationId,
+        req.body.additionalBowlerIds,
+      );
+      if (!v.ok) return sendError(res, v.message, 400, 'INVALID_PARTNER');
+      updates.additionalBowlerIds = v.ids.length > 0 ? v.ids : null;
     }
 
     if (Object.keys(updates).length === 0) {

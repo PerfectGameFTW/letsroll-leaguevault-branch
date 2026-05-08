@@ -22,6 +22,7 @@ import { filterActiveBowlerLeagues } from "@/lib/bowler-league-utils";
 import { BowlerFinancialSummary } from "@/components/bowler-financial-summary";
 import { BowlerPaymentHistoryTable } from "@/components/bowler-payment-history-table";
 import { PaymentSyncRetryStatus } from "@/components/payment-sync-retry-status";
+import { AdminBowlerLinkPanel } from "@/components/admin-bowler-link-panel";
 
 export default function BowlerViewPage() {
   const params = useParams();
@@ -240,6 +241,12 @@ export default function BowlerViewPage() {
           locationId={league?.locationId ?? null}
         />
       </ErrorBoundary>
+
+      {canEditBowler && bowler && (
+        <ErrorBoundary level="section">
+          <AdminBowlerLinkPanel bowlerId={bowler.id} />
+        </ErrorBoundary>
+      )}
 
       {bowler && (
         <BowlerForm

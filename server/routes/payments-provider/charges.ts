@@ -11,6 +11,7 @@ import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../../storage';
 import { sendError } from '../../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../../utils/access-control.js';
+import { canUserPayForBowler } from '../../utils/bowler-payment-authz.js';
 import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
 import {
@@ -121,8 +122,19 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    if (!await hasAccessToBowler(req, bowlerId)) {
-      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    // Task #678: gate the saved-card / wallet charge path on
+    // pay-for-partner authz instead of plain hasAccessToBowler so a
+    // linked adult bowler can charge their own saved card on behalf
+    // of an accepted partner. Admin "manual" payments use the
+    // /api/payments POST path, which still uses hasAccessToBowler.
+    const payAuthz = await canUserPayForBowler(req, bowlerId);
+    if (!payAuthz.allowed) {
+      // Fall back to the legacy bowler-access check so admins (without
+      // a payerBowlerId) still pass when their token-based source is
+      // an admin checkout flow that already validated org access.
+      if (!await hasAccessToBowler(req, bowlerId)) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
     }
 
     const league = await storage.getLeague(leagueId);
@@ -331,6 +343,10 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       receiptNumber: payment.receiptNumber,
       receiptEmailMissing: false,
       idempotencyKey,
+      // Task #678: stamp the actor user — non-null for every
+      // interactive charge (req.user is always present here because
+      // requireAuth runs at the mount).
+      paidByUserId: req.user?.id ?? null,
     });
 
     if (isDev) log.info('Payment recorded in DB:', {

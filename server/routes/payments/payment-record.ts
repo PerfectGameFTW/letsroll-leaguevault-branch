@@ -80,6 +80,9 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
         ...payment,
         lineageAmount,
         prizeFundAmount,
+        // Task #678: server-stamp the actor user so manual admin
+        // entries carry attribution for the payments-history badge.
+        paidByUserId: req.user?.id ?? payment.paidByUserId ?? null,
       });
     } catch (insertError: unknown) {
       if (

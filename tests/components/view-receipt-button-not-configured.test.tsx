@@ -99,6 +99,7 @@ const PAYMENT: Payment = {
   receiptNumber: null,
   receiptEmailMissing: false,
   notes: null,
+  paidByUserId: null,
   createdAt: '2025-01-06T00:00:00.000Z',
 };
 

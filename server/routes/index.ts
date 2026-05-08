@@ -27,6 +27,7 @@ import accountRouter from './account.js';
 import { registerAuthRoutes } from './auth.js';
 import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
+import bowlerLinksRouter from './bowler-links.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotated } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -138,6 +139,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/integrations', requireOrgAdmin, integrationsRouter);
   app.use('/api/account', accountRouter);
   app.use('/api/search', requireAuth, searchRouter);
+  app.use('/api/bowler-links', requireAuth, bowlerLinksRouter);
 
   log.info('API routes registered');
 }

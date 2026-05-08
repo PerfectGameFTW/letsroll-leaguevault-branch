@@ -122,6 +122,7 @@ function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule
     createdAt: '2026-01-01T00:00:00.000Z',
     cancelledAt: null,
     cancelReason: null,
+    additionalBowlerIds: null,
   };
   return Object.assign(base, overrides);
 }

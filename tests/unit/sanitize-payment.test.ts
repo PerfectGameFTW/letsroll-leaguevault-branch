@@ -42,6 +42,7 @@ function makeFullyPopulatedPayment(): Payment {
     receiptNumber: 'rcpt-123',
     receiptEmailMissing: false,
     notes: 'admin note',
+    paidByUserId: null,
     createdAt: '2024-01-01T00:00:00.000Z',
   };
 }

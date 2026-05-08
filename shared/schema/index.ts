@@ -84,6 +84,9 @@ export type {
 
 export { sessions } from "./sessions";
 
+export { bowlerPaymentLinks, insertBowlerPaymentLinkSchema, LINK_STATUSES } from "./bowler-payment-links";
+export type { BowlerPaymentLink, InsertBowlerPaymentLink, LinkStatus } from "./bowler-payment-links";
+
 export { rateLimitBuckets } from "./rate-limit-buckets";
 
 export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";

@@ -71,9 +71,10 @@ vi.mock('../../server/utils/league-datetime.js', () => ({
   getNextLeagueDateTime: () => new Date('2026-05-01T19:00:00.000Z'),
 }));
 
-vi.mock('../../server/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+vi.mock('../../server/logger', () => {
+  const fake = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { logger: fake, createLogger: () => fake };
+});
 
 const { processScheduledPaymentJob } = await import('../../server/services/payment-lifecycle');
 

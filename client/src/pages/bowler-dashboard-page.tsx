@@ -11,6 +11,7 @@ import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-ut
 import { DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
+import { BowlerPaymentLinksSection } from "@/components/bowler-payment-links-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
@@ -343,6 +344,8 @@ export const BowlerDashboardPage: FC = () => {
           totalWeeks={totalWeeks}
           payments={paymentsResponse?.data || []}
         />
+
+        <BowlerPaymentLinksSection currentBowlerId={bowler.id} />
       </div>
       </ErrorBoundary>
 

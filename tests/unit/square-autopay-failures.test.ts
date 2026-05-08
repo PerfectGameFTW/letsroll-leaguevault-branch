@@ -185,6 +185,7 @@ const baseSchedule: PaymentSchedule = {
   lastPaymentDate: null,
   active: true,
   createdAt: '2026-04-01T00:00:00.000Z',
+  additionalBowlerIds: null,
   cancelledAt: null,
   cancelReason: null,
 };

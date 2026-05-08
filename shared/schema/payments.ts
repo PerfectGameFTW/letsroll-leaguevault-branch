@@ -4,6 +4,7 @@ import { z } from "zod";
 import { PAYMENT_STATUSES, PAYMENT_TYPES, SCHEDULE_FREQUENCIES, positiveIntSchema, dateSchema } from "./constants";
 import { bowlers } from "./bowlers";
 import { leagues } from "./leagues";
+import { users } from "./users";
 
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
@@ -51,11 +52,19 @@ export const payments = pgTable("payments", {
   // the refund dialog (refunds inherit the original payment's email).
   receiptEmailMissing: boolean("receipt_email_missing").notNull().default(false),
   notes: text("notes"),
+  // Task #678: when an adult bowler pays on behalf of a linked
+  // payment partner (or on their own bowler), this records the
+  // user.id of the human who initiated the charge. NULL for legacy
+  // rows, manual admin-entered rows, and webhook-driven inserts
+  // where there is no actor user. ON DELETE SET NULL so deleting
+  // the user doesn't cascade-delete payment history.
+  paidByUserId: integer("paid_by_user_id").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   bowlerIdx: index("payments_bowler_idx").on(table.bowlerId),
   leagueIdx: index("payments_league_idx").on(table.leagueId),
   weekOfIdx: index("payments_week_of_idx").on(table.weekOf),
+  paidByUserIdx: index("payments_paid_by_user_idx").on(table.paidByUserId),
 }));
 
 export const paymentSchedules = pgTable("payment_schedules", {
@@ -75,6 +84,13 @@ export const paymentSchedules = pgTable("payment_schedules", {
   paymentCardId: text("payment_card_id").notNull(),
   cancelledAt: timestamp("cancelled_at", { mode: "string" }),
   cancelReason: text("cancel_reason"),
+  // Task #678: combined autopay. When a payer (the bowler at
+  // `bowlerId`, owner of `paymentCardId`) wants their saved card
+  // charged for additional linked bowlers each cycle, those bowler
+  // ids land here. The scheduler iterates this list and produces a
+  // separate payment row per bowler, all stamped with the payer's
+  // user id. Empty/null = legacy single-bowler behavior.
+  additionalBowlerIds: integer("additional_bowler_ids").array(),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
   nextPaymentIdx: index("next_payment_idx").on(table.nextPaymentDate),
@@ -102,6 +118,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   receiptEmailMissing: z.boolean().optional().default(false),
   notes: z.string().optional(),
   storeCard: z.boolean().optional(),
+  paidByUserId: z.number().int().positive().nullable().optional(),
 }).omit({ id: true, createdAt: true });
 
 export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
@@ -112,6 +129,7 @@ export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   nextPaymentDate: dateSchema,
   active: z.boolean().default(true),
   paymentCardId: z.string(),
+  additionalBowlerIds: z.array(z.number().int().positive()).optional().nullable(),
 }).omit({ id: true, createdAt: true, lastPaymentDate: true, cancelledAt: true, cancelReason: true });
 
 export const updatePaymentSchema = z.object({
@@ -133,6 +151,7 @@ export const updatePaymentSchema = z.object({
   receiptNumber: z.string().nullable(),
   receiptEmailMissing: z.boolean(),
   notes: z.string().nullable(),
+  paidByUserId: z.number().int().positive().nullable(),
 }).partial();
 
 export const updatePaymentScheduleSchema = z.object({
@@ -144,6 +163,7 @@ export const updatePaymentScheduleSchema = z.object({
   lastPaymentDate: dateSchema.nullable(),
   cancelledAt: dateSchema.nullable(),
   cancelReason: z.string().nullable(),
+  additionalBowlerIds: z.array(z.number().int().positive()).nullable(),
 }).partial();
 
 export type Payment = typeof payments.$inferSelect;
