@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => {
       list: vi.fn(),
       searchItems: vi.fn(),
     },
+    cards: {
+      create: vi.fn(),
+    },
     // Stable logger so pagination tests can assert that the safety
     // cap fired (`log.warn(...)`) on the same instance the
     // module-level `log` was bound to at import time.
@@ -38,6 +41,7 @@ vi.mock('square', () => ({
       customers: mocks.customers,
       payments: mocks.payments,
       catalog: mocks.catalog,
+      cards: mocks.cards,
     };
   },
   SquareEnvironment: { Production: 'production', Sandbox: 'sandbox' },
@@ -73,7 +77,77 @@ vi.mock('../../logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-const { SquarePaymentProvider } = await import('../square-provider.js');
+const {
+  SquarePaymentProvider,
+  buildSquareIdempotencyKey,
+  SQUARE_IDEMPOTENCY_MAX_LENGTH,
+} = await import('../square-provider.js');
+
+// Task #671: pin the idempotency-key contract shared by saveCardOnFile
+// and createOrUpdateCustomer. Square's CreateCard / CreateCustomer
+// endpoints both cap `idempotency_key` at 45 chars; the v40 SDK
+// migration silently shipped a 64-char SHA-256 hex digest which broke
+// every save-card call in production with `VALUE_TOO_LONG`. These
+// tests fail loud if any future refactor pushes the key over the
+// limit, drops the deterministic shape, or accidentally collapses
+// distinct (sourceId, customerId) pairs onto the same key.
+describe('buildSquareIdempotencyKey (task #671)', () => {
+  it('produces a key at or under Square\'s 45-char idempotency_key cap', () => {
+    const longSourceId = 'cnon:' + 'A'.repeat(200);
+    const longCustomerId = 'CUST_' + 'B'.repeat(200);
+    const key = buildSquareIdempotencyKey('lv-card', longSourceId, longCustomerId);
+    expect(key.length).toBeLessThanOrEqual(SQUARE_IDEMPOTENCY_MAX_LENGTH);
+    expect(SQUARE_IDEMPOTENCY_MAX_LENGTH).toBe(45);
+  });
+
+  it('is deterministic for identical inputs (so retries dedupe in Square\'s window)', () => {
+    const a = buildSquareIdempotencyKey('lv-card', 'cnon:ABC', 'CUST123');
+    const b = buildSquareIdempotencyKey('lv-card', 'cnon:ABC', 'CUST123');
+    expect(a).toBe(b);
+  });
+
+  it('changes when any input changes (no cross-bowler / cross-card collisions)', () => {
+    const base = buildSquareIdempotencyKey('lv-card', 'cnon:ABC', 'CUST123');
+    expect(buildSquareIdempotencyKey('lv-card', 'cnon:XYZ', 'CUST123')).not.toBe(base);
+    expect(buildSquareIdempotencyKey('lv-card', 'cnon:ABC', 'CUST999')).not.toBe(base);
+    expect(buildSquareIdempotencyKey('lv-cust', 'cnon:ABC', 'CUST123')).not.toBe(base);
+  });
+
+  it('throws if the prefix would push the key over the cap (loud failure for refactors)', () => {
+    const tooLongPrefix = 'x'.repeat(50);
+    expect(() => buildSquareIdempotencyKey(tooLongPrefix, 'a', 'b')).toThrow(
+      /exceeded 45 chars/,
+    );
+  });
+});
+
+describe('saveCardOnFile idempotency key (task #671)', () => {
+  it('sends an idempotency_key ≤45 chars to Square so VALUE_TOO_LONG never fires', async () => {
+    mocks.getLocationSquareConfig.mockResolvedValue({
+      accessToken: 'EAAAEv-test-token',
+      appId: 'sq0idp-test',
+      locationId: 'LOC123',
+    });
+    mocks.cards.create.mockReset();
+    mocks.cards.create.mockResolvedValue({
+      card: { id: 'card_1', last4: '4242', cardBrand: 'VISA' },
+    });
+    const localProvider = new SquarePaymentProvider(1);
+    const sourceId = 'cnon:CA4SEXAMPLEEXAMPLEEXAMPLE';
+    const customerId = 'CUSTOMER_ID_ABC123XYZ';
+
+    await localProvider.saveCardOnFile(sourceId, customerId);
+    expect(mocks.cards.create).toHaveBeenCalledTimes(1);
+    const firstBody = mocks.cards.create.mock.calls[0]?.[0] as { idempotencyKey: string };
+    expect(typeof firstBody.idempotencyKey).toBe('string');
+    expect(firstBody.idempotencyKey.length).toBeLessThanOrEqual(45);
+
+    // Same inputs → same key (retry dedupe contract on Square's side).
+    await localProvider.saveCardOnFile(sourceId, customerId);
+    const secondBody = mocks.cards.create.mock.calls[1]?.[0] as { idempotencyKey: string };
+    expect(secondBody.idempotencyKey).toBe(firstBody.idempotencyKey);
+  });
+});
 
 describe('Square Service', () => {
   let provider: InstanceType<typeof SquarePaymentProvider>;

@@ -33,6 +33,42 @@ import type {
 const log = createLogger("SquareService");
 
 /**
+ * Square's CreateCard / CreateCustomer endpoints cap `idempotency_key`
+ * at 45 characters. Anything longer is rejected with
+ * `INVALID_REQUEST_ERROR / VALUE_TOO_LONG` and the call fails — which
+ * is what bit task #671 in production after the v40 SDK migration
+ * (the pre-fix code sent the full 64-char SHA-256 hex digest, and a
+ * post-fix `.slice(0, 40)` was easy to silently drop in a refactor).
+ *
+ * `buildSquareIdempotencyKey` centralises the format so:
+ *   - The output is deterministic for the same inputs (so retries
+ *     dedupe inside Square's idempotency window).
+ *   - The output is unique enough to avoid cross-bowler / cross-card
+ *     collisions (32 hex chars = 128 bits of entropy).
+ *   - The output has a short, human-readable prefix so a stuck request
+ *     in Square's dashboard is grep-able back to the call site.
+ *   - The output length is asserted at runtime to be ≤45, so any
+ *     future change to the prefix or hash slice that would push it
+ *     over the limit fails loud during tests / dev rather than only
+ *     in production. Pinned by `square.test.ts`.
+ */
+export const SQUARE_IDEMPOTENCY_MAX_LENGTH = 45;
+export function buildSquareIdempotencyKey(prefix: string, ...parts: string[]): string {
+  const hash = crypto
+    .createHash('sha256')
+    .update(parts.join(':'))
+    .digest('hex')
+    .slice(0, 32);
+  const key = `${prefix}-${hash}`;
+  if (key.length > SQUARE_IDEMPOTENCY_MAX_LENGTH) {
+    throw new Error(
+      `Square idempotency key exceeded ${SQUARE_IDEMPOTENCY_MAX_LENGTH} chars: ${key.length} (prefix='${prefix}')`,
+    );
+  }
+  return key;
+}
+
+/**
  * Safety cap on catalog pagination (Task #613). Square paginates
  * `catalog.list` and `catalog.searchItems` with a `cursor`; without a
  * cap, a stuck or pathological cursor (e.g. an SDK bug that never
@@ -793,10 +829,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     try {
       if (isDev) log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
       const response = await client.cards.create({
-        // Idempotency key shape preserved across the v40 SDK upgrade
-        // so post-deploy retries dedupe against any pre-upgrade
-        // saveCardOnFile request still in flight on Square's side.
-        idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex').slice(0, 40),
+        // Use the centralised builder so we can never silently
+        // re-introduce the >45-char idempotency_key bug that broke
+        // every save-card call after the v40 SDK migration (task
+        // #671). The format is deterministic per (sourceId, customerId)
+        // so post-deploy retries still dedupe inside Square's window.
+        idempotencyKey: buildSquareIdempotencyKey('lv-card', sourceId, customerId),
         sourceId,
         card: {
           customerId,
@@ -810,7 +848,40 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       return null;
     } catch (error) {
       log.error('Failed to save card on file:', error instanceof Error ? error.message : error);
-      return null;
+      // Re-throw as a typed PaymentProviderError so the standalone
+      // POST /api/cards/:bowlerId route surfaces a real `userMessage`
+      // / `code` via buildPaymentErrorResponse instead of the generic
+      // "Failed to save card on file" 500 (task #671). The opportunistic
+      // save-card call inside POST /payments wraps the throw in its own
+      // try/catch (charges.ts ~309) so it stays non-fatal there — the
+      // payment still completes; we just don't get a saved card.
+      if (
+        error instanceof PaymentProviderError ||
+        error instanceof ProviderNotConfiguredError
+      ) {
+        throw error;
+      }
+      const apiErr = error instanceof SquareError ? error : null;
+      const detail = apiErr?.errors?.[0]?.detail;
+      if (apiErr?.statusCode === 400) {
+        throw new PaymentProviderError(
+          'Invalid payment information. Please check your card details and try again.',
+          'INVALID_REQUEST',
+          detail,
+        );
+      }
+      if (apiErr?.statusCode === 401) {
+        throw new PaymentProviderError(
+          'Payment system is temporarily unavailable. Please try again later.',
+          'SYSTEM_ERROR',
+          detail,
+        );
+      }
+      throw new PaymentProviderError(
+        'Could not save card on file. Please try again.',
+        'SAVE_CARD_FAILED',
+        detail,
+      );
     }
   }
 
@@ -957,10 +1028,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       } else {
         if (isDev) log.info('No existing customer found, creating new...');
         const customerResponse = await client.customers.create({
-          // Idempotency key shape preserved across the v40 SDK upgrade
-          // so a retry post-deploy still dedupes against the in-flight
-          // pre-upgrade request on Square's side.
-          idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex').slice(0, 40),
+          // Same centralised builder as saveCardOnFile (task #671):
+          // Square's customers.create endpoint shares the 45-char cap,
+          // and the original 40-char SHA-256 slice was equally fragile
+          // to a refactor silently dropping the truncation.
+          idempotencyKey: buildSquareIdempotencyKey('lv-cust', email.toLowerCase(), name),
           givenName: firstName,
           familyName: lastName || '',
           emailAddress: email.toLowerCase(),
