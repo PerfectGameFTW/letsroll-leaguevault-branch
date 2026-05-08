@@ -107,22 +107,27 @@ describe('ForgotPasswordPage throttle UX', () => {
   });
 
   it('clears the throttle alert once the cooldown elapses', async () => {
-    forgotHandler = () => rateLimitResponse(1);
-    const user = userEvent.setup();
-    renderPage();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      forgotHandler = () => rateLimitResponse(1);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderPage();
 
-    await fillAndSubmit(user);
+      await fillAndSubmit(user);
 
-    await waitFor(() =>
-      expect(screen.getByTestId('alert-forgot-throttled')).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId('button-forgot-submit')).toBeDisabled();
+      await waitFor(() =>
+        expect(screen.getByTestId('alert-forgot-throttled')).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId('button-forgot-submit')).toBeDisabled();
 
-    await waitFor(
-      () =>
+      await vi.advanceTimersByTimeAsync(1500);
+
+      await waitFor(() =>
         expect(screen.queryByTestId('alert-forgot-throttled')).not.toBeInTheDocument(),
-      { timeout: 5000 },
-    );
-    expect(screen.getByTestId('button-forgot-submit')).not.toBeDisabled();
+      );
+      expect(screen.getByTestId('button-forgot-submit')).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
