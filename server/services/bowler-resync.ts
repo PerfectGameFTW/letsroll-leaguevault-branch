@@ -157,6 +157,21 @@ export function fireBowlerExternalResync(
 }
 
 /**
+ * Awaitable variant of `fireBowlerExternalResync`. Use ONLY in
+ * non-user-facing contexts where script completion must guarantee
+ * the resync was actually dispatched (e.g. the task #677 phone
+ * backfill). Production routes should keep calling the
+ * fire-and-forget version above to avoid blocking on Square /
+ * BowlNow availability.
+ */
+export async function runBowlerExternalResync(
+  bowlerId: number,
+  organizationId: number | null | undefined,
+): Promise<void> {
+  await runBowlerResync(bowlerId, organizationId);
+}
+
+/**
  * Fire-and-forget league-wide resync. Iterates every bowler in the
  * league sequentially to avoid a thundering herd against Square /
  * BowlNow when a 200-bowler league gets renamed. Use after a league

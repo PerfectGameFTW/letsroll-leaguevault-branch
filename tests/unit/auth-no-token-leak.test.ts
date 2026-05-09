@@ -106,6 +106,10 @@ vi.mock('../../server/services/email', () => ({
   getBaseUrl: () => 'https://test.example',
   // Used by some success branches we don't drive but defensively stubbed.
   sendPasswordResetFallbackEmail: vi.fn(async () => true),
+  // Pulled in transitively via bowler-resync → square-provider →
+  // square-catalog-cap-alerts. We don't drive this branch in this
+  // test; defensive stub keeps the module graph resolvable.
+  sendSquareCatalogCapAlert: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../server/auth', () => ({

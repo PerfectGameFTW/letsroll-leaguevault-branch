@@ -52,6 +52,9 @@ vi.mock('../../server/services/email.js', () => ({
   sendTemplatedEmail: (...a: unknown[]) =>
     mockSendTemplatedEmail.apply(null, a as never),
   getBaseUrl: () => 'https://test.example',
+  // Pulled in transitively via bowler-resync → square-provider →
+  // square-catalog-cap-alerts. Defensive stub.
+  sendSquareCatalogCapAlert: vi.fn(async () => undefined),
 }));
 
 const mockGetUserByInviteToken = vi.fn();

@@ -14,6 +14,8 @@ import { createLogger } from "../logger";
 import { hashPassword, safeTokenCompare } from "../lib/password";
 import { destroyOtherSessionsForUser } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl, sendPasswordChangedNotification } from "../services/email.js";
+import { syncUserPhoneToBowler } from "../services/bowler-phone-sync.js";
+import { fireBowlerExternalResync } from "../services/bowler-resync.js";
 import { maskEmail } from "../utils/pii.js";
 import { createSharedRateLimitStore } from "../utils/rate-limit-store";
 // Same allowlist account.ts uses for /api/account/profile (task #420).
@@ -170,6 +172,22 @@ export function registerAuthRoutes(app: Express): void {
           if (!alreadyLinked) {
             await storage.linkUserToBowler(user.id, bowler.id);
             bowlerLinked = true;
+
+            // Task #677: copy the freshly-registered user's phone
+            // onto the linked bowler row (user wins, since the
+            // bowler typed it themselves at sign-up). Then kick the
+            // existing external-resync path so BowlNow gets the
+            // updated phone propagated to CRM. Both calls absorb
+            // their own errors — they must NEVER block the
+            // registration response.
+            try {
+              const syncResult = await syncUserPhoneToBowler(user.id, bowler.id);
+              if (syncResult.outcome === 'updated') {
+                fireBowlerExternalResync(bowler.id, bowler.organizationId ?? organizationId);
+              }
+            } catch (phoneErr) {
+              log.error('Failed to sync user phone to bowler at registration:', phoneErr);
+            }
 
             const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
             if (bowlerLeagueEntries.length > 0) {

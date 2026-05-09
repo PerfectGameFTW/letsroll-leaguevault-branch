@@ -104,6 +104,9 @@ vi.mock('../../server/services/email.js', () => ({
   sendPasswordChangedNotification: vi.fn(async () => true),
   sendTemplatedEmail: vi.fn(async () => true),
   getBaseUrl: () => 'https://test.example',
+  // Pulled in transitively via bowler-resync → square-provider →
+  // square-catalog-cap-alerts. Defensive stub.
+  sendSquareCatalogCapAlert: vi.fn(async () => undefined),
 }));
 
 // --- Build the test harness. -------------------------------------

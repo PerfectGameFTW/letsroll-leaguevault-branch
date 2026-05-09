@@ -7,6 +7,7 @@ import { isDev } from '../config';
 import type { Bowler } from '@shared/schema';
 import type { PaymentProvider } from './payment-provider';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
+import { decideBowlerPhoneSync } from './bowler-phone-sync';
 
 const log = createLogger("BowlerSync");
 
@@ -16,12 +17,28 @@ export async function runBowlerPostCreateSync(
 ): Promise<Bowler> {
   let current = bowler;
 
-  if (current.email) {
+  const bowlerEmail = current.email;
+  if (bowlerEmail) {
     try {
-      const matchingUser = await storage.getUserByEmail(current.email);
+      const matchingUser = await storage.getUserByEmail(bowlerEmail);
       if (matchingUser && !matchingUser.bowlerId) {
         await storage.linkUserToBowler(matchingUser.id, current.id);
         log.info(`Auto-linked user ${matchingUser.id} to bowler ${current.id}`);
+
+        // Task #677: user wins for `phone`. Apply the overwrite
+        // BEFORE the Square / BowlNow branches below so the
+        // downstream `createOrUpdateCustomer` and `syncBowlerToBN`
+        // both see the right value (they read off `current.phone`
+        // / `bowler.phone` respectively).
+        const phoneDecision = decideBowlerPhoneSync(matchingUser, current);
+        if (phoneDecision.write) {
+          try {
+            current = await storage.updateBowler(current.id, { phone: phoneDecision.phone });
+          } catch (phoneErr) {
+            log.error('Bowler sync: failed to overwrite bowler.phone from linked user:', phoneErr);
+          }
+        }
+
         const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: current.id });
         if (bowlerLeagues.length > 0) {
           const league = await storage.getLeague(bowlerLeagues[0].leagueId);
@@ -50,7 +67,7 @@ export async function runBowlerPostCreateSync(
           syncProvider = await getPaymentProvider(squareLocation.id);
           providerCustomer = await syncProvider.createOrUpdateCustomer(
             current.name,
-            current.email,
+            bowlerEmail,
             current.phone,
             // Bowler reference for the Square dashboard (task #429).
             `bowler:${current.id}`,
