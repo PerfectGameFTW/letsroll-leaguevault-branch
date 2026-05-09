@@ -166,14 +166,18 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
-const ADMIN = { id: 1, role: 'org_admin', organizationId: 1, bowlerId: null };
+// Task #678 (3rd review): provider-parity tests run as the bowler
+// themselves (self-pay), not as an admin acting on behalf. The
+// admin-fallback path no longer writes to a recipient's vault — the
+// dedicated /api/payments admin-record endpoint owns that flow.
+const USER_SELF = { id: 1, role: 'bowler', organizationId: 1, bowlerId: 42 };
 
 async function postCharge(body: Record<string, unknown>) {
   return fetch(`${baseUrl}/api/payments-provider/payments`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-test-user': JSON.stringify(ADMIN),
+      'x-test-user': JSON.stringify(USER_SELF),
     },
     body: JSON.stringify(body),
   });
@@ -182,7 +186,7 @@ async function postCharge(body: Record<string, unknown>) {
 describe('POST /api/payments-provider/payments — Clover saved-card lifecycle (Task #574)', () => {
   it('first-time charge with storeCard=true vaults the card and stamps the schedule', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_first',
@@ -219,7 +223,7 @@ describe('POST /api/payments-provider/payments — Clover saved-card lifecycle (
 
   it('returning-customer charge with a saved src_ token does NOT re-vault the card', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_return',
@@ -259,7 +263,7 @@ describe('POST /api/payments-provider/payments — Clover saved-card lifecycle (
 
   it('charge succeeds even when the post-charge save-card round-trip throws (failure is non-fatal)', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_charge_only',

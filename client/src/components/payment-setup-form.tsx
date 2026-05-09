@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { CalendarDays, Users } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -72,6 +73,18 @@ interface PaymentSetupFormProps {
   targetBowlerId: number;
   setTargetBowlerId: (id: number) => void;
   allowPartnerSelection: boolean;
+  // Task #678 (3rd review): combined-autopay target multi-select. When
+  // the bowler is setting up autopay AND has accepted partners, we
+  // render a checkbox group that lets them have ONE schedule charge
+  // their card weekly for themselves PLUS each selected partner. The
+  // `additionalBowlerIds` array is forwarded to POST /api/payment-
+  // schedules' `additionalBowlerIds` field, which the autopay executor
+  // walks each cycle to charge the payer's vault for each partner. The
+  // payer is always the schedule owner (selfBowler); partners are
+  // charged BUT credited as their own payment row stamped with
+  // `paidByUserId`.
+  additionalBowlerIds: number[];
+  setAdditionalBowlerIds: (ids: number[]) => void;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -117,8 +130,28 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   targetBowlerId,
   setTargetBowlerId,
   allowPartnerSelection,
+  additionalBowlerIds,
+  setAdditionalBowlerIds,
 }) => {
   const showPartnerPicker = allowPartnerSelection && partnerOptions.length > 0;
+  // Combined-autopay multi-select renders only when the bowler is in
+  // autopay mode AND has at least one accepted partner. The picker
+  // above is disabled in autopay mode (per-payer schedule); this
+  // checkbox group is the autopay-equivalent.
+  const showCombinedAutopay =
+    !allowPartnerSelection &&
+    paymentMode === 'autopay' &&
+    league.paymentMode !== 'upfront' &&
+    partnerOptions.length > 0;
+  const togglePartner = (id: number, on: boolean) => {
+    if (on) {
+      if (!additionalBowlerIds.includes(id)) {
+        setAdditionalBowlerIds([...additionalBowlerIds, id]);
+      }
+    } else {
+      setAdditionalBowlerIds(additionalBowlerIds.filter((x) => x !== id));
+    }
+  };
   return (
     <Card className="w-full">
       <CardHeader className={league.paymentMode !== 'upfront' && paymentMode === 'autopay' ? 'pb-4' : undefined}>
@@ -192,6 +225,42 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               <div>
                 <p className="text-sm font-medium">Weekly auto-pay</p>
                 <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
+              </div>
+            </div>
+          )}
+
+          {showCombinedAutopay && (
+            <div
+              className="space-y-2 rounded-md border bg-muted/20 p-4"
+              data-testid="combined-autopay-group"
+            >
+              <Label className="flex items-center gap-2 text-sm font-medium">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Also charge me for these linked bowlers each week
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Your card will be charged for everyone you select on the same
+                schedule. Each charge is recorded against the partner's
+                account and attributed as paid by you.
+              </p>
+              <div className="space-y-2 pt-1">
+                {partnerOptions.map((p) => {
+                  const checked = additionalBowlerIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className="flex items-center gap-2 text-sm"
+                      data-testid={`combined-autopay-option-${p.id}`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => togglePartner(p.id, v === true)}
+                        data-testid={`combined-autopay-checkbox-${p.id}`}
+                      />
+                      <span>{p.name}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

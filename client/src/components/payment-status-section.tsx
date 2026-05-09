@@ -69,6 +69,13 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   // opens so a stale partner choice never silently rides into a new
   // checkout.
   const [targetBowlerId, setTargetBowlerId] = useState<number>(bowler.id);
+  // Task #678 (3rd review): combined-autopay recipients. The
+  // PaymentSetupForm renders a checkbox group when paymentMode ===
+  // 'autopay' AND there are accepted partners; selected ids are POSTed
+  // as `additionalBowlerIds` on /api/payment-schedules. Reset whenever
+  // the form closes or paymentMode flips so a stale combined-autopay
+  // pick can never silently ride into the next checkout.
+  const [additionalBowlerIds, setAdditionalBowlerIds] = useState<number[]>([]);
 
   const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league.locationId ?? null);
 
@@ -156,6 +163,16 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setTargetBowlerId(bowler.id);
     }
   }, [showPaymentSetup, paymentMode, bowler.id]);
+
+  // Task #678 (3rd review): combined-autopay reset. Clear selected
+  // combined-autopay partners whenever the form closes or the mode
+  // leaves autopay — the checkbox group is only meaningful in autopay
+  // mode and a stale selection must never carry into a one-time charge.
+  useEffect(() => {
+    if (!showPaymentSetup || paymentMode !== 'autopay') {
+      setAdditionalBowlerIds([]);
+    }
+  }, [showPaymentSetup, paymentMode]);
 
   const bowlerPayments = useMemo(() => {
     return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
@@ -283,6 +300,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     selectedSchedule,
     storeCard,
     targetBowlerId,
+    additionalBowlerIds,
     financials,
     calculateTotalAmount,
     setIsSubmitting,
@@ -370,6 +388,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         // separately by the schedule owner). Lock the picker to self in
         // autopay mode; allow partner selection in onetime / upfront.
         allowPartnerSelection={paymentMode !== 'autopay'}
+        additionalBowlerIds={additionalBowlerIds}
+        setAdditionalBowlerIds={setAdditionalBowlerIds}
       />
     );
   }

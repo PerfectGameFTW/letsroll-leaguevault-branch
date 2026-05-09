@@ -42,6 +42,11 @@ interface UseBowlerPaymentSubmitOptions {
   // pay). Server-side `canUserPayForBowler` enforces that the actor
   // is actually linked to the chosen target.
   targetBowlerId?: number;
+  // Task #678 (3rd review): combined-autopay recipients. Forwarded as
+  // `additionalBowlerIds` on POST /api/payment-schedules so the
+  // autopay executor charges the payer's vault once per cycle for
+  // every selected partner. Ignored unless `isAutoPay`.
+  additionalBowlerIds?: number[];
   financials: {
     fullSeasonAmount: number;
     amountPastDue: number;
@@ -62,6 +67,7 @@ export function useBowlerPaymentSubmit({
   storeCard,
   buyerEmail,
   targetBowlerId,
+  additionalBowlerIds,
   financials,
   calculateTotalAmount,
   setIsSubmitting,
@@ -226,6 +232,13 @@ export function useBowlerPaymentSubmit({
             amount: recurringAmount,
             nextPaymentDate: new Date(),
             paymentCardId,
+            // Task #678 (3rd review): combined-autopay. Only sent when
+            // the bowler picked at least one accepted partner in the
+            // checkbox group. Server validates each id is currently
+            // linked & accepted to the schedule owner.
+            ...(additionalBowlerIds && additionalBowlerIds.length > 0
+              ? { additionalBowlerIds }
+              : {}),
           }),
         });
         if (!scheduleResponse.ok) {
@@ -284,7 +297,7 @@ export function useBowlerPaymentSubmit({
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard,
-    buyerEmail, chargeForBowlerId, financials, calculateTotalAmount, toast, navigate, isClover,
+    buyerEmail, chargeForBowlerId, additionalBowlerIds, financials, calculateTotalAmount, toast, navigate, isClover,
     setIsSubmitting, setShowPaymentSetup,
   ]);
 }

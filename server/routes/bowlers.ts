@@ -20,6 +20,11 @@ import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { syncBowlerLeagueAttributesToProvider } from '../services/bowler-attributes';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
+// Task #678 (3rd review): reuse the same payer-name lookup the
+// /api/payments report uses so the recipient's bowler-details payment
+// list carries identical "Paid by …" attribution. Defined in
+// payment-reports.ts (org-scoped, name-only — never email).
+import { buildPayerNameMap } from './payments/payment-reports.js';
 
 const log = createLogger("Bowlers");
 
@@ -246,10 +251,19 @@ router.get("/:id/details", async (req, res) => {
     };
 
     if (includePayments && leagueIds.length > 0) {
-      const orgId = req.user?.organizationId;
+      // Task #678 (3rd review): scope the payment lookup to the
+      // *bowler's* org, not the requester's. System_admin requesters
+      // (and admins viewing a bowler in their own org) need the rows
+      // here even when the requester's session has no organizationId
+      // (sysadmin) or differs from the bowler's. The hasAccess gate
+      // above already enforces that the requester may see this bowler.
+      const orgId = bowler.organizationId;
       if (orgId) {
         const payments = await storage.getPayments({ bowlerId: id, organizationId: orgId });
-        response.payments = sanitizePayments(payments);
+        // Same payer-name enrichment as /api/payments so the recipient's
+        // history surfaces render the "Paid by …" badge identically.
+        const nameMap = await buildPayerNameMap(payments, orgId);
+        response.payments = sanitizePayments(payments, nameMap);
       }
     }
 

@@ -166,14 +166,19 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
-const ADMIN = { id: 1, role: 'org_admin', organizationId: 1, bowlerId: null };
+// Task #678 (3rd review): provider-parity tests run as the bowler
+// themselves (self-pay), not as an admin acting on behalf. The
+// admin-fallback path no longer forwards the recipient's vaulted
+// customer id — the dedicated /api/payments admin-record endpoint
+// owns that flow.
+const USER_SELF = { id: 1, role: 'bowler', organizationId: 1, bowlerId: 42 };
 
 async function postCharge(body: Record<string, unknown>) {
   return fetch(`${baseUrl}/api/payments-provider/payments`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-test-user': JSON.stringify(ADMIN),
+      'x-test-user': JSON.stringify(USER_SELF),
     },
     body: JSON.stringify(body),
   });
@@ -182,7 +187,7 @@ async function postCharge(body: Record<string, unknown>) {
 describe('POST /api/payments-provider/payments — Clover charge parity (Task #574)', () => {
   it('persists a Clover charge with type=clover and lifts cloverChargeId from providerRef', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_1',
@@ -224,7 +229,7 @@ describe('POST /api/payments-provider/payments — Clover charge parity (Task #5
 
   it('processes a Clover charge with NO email anywhere — buyer-email guard is Square-only', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: null, cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: null, cloverCustomerId: 'cv_cust_1',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_2',
@@ -247,7 +252,7 @@ describe('POST /api/payments-provider/payments — Clover charge parity (Task #5
 
   it('deduplicates a re-submitted Clover charge instead of double-charging', async () => {
     mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
     });
     // The idempotency lookup finds an existing row → the route should
     // short-circuit and return the previously-stored ids without

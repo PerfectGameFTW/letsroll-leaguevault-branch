@@ -37,7 +37,7 @@ import { createLogger } from '../../logger';
  * `paidByUserId` value leaking a foreign user's display name into an
  * org-scoped report.
  */
-async function buildPayerNameMap(
+export async function buildPayerNameMap(
   payments: Payment[],
   organizationId: number | null,
 ): Promise<Map<number, string>> {

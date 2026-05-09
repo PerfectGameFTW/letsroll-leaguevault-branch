@@ -225,11 +225,34 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     // Task #678: customer / card vault resolution.
     // For partner-pay we MUST use the payer's vaulted customer id, not
     // the target bowler's — saved cards live with the payer. For
-    // self-pay or admin-fallback the legacy "use bowler's vault" still
-    // applies. `storeCard` similarly bootstraps against the payer when
-    // a partner is paying (so the card stays in the payer's vault).
+    // self-pay the legacy "use bowler's vault" still applies because
+    // payer === target.
+    //
+    // Task #678 (3rd-review hardening): the admin-fallback branch is
+    // intentionally NOT a partner-pay flow — admins authenticate via
+    // hasAccessToBowler, not via canUserPayForBowler, so they have no
+    // payerBowlerId / vault of their own. Resolving `vaultBowler =
+    // bowler` (the target) for admin-fallback would let an admin
+    // checkout charge a saved card from the *recipient's* vault and,
+    // worse, save a freshly tokenized card into that recipient's vault
+    // without their consent. Refuse both:
+    //   - reject `storeCard` outright (admins must use the
+    //     `/api/payments` admin-record path to attach cards to bowlers).
+    //   - drop the recipient's customerId from the charge so the
+    //     provider treats it as a token-only one-shot instead of a
+    //     saved-card pull from the wrong vault.
+    if (isAdminFallback && req.body.storeCard) {
+      return sendError(
+        res,
+        "Admins cannot save a card to a bowler's vault from this checkout. Use the bowler's own dashboard or the admin manual-payment path.",
+        403,
+        'ADMIN_VAULT_WRITE_FORBIDDEN',
+      );
+    }
     const vaultBowler = isPartnerPay && payerBowler ? payerBowler : bowler;
-    let customerId = getProviderCustomerId(vaultBowler, provider);
+    let customerId = isAdminFallback
+      ? undefined
+      : getProviderCustomerId(vaultBowler, provider);
     if (req.body.storeCard && !customerId) {
       const bootstrapped = await ensureProviderCustomer(provider, vaultBowler);
       if (bootstrapped) {
