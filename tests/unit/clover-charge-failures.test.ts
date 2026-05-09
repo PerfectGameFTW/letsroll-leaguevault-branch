@@ -55,6 +55,8 @@ const mockHasAccessToBowler = vi.fn();
 vi.mock('../../server/utils/access-control', () => ({
   hasAccessToLeague: (...a: unknown[]) => mockHasAccessToLeague(...a),
   hasAccessToBowler: (...a: unknown[]) => mockHasAccessToBowler(...a),
+  isOrgOrHigher: (u: { role?: string } | undefined) =>
+    u?.role === 'org_admin' || u?.role === 'system_admin',
 }));
 
 vi.mock('../../server/middleware/rate-limit', () => ({

@@ -62,13 +62,15 @@ const mockCloverProvider = {
   validateCardId: vi.fn().mockReturnValue(false),
 };
 const mockGetPaymentProvider = vi.fn();
-class FakeProviderNotConfigured extends Error {
-  constructor(m: string) { super(m); this.name = 'ProviderNotConfiguredError'; }
-}
-vi.mock('../../server/services/payment-provider-factory', () => ({
-  getPaymentProvider: (...a: unknown[]) => mockGetPaymentProvider(...a),
-  ProviderNotConfiguredError: FakeProviderNotConfigured,
-}));
+vi.mock('../../server/services/payment-provider-factory', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../server/services/payment-provider-factory')
+  >('../../server/services/payment-provider-factory');
+  return {
+    ...actual,
+    getPaymentProvider: (...a: unknown[]) => mockGetPaymentProvider(...a),
+  };
+});
 
 vi.mock('../../server/services/payment-execution', () => ({
   computePaymentSplit: () => ({ lineageAmount: 0, prizeFundAmount: 0 }),
@@ -78,6 +80,14 @@ vi.mock('../../server/services/payment-execution', () => ({
 vi.mock('../../server/services/payment-utils', () => ({
   getProviderCustomerId: () => 'cust_xyz',
   persistCloverCustomer: vi.fn(),
+  ensureProviderCustomer: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../server/utils/bowler-payment-authz', () => ({
+  canUserPayForBowler: vi.fn(async (req: { user?: { bowlerId?: number | null } }) => ({
+    allowed: true,
+    payerBowlerId: req.user?.bowlerId ?? undefined,
+  })),
 }));
 
 vi.mock('../../server/routes/payments-provider/shared', () => ({
