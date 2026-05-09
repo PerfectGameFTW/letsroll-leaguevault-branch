@@ -70,7 +70,6 @@ function hasNumericId(v: unknown): v is { id: number } {
  * out of 5 incidentally).
  */
 describe('POST /api/bowler-leagues — non-bootstrap path is race-safe (task #473)', () => {
-  let sessionB: AuthSession;
   let leagueId: number | null = null;
   let teamId: number | null = null;
   const stamp = Date.now();
@@ -82,10 +81,19 @@ describe('POST /api/bowler-leagues — non-bootstrap path is race-safe (task #47
   const createdBowlerIds: number[] = [];
 
   beforeAll(async () => {
-    sessionB = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
+    // Fresh login scoped to setup. We deliberately do NOT cache this
+    // session for the `it` block: `TEST_ORG_B_EMAIL` is a shared
+    // fixture user reused across many concurrent suites, and any
+    // sibling test that logs the user out, rotates its password,
+    // re-creates it, rotates the CSRF secret, or mutates org B's
+    // subdomain (tripping `orgSessionGuard`) between this `beforeAll`
+    // and the `it` will silently invalidate a cached session and
+    // collapse all 5 concurrent POSTs to 403 before they reach the
+    // race-handling code under test.
+    const setupSession = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
 
     // Need an org B league for the link target.
-    const leagues = await apiGet<League[]>('/api/leagues', sessionB);
+    const leagues = await apiGet<League[]>('/api/leagues', setupSession);
     expect(leagues.status).toBe(200);
     const list = Array.isArray(leagues.data.data) ? leagues.data.data : [];
     expect(list.length, 'expected at least one league for org B').toBeGreaterThan(0);
@@ -96,7 +104,7 @@ describe('POST /api/bowler-leagues — non-bootstrap path is race-safe (task #47
     const team = await apiPost<Team>(
       '/api/teams',
       { name: `Vitest DoubleLink Team ${stamp}`, number: uniqueTeamNumber, leagueId, active: true },
-      sessionB,
+      setupSession,
     );
     expect(team.status).toBe(201);
     if (team.status === 201 && hasNumericId(team.data.data)) {
@@ -148,6 +156,13 @@ describe('POST /api/bowler-leagues — non-bootstrap path is race-safe (task #47
   it('5 concurrent same-(bowler, league) POSTs land exactly one 201 and exactly one DB row', async () => {
     expect(leagueId).not.toBeNull();
     expect(teamId).not.toBeNull();
+
+    // Log in fresh INSIDE the it (not in beforeAll) so the auth
+    // window between login and the 5-POST burst is narrow enough
+    // that no sibling test running against the shared
+    // `TEST_ORG_B_EMAIL` user can invalidate the session in between.
+    // See the suite-level comment for the full failure mode.
+    const sessionB: AuthSession = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
 
     // Create a fresh bowler in org B. The org B admin's session has a
     // matching org stamp, so `hasAccessToBowler` will positively
