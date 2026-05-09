@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const warnSpy = vi.fn();
+// eslint-disable-next-line local/factory-must-use-schema -- mocked logger, not a schema row
 const fakeLogger = {
   info: vi.fn(),
   warn: (...a: unknown[]) => warnSpy(...a),

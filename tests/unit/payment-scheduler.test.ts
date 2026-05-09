@@ -62,10 +62,20 @@ vi.mock('node-schedule', () => {
 });
 
 import type { PaymentSchedule } from '@shared/schema';
+import { insertPaymentScheduleSchema } from '@shared/schema';
 
+// Routed through `insertPaymentScheduleSchema.parse(...)` (task #693) so
+// a future required column added to `shared/schema/payments.ts` fails
+// LOUDLY here instead of rotting silently. The insert schema omits
+// `id`, `createdAt`, `lastPaymentDate`, `cancelledAt`, `cancelReason` —
+// those are re-added below to satisfy the SELECT type.
 function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule {
-  return {
-    id: 15,
+  // Overrides are applied AFTER parse so callers can intentionally feed
+  // shapes the schema would normally refuse (e.g., already-cancelled
+  // schedules with `cancelReason` set). The schema-walk benefit — a
+  // missing required column blowing up the parse — still applies to
+  // the defaults block.
+  const parsed = insertPaymentScheduleSchema.parse({
     bowlerId: 129,
     leagueId: 6,
     amount: 3000,
@@ -73,13 +83,19 @@ function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule
     active: true,
     paymentCardId: 'ccof:CA4SEXXXXXX',
     nextPaymentDate: '2026-04-01 23:30:00',
-    lastPaymentDate: null,
-    createdAt: '2026-04-01 23:30:00',
-    cancelledAt: null,
-    cancelReason: null,
     additionalBowlerIds: null,
-    ...overrides,
-  };
+  });
+  return Object.assign(
+    {
+      id: 15,
+      createdAt: '2026-04-01 23:30:00',
+      lastPaymentDate: null,
+      cancelledAt: null,
+      cancelReason: null,
+    },
+    parsed,
+    overrides,
+  ) as PaymentSchedule;
 }
 
 describe('PaymentScheduler', () => {

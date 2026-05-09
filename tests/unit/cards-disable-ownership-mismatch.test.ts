@@ -78,6 +78,7 @@ vi.mock('../../server/services/payment-utils', () => ({
   ensureProviderCustomer: vi.fn(),
 }));
 
+// eslint-disable-next-line local/factory-must-use-schema -- mocked logger, not a schema row
 const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 vi.mock('../../server/logger', () => ({ logger: fakeLogger, createLogger: () => fakeLogger }));
 

@@ -25,7 +25,9 @@ import { lockedSweep } from '../../server/services/_internal/locked-sweep';
 // A fake Drizzle "table" — the helper passes it straight through to
 // `.from()` and `.for('update', { of: <table>, … })`, so any shape
 // works as long as the test asserts on object identity.
+// eslint-disable-next-line local/factory-must-use-schema -- brand sentinel, not a schema row
 const fakeTable = { __brand: 'fake-table' } as unknown as Parameters<typeof lockedSweep>[1];
+// eslint-disable-next-line local/factory-must-use-schema -- brand sentinel, not a schema row
 const fakePredicate = { __brand: 'fake-predicate' } as unknown as Parameters<typeof lockedSweep>[2];
 
 interface SelectCall {

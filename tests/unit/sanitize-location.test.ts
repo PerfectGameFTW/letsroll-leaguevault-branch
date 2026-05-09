@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { sanitizeLocation, sanitizeLocations } from '../../server/utils/api';
-import { locations, type Location } from '@shared/schema';
+import { locations, insertLocationSchema, type Location } from '@shared/schema';
 
 // Mirror of the regex used by tests/unit/sanitize-user.test.ts. Field-
 // name patterns we never want to leak in any user-facing response.
@@ -13,9 +13,13 @@ const SENSITIVE_NAME_ALLOWLIST = new Set<string>([]);
 // Build a fully-populated `Location` so the test exercises every column the
 // schema currently defines. Adding a new sensitive-looking column to
 // `shared/schema/locations.ts` immediately trips the test below.
+//
+// Routed through `insertLocationSchema.parse(...)` (task #693) so a
+// future required column added to `shared/schema/locations.ts` fails
+// LOUDLY here instead of rotting silently behind TypeScript's structural
+// type check.
 function makeFullyPopulatedLocation(): Location {
-  return {
-    id: 1,
+  const parsed = insertLocationSchema.parse({
     name: 'Main Lanes',
     address: '123 Pin St',
     city: 'Springfield',
@@ -36,7 +40,10 @@ function makeFullyPopulatedLocation(): Location {
       environment: 'sandbox',
     },
     paymentProvider: 'square',
-  };
+  });
+  // `id` is omitted from the insert schema, so we re-add it to satisfy
+  // the SELECT type.
+  return Object.assign({ id: 1 }, parsed) as Location;
 }
 
 describe('sanitizeLocation', () => {

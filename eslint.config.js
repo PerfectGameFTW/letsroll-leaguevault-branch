@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import leaguevault from './tools/eslint-plugin-leaguevault/index.js';
+import factoryMustUseSchema from './eslint-rules/factory-must-use-schema.js';
 
 // Lint config for tasks #299, #328, and #371: catch silent type-escape
 // hatches.
@@ -199,6 +200,20 @@ export default tseslint.config(
       'leaguevault/no-it-skip-placeholder': 'error',
       'leaguevault/no-unscoped-table-query-in-test-assertion': 'error',
       'leaguevault/no-spawn-tsx-in-test': 'error',
+    },
+  },
+  // Task #693: schema-row test factories must route through
+  // `insertXSchema.parse(...)` so a new required schema column fails
+  // LOUDLY at runtime instead of rotting silently behind TypeScript's
+  // permissive structural type checks. Scoped to test files only —
+  // production factories have their own correctness story.
+  {
+    files: ['tests/**/*.{ts,tsx}'],
+    plugins: {
+      local: { rules: { 'factory-must-use-schema': factoryMustUseSchema } },
+    },
+    rules: {
+      'local/factory-must-use-schema': 'error',
     },
   },
 );

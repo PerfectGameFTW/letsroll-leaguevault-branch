@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { sanitizeUser } from '../../server/utils/api';
-import { users, type User } from '@shared/schema';
+import { users, insertUserSchema, type User } from '@shared/schema';
 
 // Field-name patterns we never want to leak in any user-facing
 // response. Broadened from the original /token|secret|password/i
@@ -25,11 +25,17 @@ const SENSITIVE_NAME_ALLOWLIST = new Set<string>([
 // Build a fully-populated `User` so the test exercises every column the
 // schema currently defines. This way, adding a new sensitive-looking column
 // to `shared/schema/users.ts` immediately trips the test below.
+//
+// Routed through `insertUserSchema.parse(...)` (task #693) so a future
+// required column added to `shared/schema/users.ts` fails LOUDLY here
+// instead of rotting silently behind TypeScript's structural type check.
+// Note: the password value below has to satisfy `passwordSchema` (8+
+// chars, mixed case, digit, special) — the value is a stand-in, not a
+// real credential, but it must pass the strong-password Zod refines.
 function makeFullyPopulatedUser(): User {
-  return {
-    id: 1,
+  const parsed = insertUserSchema.parse({
     email: 'audit@example.com',
-    password: 'hashed-secret-do-not-leak',
+    password: 'AuditUser-1!do-not-leak',
     bowlerId: 42,
     name: 'Audit User',
     phone: '+15555550100',
@@ -40,11 +46,18 @@ function makeFullyPopulatedUser(): User {
     inviteToken: 'invite-token-do-not-leak',
     inviteTokenExpiry: '2099-01-01T00:00:00.000Z',
     preferredLanguage: 'en',
-    createdAt: '2024-01-01T00:00:00.000Z',
     mustChangePassword: false,
     failedPasswordChangeAttempts: 0,
     passwordChangeLockedUntil: null,
-  };
+  });
+  // `id` and `createdAt` are omitted from the insert schema, so we re-add
+  // them to satisfy the SELECT type. `Object.assign` (instead of an
+  // object literal) keeps the lint rule against object-literal `as`
+  // casts happy.
+  return Object.assign(
+    { id: 1, createdAt: '2024-01-01T00:00:00.000Z' },
+    parsed,
+  ) as User;
 }
 
 describe('sanitizeUser', () => {

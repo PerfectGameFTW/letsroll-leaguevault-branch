@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { sanitizeBowler, sanitizeBowlers } from '../../server/utils/api';
-import { bowlers, type Bowler } from '@shared/schema';
+import { bowlers, insertBowlerSchema, type Bowler } from '@shared/schema';
 
 // Mirror of the regex used by tests/unit/sanitize-user.test.ts.
 const SENSITIVE_NAME_PATTERN = /token|secret|password|key|credential|auth/i;
@@ -10,9 +10,12 @@ const SENSITIVE_NAME_ALLOWLIST = new Set<string>([]);
 // Build a fully-populated `Bowler` so the test exercises every column the
 // schema currently defines. Adding a new sensitive-looking column to
 // `shared/schema/bowlers.ts` immediately trips the test below.
+//
+// Routed through `insertBowlerSchema.parse(...)` (task #693) so a future
+// required column added to `shared/schema/bowlers.ts` fails LOUDLY here
+// instead of rotting silently behind TypeScript's structural type check.
 function makeFullyPopulatedBowler(): Bowler {
-  return {
-    id: 1,
+  const parsed = insertBowlerSchema.parse({
     name: 'Audit Bowler',
     email: 'audit@example.com',
     phone: '+15555550100',
@@ -30,7 +33,11 @@ function makeFullyPopulatedBowler(): Bowler {
     bnSyncAttempts: 1,
     bnSyncLastAttemptAt: '2024-01-01T00:00:00.000Z',
     isMinor: false,
-  };
+  });
+  // `id` is omitted from the insert schema, so we re-add it to satisfy
+  // the SELECT type. `Object.assign` (instead of an object literal) keeps
+  // the lint rule against object-literal `as` casts happy.
+  return Object.assign({ id: 1 }, parsed) as Bowler;
 }
 
 describe('sanitizeBowler', () => {

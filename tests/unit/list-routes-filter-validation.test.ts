@@ -85,6 +85,7 @@ vi.mock('../../server/middleware/organization', () => ({
 // provider, so the mock has to ship stubs for those — without them
 // the `?leagueId=` empty-string regression tests would 500 and
 // muddy the assertion.
+// eslint-disable-next-line local/factory-must-use-schema -- test-double PaymentProvider, not a schema row
 const fakeProvider = {
   providerName: 'square',
   listCardsOnFile: vi.fn().mockResolvedValue([]),

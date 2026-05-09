@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { PaymentProvider } from '../../server/services/payment-provider';
 import type { PaymentSchedule } from '@shared/schema';
-import { leagues } from '@shared/schema';
+import { leagues, insertLeagueSchema, insertPaymentScheduleSchema } from '@shared/schema';
 
 vi.mock('../../server/logger', () => {
   const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -77,9 +77,27 @@ function makeProvider(overrides: Partial<PaymentProvider> = {}): PaymentProvider
   return Object.assign(base, overrides);
 }
 
+// Routed through `insertLeagueSchema.parse(...)` (task #693) so a future
+// required column added to `shared/schema/leagues.ts` fails LOUDLY here
+// instead of rotting silently behind TypeScript's structural type check.
+// The insert schema chains `.refine(...)` / `.superRefine(...)`, so the
+// defaults below also have to satisfy: seasonEnd > seasonStart, lineage
+// + prize fees sum to weekly, and any double-pay dates fall on a real
+// non-skipped weekDay between season bounds.
 function makeLeague(overrides: Partial<League> = {}): League {
-  const base: League = {
-    id: 11,
+  // IMPORTANT: overrides are applied AFTER the parse step (not spread
+  // into the parse input) so callers can intentionally feed
+  // out-of-season `doublePayDates` (or other refine-violating shapes)
+  // for the timezone-edge tests below. The schema-walk benefit — a
+  // missing required column blowing up the parse — still applies to
+  // the defaults block.
+  //
+  // Defaults must satisfy `insertLeagueSchema`'s refines:
+  //   • `seasonEnd > seasonStart`
+  //   • `lineageFee + prizeFundFee === weeklyFee`
+  //   • `doublePayDates` default to `[]` to avoid the
+  //     "must fall within the season" superRefine
+  const parsed = insertLeagueSchema.parse({
     name: 'Test League',
     description: null,
     active: true,
@@ -88,9 +106,9 @@ function makeLeague(overrides: Partial<League> = {}): League {
     seasonEnd: '2026-04-01',
     weekDay: 'Wednesday',
     weeklyFee: 2000,
-    lineageFee: 0,
-    prizeFundFee: 0,
-    practiceStartTime: null,
+    lineageFee: 1000,
+    prizeFundFee: 1000,
+    practiceStartTime: undefined,
     competitionStartTime: '19:00',
     squareLineageItemId: null,
     lineageItemVariationId: null,
@@ -100,7 +118,6 @@ function makeLeague(overrides: Partial<League> = {}): League {
     squarePrizeFundItemName: null,
     squareCategoryId: null,
     timezone: 'America/Chicago',
-    finalTwoWeeksDueWeek: null,
     paymentMode: 'weekly',
     seasonNumber: 1,
     previousSeasonId: null,
@@ -113,27 +130,42 @@ function makeLeague(overrides: Partial<League> = {}): League {
     isYouth: false,
     rosterCap: null,
     embedRegistrationFee: null,
-  };
-  return Object.assign(base, overrides);
+  });
+  // `id` and `finalTwoWeeksDueWeek` are omitted from the insert schema;
+  // re-add them to satisfy the SELECT type. Overrides win.
+  return Object.assign(
+    { id: 11, finalTwoWeeksDueWeek: null },
+    parsed,
+    overrides,
+  ) as League;
 }
 
+// Same pattern for PaymentSchedule. The insert schema omits `id`,
+// `createdAt`, `lastPaymentDate`, `cancelledAt`, and `cancelReason`, so
+// those are re-added below.
 function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule {
-  const base: PaymentSchedule = {
-    id: 333,
+  // Overrides applied after parse — same rationale as `makeLeague`.
+  const parsed = insertPaymentScheduleSchema.parse({
     bowlerId: 42,
     leagueId: 11,
     amount: 2000,
     frequency: 'weekly',
     paymentCardId: 'card_token_xyz',
     nextPaymentDate: '2026-04-22T19:00:00.000-05:00',
-    lastPaymentDate: null,
     active: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    cancelledAt: null,
-    cancelReason: null,
     additionalBowlerIds: null,
-  };
-  return Object.assign(base, overrides);
+  });
+  return Object.assign(
+    {
+      id: 333,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastPaymentDate: null,
+      cancelledAt: null,
+      cancelReason: null,
+    },
+    parsed,
+    overrides,
+  ) as PaymentSchedule;
 }
 
 beforeEach(() => {

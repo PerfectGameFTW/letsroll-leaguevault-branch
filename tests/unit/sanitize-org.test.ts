@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { sanitizeOrg } from '../../server/utils/api';
-import { organizations, type Organization } from '@shared/schema';
+import { organizations, insertOrganizationSchema, type Organization } from '@shared/schema';
 
 // Field-name patterns we never want to leak in any organization-facing
 // response. Broadened (task #327) to also catch `apiKey`,
@@ -18,9 +18,13 @@ const SENSITIVE_NAME_ALLOWLIST = new Set<string>([]);
 // column the schema currently defines. Adding a new sensitive-looking
 // column to `shared/schema/organizations.ts` immediately trips the
 // schema-walk test below.
+//
+// Routed through `insertOrganizationSchema.parse(...)` (task #693) so a
+// future required column added to `shared/schema/organizations.ts`
+// fails LOUDLY here instead of rotting silently behind TypeScript's
+// structural type check.
 function makeFullyPopulatedOrg(): Organization {
-  return {
-    id: 1,
+  const parsed = insertOrganizationSchema.parse({
     name: 'Audit Org',
     slug: 'audit-org',
     subdomain: 'audit',
@@ -34,7 +38,6 @@ function makeFullyPopulatedOrg(): Organization {
     darkLogo: 'dark-logo-url',
     appIcon: 'app-icon-url',
     active: true,
-    createdAt: '2024-01-01T00:00:00.000Z',
     integrations: {
       bowlnow: {
         enabled: true,
@@ -43,7 +46,13 @@ function makeFullyPopulatedOrg(): Organization {
       },
     },
     allowedEmbedDomains: [],
-  };
+  });
+  // `id` and `createdAt` are omitted from the insert schema, so we re-add
+  // them to satisfy the SELECT type.
+  return Object.assign(
+    { id: 1, createdAt: '2024-01-01T00:00:00.000Z' },
+    parsed,
+  ) as Organization;
 }
 
 describe('sanitizeOrg', () => {

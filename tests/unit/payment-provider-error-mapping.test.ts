@@ -164,6 +164,7 @@ vi.mock('../../server/utils/league-datetime.js', () => ({
   getNextLeagueDateTime: () => new Date('2026-05-01T19:00:00.000Z'),
 }));
 
+// eslint-disable-next-line local/factory-must-use-schema -- mocked logger, not a schema row
 const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 vi.mock('../../server/logger', () => ({ 
   logger: fakeLogger, 

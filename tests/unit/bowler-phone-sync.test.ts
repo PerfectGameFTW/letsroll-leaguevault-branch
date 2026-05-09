@@ -75,6 +75,7 @@ import {
   syncUserPhoneToBowler,
 } from '../../server/services/bowler-phone-sync';
 import { runBowlerPostCreateSync } from '../../server/services/bowler-sync';
+import { insertBowlerSchema } from '@shared/schema';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -167,9 +168,11 @@ describe('syncUserPhoneToBowler', () => {
 
 type BowlerArg = Parameters<typeof runBowlerPostCreateSync>[0];
 
+// Routed through `insertBowlerSchema.parse(...)` (task #693) so a future
+// required column added to `shared/schema/bowlers.ts` fails LOUDLY here
+// instead of letting the factory's shape rot silently.
 function fakeBowler(overrides: Partial<BowlerArg>): BowlerArg {
-  const base = {
-    id: 42,
+  const parsed = insertBowlerSchema.parse({
     name: 'Jon Changes',
     email: 'jon@example.com',
     phone: null,
@@ -187,8 +190,9 @@ function fakeBowler(overrides: Partial<BowlerArg>): BowlerArg {
     bnSyncAttempts: 0,
     bnSyncLastAttemptAt: null,
     isMinor: false,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
+  return Object.assign({ id: 42 }, parsed, overrides) as BowlerArg;
 }
 
 describe('runBowlerPostCreateSync — phone sync from linked user', () => {

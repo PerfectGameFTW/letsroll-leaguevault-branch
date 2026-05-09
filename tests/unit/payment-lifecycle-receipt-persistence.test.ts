@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const insertedRows: Record<string, unknown>[] = [];
 
+// eslint-disable-next-line local/factory-must-use-schema -- mocked db transaction, not a schema row
 const fakeTx = {
   update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
   insert: () => ({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { sanitizePayment, sanitizePayments } from '../../server/utils/api';
-import { payments, type Payment } from '@shared/schema';
+import { payments, insertPaymentSchema, type Payment } from '@shared/schema';
 
 // Mirror of the regex used by tests/unit/sanitize-{user,location,bowler}.test.ts.
 const SENSITIVE_NAME_PATTERN = /token|secret|password|key|credential|auth/i;
@@ -18,9 +18,16 @@ const SENSITIVE_NAME_ALLOWLIST = new Set<string>([
 // the schema currently defines. Adding a new sensitive-looking column
 // to `shared/schema/payments.ts` immediately trips the schema-walk
 // test below.
+//
+// Routed through `insertPaymentSchema.parse(...)` (task #693) so a
+// future required column added to `shared/schema/payments.ts` fails
+// LOUDLY here instead of rotting silently behind TypeScript's structural
+// type check. `checkNumber` is excluded from the parse input because the
+// extend-block schema makes it `z.string().optional()` (no null) even
+// though the underlying column is nullable; we add it (and the other
+// nullable-only stripe columns) back via `Object.assign` below.
 function makeFullyPopulatedPayment(): Payment {
-  return {
-    id: 1,
+  const parsed = insertPaymentSchema.parse({
     bowlerId: 7,
     leagueId: 11,
     amount: 2500,
@@ -29,7 +36,6 @@ function makeFullyPopulatedPayment(): Payment {
     weekOf: '2024-01-01T00:00:00.000Z',
     status: 'paid',
     type: 'square',
-    checkNumber: null,
     providerPaymentId: 'sq-payment-id',
     cloverChargeId: 'cv-charge-id',
     idempotencyKey: 'idem-key-1',
@@ -43,8 +49,18 @@ function makeFullyPopulatedPayment(): Payment {
     receiptEmailMissing: false,
     notes: 'admin note',
     paidByUserId: null,
-    createdAt: '2024-01-01T00:00:00.000Z',
-  };
+  });
+  // No `as Payment` cast: `Object.assign({...}, parsed)` already infers
+  // a structural superset of `Payment`, so the lint rule against
+  // unnecessary type assertions would flag a cast here.
+  return Object.assign(
+    {
+      id: 1,
+      checkNumber: null,
+      createdAt: '2024-01-01T00:00:00.000Z',
+    },
+    parsed,
+  );
 }
 
 describe('sanitizePayment', () => {

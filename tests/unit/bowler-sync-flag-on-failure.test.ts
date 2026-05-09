@@ -66,12 +66,19 @@ vi.mock('../../server/services/bowler-attributes', () => ({
 }));
 
 import { runBowlerPostCreateSync } from '../../server/services/bowler-sync';
+import { insertBowlerSchema } from '@shared/schema';
 
 type BowlerArg = Parameters<typeof runBowlerPostCreateSync>[0];
 
+// Routed through `insertBowlerSchema.parse(...)` (task #693). The whole
+// reason this test exists — task #682 — is the same kind of silent
+// rot: a new `isMinor` column showed up on `bowlers`, the factory
+// didn't include it, and TypeScript shrugged because the column was
+// `.notNull().default(false)`. Running the defaults+overrides through
+// the Zod schema makes a future required column blow up here loudly
+// instead of letting the gap calcify across sprints.
 function fakeBowler(overrides: Partial<BowlerArg> = {}): BowlerArg {
-  const base: BowlerArg = {
-    id: 42,
+  const parsed = insertBowlerSchema.parse({
     name: 'Test Bowler',
     email: 'test@example.com',
     phone: null,
@@ -90,8 +97,12 @@ function fakeBowler(overrides: Partial<BowlerArg> = {}): BowlerArg {
     bnSyncAttempts: 0,
     bnSyncLastAttemptAt: null,
     isMinor: false,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
+  // `id` is omitted from the insert schema; re-add it for the SELECT
+  // type, then layer overrides on top so caller-supplied `id` (rare but
+  // legal) wins.
+  return Object.assign({ id: 42 }, parsed, overrides) as BowlerArg;
 }
 
 beforeEach(() => {
