@@ -154,6 +154,15 @@ export default defineConfig({
           // `.local/tasks/isolate-false-audit-notes.md` (task #689) for
           // context.
           isolate: false,
+          // Pin worker count to the container CPU count (4 on Replit). Default
+          // is `os.availableParallelism()` which is dynamic and can over-fork
+          // on CI runners with reported-but-unusable cores, amplifying the
+          // shared dev-DB contention root-caused in #685/#687. minForks ===
+          // maxForks so all workers spawn eagerly and we don't pay the
+          // mid-run warm-up cost. See docs in
+          // .local/tasks/pool-options-tuning-results.md (task #691).
+          pool: 'forks',
+          poolOptions: { forks: { maxForks: 4, minForks: 4 } },
         },
       },
       {
