@@ -42,12 +42,20 @@ export const LEAGUE_NAME_KEY = 'league_name';
 export const LEAGUE_SEASON_KEY = 'league_season';
 
 // Square requires a $ref-style JSON schema to mark the attribute as a
-// free-form string (vs Selection / Number / Boolean / Address). This
-// is the documented constant on the public Square schema CDN, called
-// out in the Custom Attributes Overview docs. The SDK accepts the
-// schema as a free-form `Record<string, unknown>` so we pass it raw.
+// free-form string (vs Selection / Number / Boolean / Address). The
+// previous host (`developer.squareup.com/schemas/v1/common.json`) is
+// rejected today with `BAD_REQUEST: Unsupported schema URI
+// encountered: ...`. The currently-accepted host (verified end-to-
+// end against a live seller and matching every example in
+// `node_modules/square/reference.md` for
+// `customAttributeDefinitions.create`) is
+// `developer-production-s.squarecdn.com/schemas/v1/common.json`.
+// Note the `/schemas/v1/` path segment — the bare `/i/common.json`
+// host is rejected with the same "Unsupported schema URI" error.
+// The SDK accepts the schema as a free-form `Record<string,
+// unknown>` so we pass it raw.
 const STRING_SCHEMA = {
-  $ref: 'https://developer.squareup.com/schemas/v1/common.json#squareup.common.String',
+  $ref: 'https://developer-production-s.squarecdn.com/schemas/v1/common.json#squareup.common.String',
 } as const;
 
 interface DefinitionSpec {
@@ -95,8 +103,39 @@ export function isAlreadyExistsError(err: unknown): boolean {
   });
 }
 
+/**
+ * Structural minimum of `SquareClient` that ensureDefinitions /
+ * createDefinition actually exercises — just the
+ * `customers.customAttributeDefinitions.create` surface. Declared as
+ * its own interface so tests can pass a hand-rolled fake without
+ * needing to launder a partial through `as unknown as SquareClient`
+ * (which the repo lint config bans). The real `SquareClient` is
+ * structurally compatible with this type, so production callers pass
+ * it unchanged.
+ */
+export interface SquareCustomAttrDefinitionsClient {
+  customers: {
+    customAttributeDefinitions: {
+      create(input: {
+        customAttributeDefinition: {
+          key: string;
+          name: string;
+          description?: string;
+          // Narrow to the literal union Square's SDK exposes so the
+          // real `SquareClient` is structurally assignable to this
+          // interface (function parameters are contravariant — a
+          // looser `string` here would reject the SDK signature).
+          visibility?: 'VISIBILITY_HIDDEN' | 'VISIBILITY_READ_ONLY' | 'VISIBILITY_READ_WRITE_VALUES';
+          schema?: Record<string, unknown> | null;
+        };
+        idempotencyKey?: string;
+      }): Promise<unknown>;
+    };
+  };
+}
+
 async function createDefinition(
-  client: SquareClient,
+  client: SquareCustomAttrDefinitionsClient,
   spec: DefinitionSpec,
 ): Promise<'created' | 'exists' | 'failed'> {
   try {
@@ -140,7 +179,9 @@ async function createDefinition(
  * pre-existing). Returns false on hard API failure — the caller must
  * treat false as NON-FATAL and continue with the customer write.
  */
-export async function ensureDefinitions(client: SquareClient): Promise<boolean> {
+export async function ensureDefinitions(
+  client: SquareCustomAttrDefinitionsClient,
+): Promise<boolean> {
   let allOk = true;
   for (const spec of DEFINITIONS) {
     const status = await createDefinition(client, spec);
@@ -166,7 +207,24 @@ export function isDefinitionMissingError(err: unknown): boolean {
     for (const e of errors) {
       const code = (e.code ?? '').toUpperCase();
       const detail = (e.detail ?? '').toLowerCase();
+      const field = (e.field ?? '').toLowerCase();
       if (code === 'NOT_FOUND' && /custom[_ ]?attribute|definition/.test(detail)) {
+        return true;
+      }
+      // Square's actual response when a customer custom-attribute
+      // upsert references a key with no seller-side definition is
+      // HTTP 400 / `BAD_REQUEST` with detail "No matching definition
+      // found for value" and field=`key` — NOT a 404. Without this
+      // branch the recovery path in
+      // `square-provider.syncCustomerLeagueAttributes` (bust cache,
+      // re-bootstrap, retry once) never fires when a definition is
+      // deleted out-of-band on the seller account, leaving every
+      // bowler in that org stuck in the payment-sync retry queue.
+      if (
+        code === 'BAD_REQUEST' &&
+        field === 'key' &&
+        /no matching definition/.test(detail)
+      ) {
         return true;
       }
     }

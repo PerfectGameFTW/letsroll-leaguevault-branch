@@ -59,7 +59,7 @@ const RULE_CEILINGS: Record<string, number> = {
   // `checkAndChargeFinalTwoWeeks` helper from
   // `server/services/payment-checks.ts`, which carried one
   // suppression for this rule.
-  '@typescript-eslint/no-non-null-assertion': 248,
+  '@typescript-eslint/no-non-null-assertion': 244,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -115,7 +115,7 @@ const RULE_CEILINGS: Record<string, number> = {
 // (89 → 88) — both came from the dead `checkAndChargeFinalTwoWeeks`
 // helper that was removed when the "Final 2 Weeks Due By" feature
 // retired.
-const TOTAL_CEILING = 515;
+const TOTAL_CEILING = 511;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

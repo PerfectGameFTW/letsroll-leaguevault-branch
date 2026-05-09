@@ -230,11 +230,34 @@ export async function syncBowlerForUser(
   } else {
     // Attribute writes failed: keep the bowler flagged so the retry
     // sweep (`payment-sync-retry.ts`) re-runs `syncBowlerForUser` and
-    // ultimately re-runs the attribute upserts.
+    // ultimately re-runs the attribute upserts. Mirror the customer-
+    // creation failure branch above and ALSO bump
+    // `paymentSyncAttempts` + stamp `paymentSyncLastAttemptAt`.
+    // Without these two writes the row stays at attempts=0 forever
+    // and the retry sweep loops on it every tick, never crossing
+    // PAYMENT_SYNC_MAX_ATTEMPTS and never logging the structured
+    // "given up" line. Preserve the original `paymentSyncPendingAt`
+    // so the admin "pending since" surface still reflects how long
+    // the bowler has actually been stuck.
     const nowIso = new Date().toISOString();
+    const nextAttempts = (bowler.paymentSyncAttempts ?? 0) + 1;
     if (bowler.paymentSyncPendingAt == null) {
       updates.paymentSyncPendingAt = nowIso;
       needsWrite = true;
+    }
+    updates.paymentSyncAttempts = nextAttempts;
+    updates.paymentSyncLastAttemptAt = nowIso;
+    needsWrite = true;
+    if (nextAttempts >= PAYMENT_SYNC_MAX_ATTEMPTS) {
+      log.error('Payment-customer sync gave up after max retry attempts', {
+        userId: user.id,
+        bowlerId: bowler.id,
+        locationId: resolvedSquareLocationId,
+        attempts: nextAttempts,
+        maxAttempts: PAYMENT_SYNC_MAX_ATTEMPTS,
+        pendingSince: bowler.paymentSyncPendingAt ?? nowIso,
+        stage: 'custom_attribute_upsert',
+      });
     }
   }
   if (needsWrite) {

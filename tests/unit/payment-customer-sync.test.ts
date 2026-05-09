@@ -32,6 +32,12 @@ vi.mock('../../server/storage', () => ({
 }));
 
 const mockGetPaymentProvider = vi.fn();
+const mockSyncBowlerLeagueAttributesToProvider = vi.fn();
+
+vi.mock('../../server/services/bowler-attributes', () => ({
+  syncBowlerLeagueAttributesToProvider: (...args: unknown[]) =>
+    mockSyncBowlerLeagueAttributesToProvider(...args),
+}));
 
 vi.mock('../../server/services/payment-provider-factory', async () => {
   const actual = await vi.importActual<typeof import('../../server/services/payment-provider-factory')>(
@@ -102,6 +108,9 @@ beforeEach(() => {
   mockIsOrgBNConfigured.mockReset();
   mockFlagBowlerForBnRetry.mockReset();
   mockClearBowlerBnRetry.mockReset();
+  mockSyncBowlerLeagueAttributesToProvider.mockReset();
+  // Default attribute sync to ok so existing tests are unaffected.
+  mockSyncBowlerLeagueAttributesToProvider.mockResolvedValue({ ok: true });
   // Default: org has NO BN configured, so the BN branch is a no-op
   // for tests that only care about Square. The dedicated BN-failure
   // test below overrides this.
@@ -151,9 +160,9 @@ describe('syncBowlerForUser', () => {
     expect(status).toBe('pending_retry');
     // Final updateBowler call should set the retry flag
     const lastCall = mockUpdateBowler.mock.calls.at(-1);
-    expect(lastCall).toBeDefined();
-    expect(lastCall![0]).toBe(42);
-    expect(lastCall![1].paymentSyncPendingAt).toEqual(expect.any(String));
+    if (!lastCall) throw new Error('expected updateBowler to have been called');
+    expect(lastCall[0]).toBe(42);
+    expect(lastCall[1].paymentSyncPendingAt).toEqual(expect.any(String));
   });
 
   it('clears paymentSyncPendingAt and returns synced on a successful sync', async () => {
@@ -173,9 +182,9 @@ describe('syncBowlerForUser', () => {
     expect(status).toBe('synced');
     // Final updateBowler call should null out the retry flag
     const lastCall = mockUpdateBowler.mock.calls.at(-1);
-    expect(lastCall).toBeDefined();
-    expect(lastCall![1].paymentSyncPendingAt).toBeNull();
-    expect(lastCall![1].paymentCustomerId).toBe('cust_123');
+    if (!lastCall) throw new Error('expected updateBowler to have been called');
+    expect(lastCall[1].paymentSyncPendingAt).toBeNull();
+    expect(lastCall[1].paymentCustomerId).toBe('cust_123');
   });
 
   it('queues the bowler for the BN retry sweep when BN sync returns success:false during a Square-successful flow', async () => {
@@ -244,6 +253,69 @@ describe('syncBowlerForUser', () => {
     expect(mockFlagBowlerForBnRetry).not.toHaveBeenCalled();
     expect(mockClearBowlerBnRetry).toHaveBeenCalledTimes(1);
     expect(mockClearBowlerBnRetry).toHaveBeenCalledWith(42);
+  });
+
+  it('bumps paymentSyncAttempts and stamps last-attempt when the attribute-write step fails (task #680)', async () => {
+    // Regression for the "stuck at attempts=0" loop. Previously, when
+    // `createOrUpdateCustomer` succeeded but the follow-up custom-
+    // attribute upserts failed, the helper only re-flagged
+    // `paymentSyncPendingAt` and never bumped `paymentSyncAttempts`,
+    // so the retry sweep looped forever and the row never crossed the
+    // PAYMENT_SYNC_MAX_ATTEMPTS cap. The fix mirrors the customer-
+    // creation failure branch: attempts++ and last-attempt timestamp.
+    const previouslyFailedBowler = {
+      ...baseBowler,
+      paymentSyncAttempts: 2,
+      paymentSyncPendingAt: '2026-04-20T12:00:00.000Z',
+    };
+    mockGetBowler.mockResolvedValue(previouslyFailedBowler);
+    mockGetLocationSquareConfig.mockResolvedValue({ accessToken: 'live-token' });
+    mockUpdateBowler.mockResolvedValue(previouslyFailedBowler);
+    mockGetPaymentProvider.mockResolvedValue({
+      createOrUpdateCustomer: vi.fn().mockResolvedValue({ id: 'cust_777' }),
+    });
+    // Square customer write succeeds but the league_name / league_season
+    // upsert fails — the exact production scenario from task #680.
+    mockSyncBowlerLeagueAttributesToProvider.mockResolvedValue({ ok: false });
+
+    const status = await syncBowlerForUser(baseUser, allChanged);
+
+    expect(status).toBe('pending_retry');
+    const lastCall = mockUpdateBowler.mock.calls.at(-1);
+    if (!lastCall) throw new Error('expected updateBowler to have been called');
+    expect(lastCall[0]).toBe(42);
+    expect(lastCall[1].paymentSyncAttempts).toBe(3);
+    expect(lastCall[1].paymentSyncLastAttemptAt).toEqual(expect.any(String));
+    // Original pending-since timestamp is preserved for the admin
+    // surface; we don't restamp it on every failed retry.
+    expect(lastCall[1].paymentSyncPendingAt).toBe('2026-04-20T12:00:00.000Z');
+  });
+
+  it('logs the structured "given up" error when attribute writes cross PAYMENT_SYNC_MAX_ATTEMPTS (task #680)', async () => {
+    const aboutToCapBowler = {
+      ...baseBowler,
+      // 4 → next attempt becomes 5 = PAYMENT_SYNC_MAX_ATTEMPTS.
+      paymentSyncAttempts: 4,
+      paymentSyncPendingAt: '2026-04-20T12:00:00.000Z',
+    };
+    mockGetBowler.mockResolvedValue(aboutToCapBowler);
+    mockGetLocationSquareConfig.mockResolvedValue({ accessToken: 'live-token' });
+    mockUpdateBowler.mockResolvedValue(aboutToCapBowler);
+    mockGetPaymentProvider.mockResolvedValue({
+      createOrUpdateCustomer: vi.fn().mockResolvedValue({ id: 'cust_888' }),
+    });
+    mockSyncBowlerLeagueAttributesToProvider.mockResolvedValue({ ok: false });
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await syncBowlerForUser(baseUser, allChanged);
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    const lastCall = mockUpdateBowler.mock.calls.at(-1);
+    if (!lastCall) throw new Error('expected updateBowler to have been called');
+    expect(lastCall[1].paymentSyncAttempts).toBe(5);
   });
 
   it('returns skipped when the user has no email even if a bowler is linked', async () => {

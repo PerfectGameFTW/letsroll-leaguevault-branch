@@ -20,7 +20,12 @@
 import { describe, expect, it } from 'vitest';
 import { SquareError } from 'square';
 import { getSeasonLabel } from '../../shared/season-utils';
-import { isAlreadyExistsError } from '../../server/services/square-custom-attributes';
+import {
+  isAlreadyExistsError,
+  isDefinitionMissingError,
+  ensureDefinitions,
+  type SquareCustomAttrDefinitionsClient,
+} from '../../server/services/square-custom-attributes';
 
 describe('getSeasonLabel', () => {
   it('labels a same-year December start as Winter (current year suffix)', () => {
@@ -170,5 +175,115 @@ describe('isAlreadyExistsError', () => {
     expect(
       isAlreadyExistsError(new SquareError({ statusCode: 400, body: { errors: [] } })),
     ).toBe(false);
+  });
+});
+
+describe('isDefinitionMissingError (task #680)', () => {
+  it('returns false for non-SquareError values', () => {
+    expect(isDefinitionMissingError(undefined)).toBe(false);
+    expect(isDefinitionMissingError(null)).toBe(false);
+    expect(isDefinitionMissingError(new Error('boom'))).toBe(false);
+  });
+
+  it('classifies HTTP 404 as definition-missing', () => {
+    expect(isDefinitionMissingError(new SquareError({ statusCode: 404 }))).toBe(true);
+  });
+
+  it('classifies a NOT_FOUND errors[].code with definition-related detail as definition-missing', () => {
+    expect(
+      isDefinitionMissingError(
+        new SquareError({
+          statusCode: 404,
+          body: {
+            errors: [
+              { code: 'NOT_FOUND', detail: 'Custom attribute definition not found.' },
+            ],
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("classifies Square's BAD_REQUEST `No matching definition found for value` shape (production-log fixture)", () => {
+    // Pinned from the production log shape that left three bowlers in
+    // org 3 stuck for nearly a day (task #680). HTTP 400 / BAD_REQUEST,
+    // detail mentions "No matching definition found for value", and
+    // field is `key`. Without recognising this shape, the bust-cache /
+    // re-bootstrap / retry path in `syncCustomerLeagueAttributes`
+    // never fires when a definition is deleted out-of-band.
+    expect(
+      isDefinitionMissingError(
+        new SquareError({
+          statusCode: 400,
+          body: {
+            errors: [
+              {
+                code: 'BAD_REQUEST',
+                detail: 'No matching definition found for value',
+                field: 'key',
+              },
+            ],
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT classify an unrelated BAD_REQUEST as definition-missing', () => {
+    // Sanity check: a generic validation error (e.g. invalid value
+    // type) must NOT be treated as definition-missing — that would
+    // trigger pointless re-bootstraps for unrelated failures.
+    expect(
+      isDefinitionMissingError(
+        new SquareError({
+          statusCode: 400,
+          body: {
+            errors: [
+              { code: 'BAD_REQUEST', detail: 'Value must be a string.', field: 'value' },
+            ],
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('ensureDefinitions schema shape (task #680)', () => {
+  // Pin the JSON schema we send to Square's
+  // `customAttributeDefinitions.create`. The previous URI host
+  // (`developer.squareup.com/schemas/v1/common.json`) was rejected by
+  // Square with `BAD_REQUEST: Unsupported schema URI encountered: ...`
+  // so a schema regression here would silently break smart-list
+  // attribute writes for every Square seller.
+  it('sends the squarecdn.com $ref shape that Square currently accepts', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    // ensureDefinitions accepts a structural minimum
+    // (`SquareCustomAttrDefinitionsClient`) declared alongside the
+    // helper, so this test fake satisfies the parameter type directly
+    // — no `as unknown as SquareClient` laundering required.
+    const fakeClient: SquareCustomAttrDefinitionsClient = {
+      customers: {
+        customAttributeDefinitions: {
+          async create(input) {
+            captured.push(
+              input.customAttributeDefinition.schema as Record<string, unknown>,
+            );
+            return { customAttributeDefinition: { key: 'k' } };
+          },
+        },
+      },
+    };
+
+    const ok = await ensureDefinitions(fakeClient);
+
+    expect(ok).toBe(true);
+    // Two definitions get created (league_name + league_season); both
+    // must carry the same string-schema $ref.
+    expect(captured).toHaveLength(2);
+    for (const schema of captured) {
+      expect(schema).toEqual({
+        $ref: 'https://developer-production-s.squarecdn.com/schemas/v1/common.json#squareup.common.String',
+      });
+    }
   });
 });

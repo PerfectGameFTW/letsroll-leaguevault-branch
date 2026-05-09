@@ -101,13 +101,13 @@ describe('check-eslint-baseline CI guard', () => {
     // at the same time.
     const dir = makeFixture({
       'src/foo.ts': {
-        '@typescript-eslint/no-non-null-assertion': { count: 258 },
+        '@typescript-eslint/no-non-null-assertion': { count: 254 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-non-null-assertion/);
-    expect(r.stderr).toMatch(/258 suppressions \(ceiling 248\)/);
+    expect(r.stderr).toMatch(/254 suppressions \(ceiling 244\)/);
   });
 
   it('exits 1 in --strict mode when the total ceiling is exceeded (catches "swap one any for a different rule" workarounds)', () => {
@@ -126,7 +126,7 @@ describe('check-eslint-baseline CI guard', () => {
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/no-explicit-any': { count: 0 },
-        '@typescript-eslint/no-non-null-assertion': { count: 255 },
+        '@typescript-eslint/no-non-null-assertion': { count: 244 },
         '@typescript-eslint/no-unnecessary-type-assertion': { count: 88 },
         '@typescript-eslint/consistent-type-assertions': { count: 4 },
         'no-restricted-syntax': { count: 153 },
@@ -135,7 +135,7 @@ describe('check-eslint-baseline CI guard', () => {
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: total suppressions: 600/);
+    expect(r.stderr).toMatch(/FAIL: total suppressions: 589/);
   });
 
   it('exits 0 with a RATCHET hint when a per-rule count drops below the ceiling', () => {
@@ -150,7 +150,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 248\)/,
+      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 244\)/,
     );
     expect(r.stdout).toMatch(/Lower RULE_CEILINGS/);
     expect(r.stdout).toMatch(/RATCHET: total suppressions: 100/);

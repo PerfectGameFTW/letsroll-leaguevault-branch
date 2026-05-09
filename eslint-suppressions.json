@@ -633,11 +633,6 @@
       "count": 6
     }
   },
-  "tests/unit/payment-customer-sync.test.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
-    }
-  },
   "tests/unit/payment-execution-receipt-warn.test.ts": {
     "no-restricted-syntax": {
       "count": 1
