@@ -223,7 +223,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
         onChange={handleFileChange}
       />
 
-      {/* Payment Partners Dialog (task #678) */}
+      {/* Payment Partners Dialog */}
       {user.bowlerId ? (
         <Dialog open={isPartnersDialogOpen} onOpenChange={setIsPartnersDialogOpen}>
           <DialogContent className="sm:max-w-[480px]">

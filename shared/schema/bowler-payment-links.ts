@@ -6,7 +6,7 @@ import { users } from "./users";
 import { organizations } from "./organizations";
 
 /**
- * Adult bowler payment-link table (task #678).
+ * Adult bowler payment-link table.
  *
  * Two adult bowlers in the same organization can link as "payment
  * partners" so either may pay on the other's behalf using their own

@@ -1,22 +1,10 @@
 /**
- * Bowler payment-link routes (task #678).
+ * Bowler payment-link routes. Mounted at `/api/bowler-links`.
  *
- * Mounted at `/api/bowler-links`. All endpoints require an authenticated
- * session; admin endpoints additionally require org_admin or
- * system_admin via `requireOrgAdmin`.
- *
- * Lifecycle:
- *  - GET  /                — list my links + pending invites
- *  - POST /invite          — invite by bowler email (creates pending row)
- *  - POST /:id/accept      — accept a pending invite I'm the invitee on
- *  - POST /:id/decline     — decline (delete) a pending invite I'm on
- *  - DELETE /:id           — unlink (either side may remove an accepted link)
- *  - GET  /admin           — admin: list all links in current org
- *  - POST /admin           — admin direct-link two bowlers (status=accepted)
- *
- * Org policy: every row carries `organizationId` NOT NULL (DB-enforced).
- * Cross-org pairs are rejected. Org-less callers / org-less bowlers are
- * denied per `server/utils/access-control.ts`.
+ * All endpoints require an authenticated session; admin endpoints
+ * additionally require org_admin or system_admin via `requireOrgAdmin`.
+ * Every link row carries `organizationId` NOT NULL (DB-enforced); cross-org
+ * pairs and org-less callers/bowlers are rejected.
  */
 import { Router } from "express";
 import { z } from "zod";
@@ -46,15 +34,10 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, { links: [], hasAny: false });
     }
     const all = await links.listLinksForBowler(user.bowlerId);
-    // Org-scope filter (defense in depth — DB column is NOT NULL).
     const scoped = user.organizationId
       ? all.filter((l) => l.organizationId === user.organizationId)
       : [];
 
-    // Enrich each row with derived inviterBowlerId (resolved from
-    // createdByUserId → user → bowlerId) and the partner bowler's display
-    // name. Done server-side so the client never sees raw db ids in the UI
-    // and never has to guess which side of the pair is the invitee.
     const enriched = await Promise.all(
       scoped.map(async (l) => {
         const inviter = l.createdByUserId
@@ -67,10 +50,6 @@ router.get("/", async (req, res) => {
         const partnerName = partner
           ? partner.name?.trim() || partner.email || `Bowler #${partnerId}`
           : `Bowler #${partnerId}`;
-        // expose partnerBowlerId so the
-        // dashboard recipient picker can target a linked bowler
-        // without re-querying or guessing which side of the pair
-        // the partner is on.
         return { ...l, inviterBowlerId, partnerBowlerId: partnerId, partnerName };
       }),
     );
@@ -94,7 +73,7 @@ router.post("/invite", inviteLimiter, async (req, res) => {
 
     const inviter = await storage.getBowler(user.bowlerId);
     if (!inviter || inviter.organizationId === null) {
-      return sendError(res, "Inviter bowler is org-less", 403, "FORBIDDEN");
+      return sendError(res, "Inviter bowler is org-less", 403, "ORG_REQUIRED");
     }
     if ((inviter.email ?? "").toLowerCase() === inviteeEmail) {
       return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
@@ -108,7 +87,7 @@ router.post("/invite", inviteLimiter, async (req, res) => {
       return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
     }
     if (invitee.organizationId !== inviter.organizationId) {
-      return sendError(res, "Cross-org links are not allowed", 403, "FORBIDDEN");
+      return sendError(res, "Cross-org links are not allowed", 403, "CROSS_ORG_DENIED");
     }
 
     const existing = await links.getLinkBetween(inviter.id, invitee.id);
@@ -150,11 +129,6 @@ router.post("/:id/accept", async (req, res) => {
     if (link.status !== "pending") {
       return sendError(res, "Invite is not pending", 409, "CONFLICT");
     }
-    // Only the invitee may accept. The inviter is the row's
-    // createdByUserId; the invitee is the OTHER bowler in the pair.
-    // If the inviter user has been deleted (createdByUserId nulled by
-    // ON DELETE SET NULL) we can no longer reliably identify the invitee,
-    // so refuse rather than risk letting the inviter accept their own invite.
     if (!link.createdByUserId) {
       return sendError(res, "Invite is no longer valid", 410, "GONE");
     }
@@ -172,7 +146,7 @@ router.post("/:id/accept", async (req, res) => {
       return sendError(res, "Only the invitee can accept", 403, "FORBIDDEN");
     }
     if (user.organizationId !== link.organizationId) {
-      return sendError(res, "Cross-org accept", 403, "FORBIDDEN");
+      return sendError(res, "Cross-org accept", 403, "CROSS_ORG_DENIED");
     }
     const accepted = await links.acceptLink(id);
     if (!accepted) return sendError(res, "Invite no longer pending", 409, "CONFLICT");
@@ -197,20 +171,13 @@ router.post("/:id/decline", async (req, res) => {
       return sendError(res, "Invite is not pending", 409, "CONFLICT");
     }
     if (user.organizationId !== link.organizationId) {
-      return sendError(res, "Cross-org decline", 403, "FORBIDDEN");
+      return sendError(res, "Cross-org decline", 403, "CROSS_ORG_DENIED");
     }
     if (user.bowlerId !== link.bowlerAId && user.bowlerId !== link.bowlerBId) {
       return sendError(res, "Not your invite", 403, "FORBIDDEN");
     }
-    // Pending invites can't have been used by a combined-autopay schedule
-    // yet (we check `accepted` at scheduler/insert time), but call the
-    // prune helper anyway — it's a no-op when there's nothing to remove
-    // and keeps the cleanup path uniform with DELETE.
     const prunedSchedules = await links.pruneSchedulesForRemovedLink(link);
     await links.deleteLink(id);
-    // mirror the DELETE route's audit
-    // trail so security review can reconstruct who declined which
-    // invite and (if it ever happens) which schedules were touched.
     log.info("audit:bowler_link_decline", {
       actorUserId: user.id,
       organizationId: link.organizationId,
@@ -243,7 +210,6 @@ router.delete("/:id", async (req, res) => {
     const link = await links.getLinkById(id);
     if (!link) return sendError(res, "Link not found", 404, "NOT_FOUND");
 
-    // Either side may unlink, OR an org_admin in the same org.
     const isAdmin = isOrgOrHigher(user) && user.organizationId === link.organizationId;
     const isParty =
       !!user.bowlerId &&
@@ -252,16 +218,8 @@ router.delete("/:id", async (req, res) => {
     if (!isAdmin && !isParty) {
       return sendError(res, "Not allowed", 403, "FORBIDDEN");
     }
-    // scrub the now-removed partner from any combined-autopay
-    // schedule's additionalBowlerIds BEFORE deleting the link row, so
-    // an in-flight scheduler never sees a stale partner without an
-    // accepted link. (Lifecycle also re-validates at firing time —
-    // pruning here keeps the data tidy for reports/audit.)
     const prunedSchedules = await links.pruneSchedulesForRemovedLink(link);
     await links.deleteLink(id);
-    // Audit trail. Admin removals AND any pruned schedules are persisted
-    // via structured log so security review can reconstruct who unlinked
-    // which pair and which combined-autopay schedules were affected.
     if (isAdmin) {
       log.info("admin_audit:bowler_link_remove", {
         adminUserId: user.id,
@@ -286,8 +244,6 @@ router.delete("/:id", async (req, res) => {
     return sendError(res, "Failed to remove link");
   }
 });
-
-// ---------- Admin endpoints ----------
 
 router.get("/admin", async (req, res) => {
   try {
@@ -316,8 +272,6 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
     if (!user || !isOrgOrHigher(user)) {
       return sendError(res, "Admin access required", 403, "FORBIDDEN");
     }
-    // Org admins must have an org; system admins derive the org from
-    // the target bowler pair (validated below).
     if (!user.organizationId && !isSystemAdmin(user)) {
       return sendError(res, "Organization required", 400, "ORG_REQUIRED");
     }
@@ -332,18 +286,17 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
     ]);
     if (!a || !b) return sendError(res, "Bowler not found", 404, "NOT_FOUND");
     if (a.organizationId === null || b.organizationId === null) {
-      return sendError(res, "Org-less bowler cannot be linked", 403, "FORBIDDEN");
+      return sendError(res, "Org-less bowler cannot be linked", 403, "ORG_REQUIRED");
     }
     if (a.organizationId !== b.organizationId) {
-      return sendError(res, "Cross-org links are not allowed", 403, "FORBIDDEN");
+      return sendError(res, "Cross-org links are not allowed", 403, "CROSS_ORG_DENIED");
     }
     if (a.organizationId !== user.organizationId && !isSystemAdmin(user)) {
-      return sendError(res, "Outside your organization", 403, "FORBIDDEN");
+      return sendError(res, "Outside your organization", 403, "CROSS_ORG_DENIED");
     }
 
     const existing = await links.getLinkBetween(a.id, b.id);
     if (existing) {
-      // Idempotent: if pending, promote to accepted; otherwise return as-is.
       if (existing.status === "pending") {
         const accepted = await links.acceptLink(existing.id);
         return sendSuccess(res, accepted ?? existing);
@@ -357,7 +310,6 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
       organizationId: a.organizationId,
       createdByUserId: user.id,
     });
-    // audit trail for admin direct-link.
     log.info("admin_audit:bowler_link_create", {
       adminUserId: user.id,
       organizationId: a.organizationId,

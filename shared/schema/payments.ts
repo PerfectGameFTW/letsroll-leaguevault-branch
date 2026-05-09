@@ -52,12 +52,9 @@ export const payments = pgTable("payments", {
   // the refund dialog (refunds inherit the original payment's email).
   receiptEmailMissing: boolean("receipt_email_missing").notNull().default(false),
   notes: text("notes"),
-  // Task #678: when an adult bowler pays on behalf of a linked
-  // payment partner (or on their own bowler), this records the
-  // user.id of the human who initiated the charge. NULL for legacy
-  // rows, manual admin-entered rows, and webhook-driven inserts
-  // where there is no actor user. ON DELETE SET NULL so deleting
-  // the user doesn't cascade-delete payment history.
+  // Records the user.id of the human who initiated the charge when an
+  // adult bowler pays on behalf of a linked payment partner. NULL for
+  // legacy / admin-entered / webhook-driven rows.
   paidByUserId: integer("paid_by_user_id").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
@@ -84,12 +81,10 @@ export const paymentSchedules = pgTable("payment_schedules", {
   paymentCardId: text("payment_card_id").notNull(),
   cancelledAt: timestamp("cancelled_at", { mode: "string" }),
   cancelReason: text("cancel_reason"),
-  // Task #678: combined autopay. When a payer (the bowler at
-  // `bowlerId`, owner of `paymentCardId`) wants their saved card
-  // charged for additional linked bowlers each cycle, those bowler
-  // ids land here. The scheduler iterates this list and produces a
-  // separate payment row per bowler, all stamped with the payer's
-  // user id. Empty/null = legacy single-bowler behavior.
+  // Combined autopay: additional linked bowlers whose share is charged
+  // to the payer's saved card each cycle. The scheduler iterates this
+  // list and produces a separate payment row per bowler. Empty/null =
+  // legacy single-bowler behavior.
   additionalBowlerIds: integer("additional_bowler_ids").array(),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),

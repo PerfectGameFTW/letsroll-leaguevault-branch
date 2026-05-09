@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   bowlerPaymentLinks,
@@ -8,8 +8,6 @@ import {
 } from "@shared/schema";
 
 /**
- * Storage helpers for `bowler_payment_links` (task #678).
- *
  * Pairs are stored canonically with `bowlerAId < bowlerBId` so the
  * unique-pair index is direction-agnostic. Helpers normalize callers'
  * inputs through `pair()` before reading or writing.
@@ -56,7 +54,6 @@ export async function createAcceptedLink(input: {
       createdByUserId: input.createdByUserId,
     })
     .returning();
-  // Stamp respondedAt to mark immediate acceptance (admin direct-link).
   if (row && row.status === "accepted" && !row.respondedAt) {
     const [updated] = await db
       .update(bowlerPaymentLinks)
@@ -92,12 +89,6 @@ export async function getLinkById(id: number): Promise<BowlerPaymentLink | undef
   return row;
 }
 
-/**
- * Lists every link a bowler is part of (either side), in any status.
- * Org-less rows are intentionally NOT excluded here: the table requires
- * organizationId NOT NULL at the DB layer, so this can only ever return
- * org-stamped rows. Callers still apply org-scoped filtering for safety.
- */
 export async function listLinksForBowler(
   bowlerId: number,
   opts?: { status?: LinkStatus },
@@ -142,14 +133,10 @@ export async function deleteLink(id: number): Promise<void> {
 }
 
 /**
- * – when a bowler-payment link is removed (decline OR unlink),
- * scrub each bowler's id from the OTHER bowler's combined-autopay
- * `additionalBowlerIds` arrays. We only touch schedules owned by the
- * two bowlers in the pair (and only within the link's organization), so
- * an admin removing a link can never accidentally rewrite schedules
- * belonging to other orgs.
- *
- * Returns the affected schedule ids per direction, for audit logging.
+ * Scrub each bowler's id from the OTHER bowler's combined-autopay
+ * `additionalBowlerIds` arrays when a link is removed. The UPDATE is
+ * org-scoped at write time by joining against leagues belonging to the
+ * link's organization.
  */
 export async function pruneSchedulesForRemovedLink(
   link: Pick<BowlerPaymentLink, "bowlerAId" | "bowlerBId" | "organizationId">,
@@ -157,18 +144,13 @@ export async function pruneSchedulesForRemovedLink(
   const { paymentSchedules, leagues } = await import("@shared/schema");
   const affected: { id: number; bowlerId: number; removedPartnerId: number }[] = [];
 
-  // We can't scope payment_schedules to organizationId directly (no col
-  // on the table), so we constrain by `bowlerId IN (a, b)` and rely on
-  // the league's organizationId as a defense-in-depth check below.
   const orgLeagues = await db
     .select({ id: leagues.id })
     .from(leagues)
     .where(eq(leagues.organizationId, link.organizationId));
-  const orgLeagueIds = new Set(orgLeagues.map((l) => l.id));
-  if (orgLeagueIds.size === 0) return affected;
+  const orgLeagueIds = orgLeagues.map((l) => l.id);
+  if (orgLeagueIds.length === 0) return affected;
 
-  // For each direction (A→B and B→A) find schedules whose
-  // additionalBowlerIds contains the partner id, then array_remove it.
   const directions: Array<[number, number]> = [
     [link.bowlerAId, link.bowlerBId],
     [link.bowlerBId, link.bowlerAId],
@@ -182,27 +164,18 @@ export async function pruneSchedulesForRemovedLink(
       .where(
         and(
           eq(paymentSchedules.bowlerId, ownerBowlerId),
+          inArray(paymentSchedules.leagueId, orgLeagueIds),
           sql`${partnerBowlerId} = ANY(${paymentSchedules.additionalBowlerIds})`,
         ),
       )
-      .returning({ id: paymentSchedules.id, leagueId: paymentSchedules.leagueId });
+      .returning({ id: paymentSchedules.id });
     for (const row of updated) {
-      // Defense in depth — only audit rows whose league belongs to the
-      // link's organization. Cross-org rows (shouldn't exist) are
-      // silently ignored.
-      if (orgLeagueIds.has(row.leagueId)) {
-        affected.push({ id: row.id, bowlerId: ownerBowlerId, removedPartnerId: partnerBowlerId });
-      }
+      affected.push({ id: row.id, bowlerId: ownerBowlerId, removedPartnerId: partnerBowlerId });
     }
   }
   return affected;
 }
 
-/**
- * True iff the two bowler ids are the same OR they have an accepted
- * payment link in the given org. Does NOT check user→bowler ownership;
- * callers (e.g. canUserPayForBowler) layer that on top.
- */
 export async function arePartners(
   bowlerAId: number,
   bowlerBId: number,
@@ -213,11 +186,6 @@ export async function arePartners(
   return !!link && link.status === "accepted" && link.organizationId === organizationId;
 }
 
-/**
- * Returns the set of bowler ids the given bowler is accepted-linked to,
- * scoped by org. Used to gate combined-autopay target selection and to
- * power the "your linked bowlers" UI.
- */
 export async function getAcceptedPartnerBowlerIds(
   bowlerId: number,
   organizationId: number,
@@ -235,9 +203,6 @@ export async function getAcceptedPartnerBowlerIds(
   return rows.map((r) => (r.a === bowlerId ? r.b : r.a));
 }
 
-/** Count of links involving this bowler in any status — drives the
- * "gate ALL linking UI behind has at least one link or pending invite"
- * rule by giving the client a single number to check. */
 export async function countLinksForBowler(bowlerId: number): Promise<number> {
   const [row] = await db
     .select({ c: sql<number>`count(*)` })

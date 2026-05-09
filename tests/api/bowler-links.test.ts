@@ -49,7 +49,7 @@ interface LinksList {
  * primes the cache with the correct bowlerId, and we tear them down
  * in afterAll.
  */
-describe('Bowler payment links — lifecycle + cross-org denial (task #678)', () => {
+describe('Bowler payment links — lifecycle + cross-org denial', () => {
   let sessionA: AuthSession;
   let sessionB: AuthSession;
   let aliceUserId = 0;

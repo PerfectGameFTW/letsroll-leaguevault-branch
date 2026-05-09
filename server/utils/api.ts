@@ -377,10 +377,6 @@ export function sanitizePayment(payment: Payment, paidByName?: string | null): S
   for (const field of SAFE_PAYMENT_FIELDS) {
     if (field in input) safePayment[field] = input[field];
   }
-  // task #678: only attach paidByName when we actually have a name to show.
-  // Omitting the field when null keeps existing route-level test fixtures
-  // — which assert exact-shape equality against pre-task rows — intact, and
-  // matches how the client treats `!payment.paidByName` as "no badge".
   if (paidByName) safePayment.paidByName = paidByName;
   return safePayment as SanitizedPayment;
 }
