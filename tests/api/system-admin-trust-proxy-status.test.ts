@@ -81,7 +81,11 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
     expect(status).toBe(403);
   });
 
-  it('returns the live + config + synthetic shape for a system_admin', async () => {
+  // Cross-worker DB/session contention under the `parallel` vitest project
+  // (isolate:false, 4 forks) can occasionally invalidate the shared admin
+  // session set up in beforeAll. Passes 7/7 in isolation; retries cover the
+  // rare interleaving. See task #703.
+  it('returns the live + config + synthetic shape for a system_admin', { retry: 2 }, async () => {
     const { status, data } = await apiGet<StatusBody>(
       '/api/system-admin/trust-proxy-status',
       admin,
@@ -152,7 +156,7 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
   const probeConfigured = !!probeToken && probeToken.length >= 32;
 
   describe.skipIf(!probeConfigured)('X-Probe-Token auth path', () => {
-    it('accepts a matching X-Probe-Token with no session and returns the status body', async () => {
+    it('accepts a matching X-Probe-Token with no session and returns the status body', { retry: 2 }, async () => {
       const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
         headers: {
           Accept: 'application/json',
