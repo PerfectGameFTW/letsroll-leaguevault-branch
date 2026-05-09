@@ -50,6 +50,7 @@ import { startLeagueSquareCatalogAudit } from './services/league-square-catalog-
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
 import { backfillMissingPaymentCustomers } from './migrations/backfill-missing-payment-customers';
+import { seedDefaultEmailTemplates } from './migrations/seed-email-templates';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
@@ -388,6 +389,12 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<CreatedApp
       await backfillMissingPaymentCustomers();
     } catch (error) {
       log.error('Error backfilling missing payment customers:', error);
+    }
+
+    try {
+      await seedDefaultEmailTemplates();
+    } catch (error) {
+      log.error('Error seeding default email templates:', error);
     }
   }
 

@@ -28,6 +28,7 @@ import { registerAuthRoutes } from './auth.js';
 import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
 import bowlerLinksRouter from './bowler-links.js';
+import bowlerLinkRespondRouter from './bowler-link-respond.js';
 import { bowlerGuardiansChildRouter, bowlerGuardiansRowRouter, bowlerGuardiansMyChildrenRouter } from './bowler-guardians.js';
 import leagueRegistrationQuestionsRouter from './league-registration-questions.js';
 import publicEmbedRegistrationRouter from './public-embed-registration.js';
@@ -107,6 +108,12 @@ export function registerRoutes(app: Express): void {
   // anonymous parent-page traffic can read the form schema and post a
   // registration without a session.
   app.use('/api/public/embed', publicEmbedRegistrationRouter);
+  // Task #704: one-click accept/decline for bowler-payment-link invites.
+  // Mounted BEFORE requirePasswordRotated/requireAuth because the link
+  // recipient may not be logged in (or may be logged in as a different
+  // user). Auth comes from the HMAC-signed token in the query string,
+  // verified inside the router. GET-only, so no CSRF token is needed.
+  app.use('/api/bowler-link-respond', bowlerLinkRespondRouter);
 
   // Task #455: server-side enforcement of the must-change-password
   // gate. Mounted here so the auth routes registered above (and the

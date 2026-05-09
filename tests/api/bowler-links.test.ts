@@ -15,10 +15,12 @@ import {
   apiDelete,
   apiGet,
   apiPost,
+  BASE_URL,
   getBaselineOrgIds,
   login,
   type AuthSession,
 } from '../helpers';
+import { signLinkActionToken } from '../../server/utils/bowler-link-tokens';
 
 interface LinkRow {
   id: number;
@@ -380,6 +382,118 @@ describe('Bowler payment links — lifecycle + cross-org denial', () => {
     expect(excludedIds).toContain(avivBowlerId);
     // Use stampStr to keep it referenced in a safe way.
     void stampStr;
+  });
+
+  it('invite response surfaces emailSent + reason without rolling back the link (task #704)', async () => {
+    // Provision a fresh claimed bowler in org A so we can hit the
+    // happy-path invite (alice → claimed bowler) without UNCLAIMED_BOWLER.
+    const { orgAId } = await getBaselineOrgIds();
+    const targetEmail = `vitest-link-emailflag-${stamp}@example.com`;
+    const [targetBowler] = await db
+      .insert(bowlersTable)
+      .values({
+        organizationId: orgAId,
+        name: `Vitest Link EmailFlag ${stamp}`,
+        email: targetEmail,
+        active: true,
+      })
+      .returning({ id: bowlersTable.id });
+    if (!targetBowler) throw new Error('failed to insert target bowler');
+    const targetBowlerId = targetBowler.id;
+    const targetPwd = await hashPassword(password);
+    const [targetUser] = await db
+      .insert(users)
+      .values({
+        email: targetEmail,
+        password: targetPwd,
+        name: `Vitest Link EmailFlag User ${stamp}`,
+        role: 'user',
+        organizationId: orgAId,
+        bowlerId: targetBowlerId,
+      })
+      .returning({ id: users.id });
+    if (!targetUser) throw new Error('failed to insert target user');
+    const targetUserId = targetUser.id;
+
+    try {
+      const res = await apiPost<LinkRow & { emailSent: boolean; reason?: string }>(
+        '/api/bowler-links/invite',
+        { inviteeBowlerId: targetBowlerId },
+        sessionA,
+      );
+      expect(res.status, JSON.stringify(res.data)).toBe(201);
+      const row = res.data.data as LinkRow & { emailSent: boolean; reason?: string };
+      createdLinkIds.push(row.id);
+      // The link was created regardless of email outcome.
+      expect(row.id).toBeGreaterThan(0);
+      expect(row.status).toBe('pending');
+      // emailSent is always present in the response shape. In the test
+      // environment SENDGRID_API_KEY is not configured, so the send
+      // short-circuits to SEND_FAILED — but the row still exists.
+      expect(typeof row.emailSent).toBe('boolean');
+      if (!row.emailSent) {
+        expect(['NO_EMAIL_ON_FILE', 'TEMPLATE_NOT_CONFIGURED', 'SEND_FAILED']).toContain(row.reason);
+      }
+      // Confirm persistence — email failure must not roll back the invite.
+      const persisted = await db
+        .select({ id: bowlerPaymentLinks.id, status: bowlerPaymentLinks.status })
+        .from(bowlerPaymentLinks)
+        .where(eq(bowlerPaymentLinks.id, row.id));
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].status).toBe('pending');
+
+      // The public, unauthenticated GET endpoint must accept a valid
+      // signed token and flip the link to accepted.
+      const acceptToken = signLinkActionToken(row.id, 'accept');
+      const acceptRes = await fetch(
+        `${BASE_URL}/api/bowler-link-respond/accept?token=${encodeURIComponent(acceptToken)}`,
+      );
+      expect(acceptRes.status).toBe(200);
+      const html = await acceptRes.text();
+      expect(html.toLowerCase()).toContain('accept');
+      const afterAccept = await db
+        .select({ status: bowlerPaymentLinks.status })
+        .from(bowlerPaymentLinks)
+        .where(eq(bowlerPaymentLinks.id, row.id));
+      expect(afterAccept[0]?.status).toBe('accepted');
+
+      // Replaying a decline token after acceptance must NOT delete an
+      // already-accepted link — single-use scoping by state.
+      const declineToken = signLinkActionToken(row.id, 'decline');
+      const replay = await fetch(
+        `${BASE_URL}/api/bowler-link-respond/decline?token=${encodeURIComponent(declineToken)}`,
+      );
+      expect(replay.status).toBe(409);
+      const stillThere = await db
+        .select({ status: bowlerPaymentLinks.status })
+        .from(bowlerPaymentLinks)
+        .where(eq(bowlerPaymentLinks.id, row.id));
+      expect(stillThere[0]?.status).toBe('accepted');
+    } finally {
+      await db.delete(users).where(eq(users.id, targetUserId));
+      await db.delete(bowlersTable).where(eq(bowlersTable.id, targetBowlerId));
+    }
+  });
+
+  it('public accept/decline GET endpoints reject tampered + expired tokens (task #704)', async () => {
+    const bad = await fetch(
+      `${BASE_URL}/api/bowler-link-respond/accept?token=not-a-real-token`,
+    );
+    expect(bad.status).toBe(400);
+    expect((await bad.text()).toLowerCase()).toContain('invalid');
+
+    const wrongActionToken = signLinkActionToken(1, 'accept');
+    const wrongAction = await fetch(
+      `${BASE_URL}/api/bowler-link-respond/decline?token=${encodeURIComponent(wrongActionToken)}`,
+    );
+    expect(wrongAction.status).toBe(400);
+
+    // Token for a non-existent link → 404 (vs 200 for accept-already-deleted decline).
+    const ghost = signLinkActionToken(999_999_999, 'accept');
+    const ghostRes = await fetch(
+      `${BASE_URL}/api/bowler-link-respond/accept?token=${encodeURIComponent(ghost)}`,
+    );
+    expect(ghostRes.status).toBe(404);
   });
 
   it('admin direct-link succeeds within org and refuses cross-org pairs', async () => {

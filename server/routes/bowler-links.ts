@@ -5,7 +5,93 @@ import * as links from "../storage/bowler-payment-links";
 import { sendSuccess, sendError, handleZodError } from "../utils/api.js";
 import { adminWriteLimiter, inviteLimiter } from "../middleware/rate-limit.js";
 import { isOrgOrHigher, isSystemAdmin } from "../utils/access-control.js";
+import { signLinkActionToken } from "../utils/bowler-link-tokens.js";
+import { getBaseUrl, sendTemplatedEmail } from "../services/email";
+import { env } from "../config";
 import { createLogger } from "../logger";
+
+type InviteEmailReason = "NO_EMAIL_ON_FILE" | "TEMPLATE_NOT_CONFIGURED" | "SEND_FAILED";
+
+const PARTNER_INVITE_TEMPLATE_SLUG = "bowler_payment_link_invite";
+
+const inviteEmailLog = createLogger("BowlerLinks.InviteEmail");
+
+async function sendPartnerInviteEmail(opts: {
+  linkId: number;
+  inviter: { name: string | null; email: string | null };
+  invitee: { name: string | null; email: string | null };
+  organizationId: number;
+}): Promise<{ emailSent: boolean; reason?: InviteEmailReason }> {
+  const toEmail = opts.invitee.email?.trim() ?? "";
+  if (!toEmail) {
+    inviteEmailLog.info("Skipping partner-invite email: invitee has no email on file", {
+      linkId: opts.linkId,
+      organizationId: opts.organizationId,
+      reason: "NO_EMAIL_ON_FILE",
+    });
+    return { emailSent: false, reason: "NO_EMAIL_ON_FILE" };
+  }
+
+  const template = await storage.getEmailTemplateBySlug(PARTNER_INVITE_TEMPLATE_SLUG);
+  if (!template || !template.active) {
+    inviteEmailLog.warn("Skipping partner-invite email: template missing or inactive", {
+      linkId: opts.linkId,
+      organizationId: opts.organizationId,
+      slug: PARTNER_INVITE_TEMPLATE_SLUG,
+      reason: "TEMPLATE_NOT_CONFIGURED",
+    });
+    return { emailSent: false, reason: "TEMPLATE_NOT_CONFIGURED" };
+  }
+
+  if (!env.SENDGRID_API_KEY) {
+    inviteEmailLog.warn("Skipping partner-invite email: SENDGRID_API_KEY not configured", {
+      linkId: opts.linkId,
+      organizationId: opts.organizationId,
+      reason: "SEND_FAILED",
+    });
+    return { emailSent: false, reason: "SEND_FAILED" };
+  }
+
+  const org = await storage.getOrganization(opts.organizationId);
+  const baseUrl = getBaseUrl(org ?? null);
+  const acceptToken = signLinkActionToken(opts.linkId, "accept");
+  const declineToken = signLinkActionToken(opts.linkId, "decline");
+  const acceptLink = `${baseUrl}/api/bowler-link-respond/accept?token=${encodeURIComponent(acceptToken)}`;
+  const declineLink = `${baseUrl}/api/bowler-link-respond/decline?token=${encodeURIComponent(declineToken)}`;
+  const appLink = `${baseUrl}/bowler-dashboard`;
+
+  const inviterName = opts.inviter.name?.trim() || opts.inviter.email || "A bowler";
+  const inviteeName = opts.invitee.name?.trim() || "there";
+  const variables: Record<string, string> = {
+    inviter_name: inviterName,
+    invitee_name: inviteeName,
+    organization_name: org?.name ?? "your league",
+    accept_link: acceptLink,
+    decline_link: declineLink,
+    app_link: appLink,
+  };
+
+  try {
+    const sent = await sendTemplatedEmail(PARTNER_INVITE_TEMPLATE_SLUG, toEmail, variables);
+    if (!sent) {
+      inviteEmailLog.warn("Partner-invite email send returned false", {
+        linkId: opts.linkId,
+        organizationId: opts.organizationId,
+        reason: "SEND_FAILED",
+      });
+      return { emailSent: false, reason: "SEND_FAILED" };
+    }
+    return { emailSent: true };
+  } catch (err) {
+    inviteEmailLog.warn("Partner-invite email send threw", {
+      linkId: opts.linkId,
+      organizationId: opts.organizationId,
+      reason: "SEND_FAILED",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { emailSent: false, reason: "SEND_FAILED" };
+  }
+}
 
 const log = createLogger("BowlerLinks");
 const router = Router();
@@ -126,7 +212,26 @@ router.post("/invite", inviteLimiter, async (req, res) => {
       organizationId: user.organizationId,
       createdByUserId: user.id,
     });
-    return sendSuccess(res, created, 201);
+
+    // Email send must NEVER roll back the invite (task #704). Failures
+    // are surfaced via `emailSent` / `reason` so the client can show a
+    // contextual hint, but the link row stays put.
+    let emailResult: { emailSent: boolean; reason?: InviteEmailReason } = {
+      emailSent: false,
+      reason: "SEND_FAILED",
+    };
+    try {
+      emailResult = await sendPartnerInviteEmail({
+        linkId: created.id,
+        inviter: { name: inviter.name, email: inviter.email },
+        invitee: { name: invitee.name, email: invitee.email },
+        organizationId: user.organizationId,
+      });
+    } catch (emailErr) {
+      log.error("invite email error (non-fatal)", emailErr);
+    }
+
+    return sendSuccess(res, { ...created, ...emailResult }, 201);
   } catch (err) {
     if (err instanceof z.ZodError) return handleZodError(res, err);
     log.error("invite error", err);
