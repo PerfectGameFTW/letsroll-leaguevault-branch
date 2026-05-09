@@ -1,0 +1,453 @@
+/**
+ * App factory (Task #699).
+ *
+ * Extracts the body of `server/index.ts` into a reusable
+ * `createApp(...)` so the test harness can spawn isolated Express
+ * instances per vitest worker without inheriting the production
+ * boot's background workers, scheduler timers, or third-party HTTP
+ * probes. The dev/prod entry point still funnels through this
+ * factory, so `npm run dev` behavior is unchanged.
+ *
+ * `suppressBackgroundWorkers: true` skips the heavy boot-time work
+ * that has no business running in a unit-test process: schedulers,
+ * sync sweeps, the Apple-Pay worker resume, the Square catalog
+ * audit, the third-party pin verifier sweep, the Square
+ * custom-attribute bootstrap, the avatar/double-pay/missing-customer
+ * migrations, and the Vite dev middleware. `installDbInvariants`
+ * still runs (idempotent + cheap) so a freshly-cloned worker DB
+ * lands on the same trigger/tables as production.
+ */
+import express, { type Express, type Request, Response, NextFunction } from "express";
+import compression from "compression";
+import { createServer, type Server as HttpServer } from 'http';
+import path from 'path';
+import type { AddressInfo } from 'net';
+import { env, isDev, isBetaEnv } from "./config";
+import { commitSha } from './utils/build-info';
+import { findLiveCredentials } from './utils/live-credential-check';
+import { registerRoutes } from "./routes/index";
+import { setupVite } from "./vite";
+import {
+  testConnection,
+  db as defaultDb,
+  createDbClient,
+  type DbClient,
+} from "./db";
+import { installDbInvariants } from "./db-invariants";
+import { setupAuth } from "./auth";
+import { paymentScheduler } from './services/payment-scheduler';
+import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
+import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
+import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
+import { verifySquareSdkVersion } from './services/square-provider';
+import { verifyAllThirdPartyPins } from './services/third-party-pin-verifier';
+// Side-effect import: registers BowlNow / Clover / SendGrid pin
+// verifiers (and re-exposes Square's via the shared registry) so
+// `verifyAllThirdPartyPins()` below sees a fully-populated registry.
+import './services/third-party-pins';
+import { applePayWorker } from './services/apple-pay-worker';
+import { startLeagueSquareCatalogAudit } from './services/league-square-catalog-audit';
+import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
+import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
+import { backfillMissingPaymentCustomers } from './migrations/backfill-missing-payment-customers';
+import { createLogger } from './logger';
+import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
+import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
+import { securityHeaders, apiHeaders } from './middleware/security';
+import { requestTracker, registerShutdownHandlers } from './lib/shutdown';
+import manifestRouter from './routes/manifest';
+import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
+import { embedFrameAncestorsOverride } from './middleware/embed-csp';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '@shared/schema';
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    // Captured by the verify hook on the global express.json() so that
+    // signature-verifying webhook receivers (Clover today; possibly
+    // Square next — see task #577 follow-ups) can hash the exact bytes
+    // the processor signed instead of a re-stringified copy.
+    rawBody?: Buffer;
+  }
+}
+
+const log = createLogger("Server");
+
+export interface CreateAppOptions {
+  /**
+   * Override `process.env.DATABASE_URL` for this app instance.
+   *
+   * When provided, a fresh `pg.Pool` + Drizzle wrapper is built and:
+   *   - `installDbInvariants` runs against it,
+   *   - `testConnection` (boot probe) runs against it,
+   *   - the `/api/health` endpoint probes it,
+   *   - the returned `db` / `close` use it.
+   *
+   * The singleton in `server/db.ts` is left untouched so the dev/prod
+   * process keeps owning its lifecycle (and `npm run dev` is unchanged).
+   *
+   * **Phase 1 boundary (Task #699):** the rest of the application
+   * (storage layer, route handlers) still imports the singleton `db`
+   * directly. Phase 2 of the parent epic (#697) plumbs the per-instance
+   * `db` into the storage layer so request-handling on this instance
+   * actually targets the override DB. Until then, Phase 2 callers
+   * (vitest globalSetup, `server/test-entry.ts`) achieve isolation by
+   * setting `DATABASE_URL` in the spawned child's environment so the
+   * singleton itself is bound to the per-worker DB at module-load
+   * time. The `databaseUrl` parameter exists today for the connection
+   * surface above and to lock in the API shape the test harness will
+   * adopt in Phase 2.
+   *
+   * If unset, the singleton `db` is reused (current production path).
+   */
+  databaseUrl?: string;
+  /**
+   * Listen port. Defaults to `env.PORT`. Pass `0` to let the kernel
+   * pick a free port (the resolved port is returned in the result).
+   */
+  port?: number;
+  /**
+   * When true: skip the schedulers, retry sweeps, Apple Pay worker
+   * resume, league/Square catalog audit, third-party pin verifier
+   * sweep, Square custom-attribute bootstrap, the boot-time
+   * avatar/double-pay/missing-customer migrations, and Vite dev
+   * middleware. Designed for the per-worker test harness.
+   */
+  suppressBackgroundWorkers?: boolean;
+}
+
+export interface CreatedApp {
+  app: Express;
+  server: HttpServer;
+  port: number;
+  db: NodePgDatabase<typeof schema>;
+  close: () => Promise<void>;
+}
+
+export async function createApp(opts: CreateAppOptions = {}): Promise<CreatedApp> {
+  const suppress = opts.suppressBackgroundWorkers === true;
+
+  // Refuse to start a beta deploy that has live payment credentials in
+  // its env. See `server/utils/live-credential-check.ts` and Task #652.
+  if (isBetaEnv) {
+    const findings = findLiveCredentials(process.env);
+    if (findings.length > 0) {
+      log.error('Refusing to start: APP_ENV=beta but live payment credentials are present in environment.');
+      for (const f of findings) {
+        log.error(`  - ${f.envVar}: ${f.reason}`);
+      }
+      log.error('Remove the listed credentials from this Repl\'s Secrets and re-deploy. See docs/BETA_ENVIRONMENT_SETUP.md.');
+      process.exit(1);
+    }
+  }
+
+  log.info('Runtime envelope', {
+    appEnv: (await import('./config')).appEnv,
+    nodeEnv: env.NODE_ENV,
+    isReplitDeploy: !!env.REPLIT_DEPLOYMENT,
+    commit: commitSha,
+    squareCreds:
+      env.SQUARE_PROD_TOKEN || env.SQUARE_PRODUCTION_ACCESS_TOKEN
+        ? 'production'
+        : env.SQUARE_ACCESS_TOKEN
+          ? 'sandbox/fallback'
+          : 'unset',
+  });
+
+  // Per-instance DB client (Phase 1 — only constructed when an
+  // override URL is supplied; otherwise the singleton is reused).
+  let perInstanceClient: DbClient | null = null;
+  let dbForApp: NodePgDatabase<typeof schema> = defaultDb;
+  if (opts.databaseUrl !== undefined) {
+    perInstanceClient = createDbClient(opts.databaseUrl);
+    dbForApp = perInstanceClient.db;
+  }
+  const probePool = perInstanceClient?.pool;
+
+  const app = express();
+  app.set("trust proxy", 1);
+  assertTrustProxyAtBoot(app, { isProduction: !isDev, log });
+  const server = createServer(app);
+
+  const HOST = '0.0.0.0';
+  const PORT = opts.port ?? env.PORT;
+
+  app.use(requestTracker);
+  app.use(subdomainDetection);
+  app.use(compression());
+  app.use(securityHeaders);
+
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req: Request, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }));
+  app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+  await setupAuth(app);
+  app.use(orgSessionGuard);
+
+  app.use(manifestRouter);
+
+  app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
+    res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
+  });
+
+  app.get('/.well-known/apple-app-site-association', (_req, res) => {
+    res.set('Content-Type', 'application/json');
+    res.json({
+      applinks: {
+        apps: [],
+        details: [
+          {
+            appID: 'TEAM_ID.app.leaguevault.mobile',
+            paths: ['*'],
+          },
+        ],
+      },
+    });
+  });
+
+  app.get('/.well-known/assetlinks.json', (_req, res) => {
+    res.set('Content-Type', 'application/json');
+    res.json([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: 'app.leaguevault.mobile',
+          sha256_cert_fingerprints: [],
+        },
+      },
+    ]);
+  });
+
+  app.get('/.well-known/apple-developer-merchantid-domain-association', async (_req, res) => {
+    const staticPath = path.join(import.meta.dirname, '..', '.well-known', 'apple-developer-merchantid-domain-association');
+    try {
+      const { access } = await import('fs/promises');
+      await access(staticPath);
+      res.set('Content-Type', 'application/octet-stream');
+      res.set('Content-Disposition', 'attachment; filename="apple-developer-merchantid-domain-association"');
+      return res.sendFile(path.resolve(staticPath));
+    } catch {
+      // Fall back to env var if static file not present
+    }
+    const verification = process.env.APPLE_PAY_DOMAIN_VERIFICATION;
+    if (verification) {
+      res.set('Content-Type', 'application/octet-stream');
+      res.set('Content-Disposition', 'attachment; filename="apple-developer-merchantid-domain-association"');
+      res.send(verification);
+      return;
+    }
+    res.status(404).type('text/plain').send('Not configured');
+  });
+
+  app.use('/api', apiHeaders);
+
+  // Task #681: per-org frame-ancestors override for the embed
+  // registration page.
+  app.use(embedFrameAncestorsOverride);
+
+  app.get('/api/csrf-token', csrfTokenEndpoint);
+  app.use('/api', csrfProtection);
+
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await testConnection(3, 1000, probePool);
+      res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      log.error('Health check error:', error);
+      res.status(503).json({
+        status: 'unhealthy',
+      });
+    }
+  });
+
+  registerRoutes(app);
+
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: {
+        message: 'API endpoint not found',
+        path: req.path,
+        method: req.method
+      }
+    });
+  });
+
+  // Lazy-load `@sentry/node` (task #692). The package pulls a large
+  // OpenTelemetry transitive tree; deferring keeps cold-start cheap.
+  const Sentry = await import("@sentry/node");
+  Sentry.setupExpressErrorHandler(app);
+
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    log.error('Unhandled express error:', err);
+    if (!res.headersSent) {
+      const errObj = (err && typeof err === 'object') ? err as { status?: unknown; message?: unknown } : {};
+      const statusCode = (typeof errObj.status === 'number' && errObj.status >= 400 && errObj.status < 500)
+        ? errObj.status
+        : 500;
+      const clientMessage = statusCode < 500
+        ? (typeof errObj.message === 'string' ? errObj.message : "Bad request")
+        : "An internal error occurred";
+      res.status(statusCode).json({
+        success: false,
+        error: {
+          code: statusCode < 500 ? 'BAD_REQUEST' : 'INTERNAL_ERROR',
+          message: clientMessage,
+        }
+      });
+    }
+  });
+
+  async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await testConnection(3, 1000, probePool);
+        return true;
+      } catch (error) {
+        log.error(`Database connection attempt ${attempt}/${maxRetries} failed:`, error);
+        if (attempt === maxRetries) return false;
+        const delay = backoffMs * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    return false;
+  }
+
+  // Vite middleware (dev) or static catch-all (prod). Skipped for
+  // the per-worker test harness — tests only hit /api routes.
+  if (!suppress) {
+    if (isDev) {
+      try {
+        await setupVite(app, server);
+        log.info('Vite middleware ready');
+      } catch (error) {
+        log.error('Critical error setting up Vite:', error);
+        process.exit(1);
+      }
+    } else {
+      app.use(express.static(path.join(process.cwd(), 'dist/public'), {
+        maxAge: '1y',
+        immutable: true,
+        setHeaders(res, filePath) {
+          if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-store');
+          }
+        }
+      }));
+      app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'API endpoint not found' });
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
+      });
+    }
+  }
+
+  // Boot DB checks + invariants. Always-on (cheap, idempotent).
+  const dbConnected = await testDatabaseConnectionWithRetry();
+  if (!dbConnected) {
+    log.error('Database connection failed after all retry attempts, refusing to start');
+    process.exit(1);
+  }
+  log.info('Database connected');
+
+  try {
+    await installDbInvariants(dbForApp);
+  } catch (error) {
+    log.error('Failed to install database invariants:', error);
+    process.exit(1);
+  }
+
+  if (!suppress) {
+    ensureAvatarsDirectory();
+
+    try {
+      const dbMigrationOk = await migrateAvatarsFromDBToDisk();
+      if (dbMigrationOk) {
+        await migrateDiskUrlsToApiUrls();
+      }
+    } catch (error) {
+      log.error('Error running avatar migration:', error);
+    }
+
+    try {
+      await backfillDoublePayDates();
+    } catch (error) {
+      log.error('Error backfilling double-pay dates:', error);
+    }
+
+    try {
+      await backfillMissingPaymentCustomers();
+    } catch (error) {
+      log.error('Error backfilling missing payment customers:', error);
+    }
+  }
+
+  // Listen, then resolve port (kernel may have picked one if PORT=0).
+  const actualPort: number = await new Promise<number>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen({ port: PORT, host: HOST }, () => {
+      const addr = server.address() as AddressInfo | null;
+      const p = addr && typeof addr === 'object' ? addr.port : PORT;
+      log.info(`Running at http://${HOST}:${p}`);
+      resolve(p);
+    });
+  });
+
+  if (!suppress) {
+    try {
+      await paymentScheduler.initialize();
+      paymentScheduler.startSweepPoll();
+      log.info('Schedulers initialized with 60-second sweep poll');
+
+      startPaymentSyncRetrySweep();
+      startBowlnowSyncRetrySweep();
+
+      verifySquareSdkVersion().catch((err) => {
+        log.error('Square SDK version probe threw at boot:', err);
+      });
+
+      verifyAllThirdPartyPins().catch((err) => {
+        log.error('Third-party pin verifier sweep threw at boot:', err);
+      });
+
+      bootstrapAllSquareCustomAttributeDefinitions().catch((err) => {
+        log.error('Square custom-attribute bootstrap failed:', err);
+      });
+
+      applePayWorker.resumeOnStartup().catch((err) => {
+        log.error('Apple Pay worker resume failed:', err);
+      });
+
+      startLeagueSquareCatalogAudit();
+    } catch (error) {
+      log.error('Error initializing schedulers:', error);
+    }
+
+    // Production / dev gets the SIGTERM/SIGINT shutdown hook. The
+    // test harness owns its own SIGTERM handling in
+    // `server/test-entry.ts` so we don't double-register here.
+    registerShutdownHandlers(server);
+  }
+
+  const close = async (): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+    if (perInstanceClient !== null) {
+      await perInstanceClient.close();
+    }
+    // Never end the singleton pool here — the dev/prod process owns
+    // its lifecycle via `registerShutdownHandlers` + `cleanup()`.
+  };
+
+  return { app, server, port: actualPort, db: dbForApp, close };
+}

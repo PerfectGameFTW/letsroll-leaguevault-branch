@@ -61,6 +61,17 @@ npm run db:push -- --force
 echo "      done."
 echo ""
 
+echo "[2b/3] npm run db:push:template — rebuilding test template DB…"
+# Phase 1 of per-worker test isolation (Task #699). Keeps the
+# `leaguevault_test_template` DB in sync with the just-pushed schema
+# so Phase 2's per-worker `CREATE DATABASE … TEMPLATE …` clones
+# inherit the latest invariants + seeded users. Non-fatal so a
+# template-build hiccup doesn't block the rest of the post-pull
+# reset (the next task that runs the suite will rebuild on demand).
+npm run db:push:template || echo "      WARNING: template build failed; will rebuild on next test run."
+echo "      done."
+echo ""
+
 echo "[3/3] setup-ssh — re-seeding GitHub SSH key (so 'git push' keeps working)…"
 # Distinguish three outcomes from setup-ssh.sh --quiet:
 #   exit 0 => either the key was re-seeded OR the

@@ -1,10 +1,49 @@
 import pg from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 import { env } from "./config";
 import { createLogger } from './logger';
 
 const log = createLogger("Database");
+
+/**
+ * Per-instance database client (Task #699).
+ *
+ * Builds a fresh `pg.Pool` + Drizzle wrapper bound to an arbitrary
+ * `databaseUrl`, separate from the singleton below. The returned
+ * `close()` ends only this pool — it never touches the singleton —
+ * so callers (e.g. the per-worker test app spawned via
+ * `server/test-entry.ts`) can dispose of their own connection pool
+ * without affecting `npm run dev`.
+ *
+ * No retries, no shutdown registration: the caller owns the lifecycle.
+ */
+export interface DbClient {
+  pool: pg.Pool;
+  db: NodePgDatabase<typeof schema>;
+  close: () => Promise<void>;
+}
+
+export function createDbClient(databaseUrl: string): DbClient {
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 50,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
+  const db = drizzle({ client: pool, schema });
+  return {
+    pool,
+    db,
+    close: async () => {
+      try {
+        await pool.end();
+      } catch (err) {
+        log.error('Error closing per-instance pg pool:', err);
+      }
+    },
+  };
+}
 
 export const pool = new pg.Pool({
   connectionString: env.DATABASE_URL,
@@ -27,13 +66,22 @@ pool.on('connect', (client) => {
   });
 });
 
-export async function testConnection(retries = 3, delay = 1000): Promise<boolean> {
+export async function testConnection(
+  retries = 3,
+  delay = 1000,
+  poolOverride?: pg.Pool,
+): Promise<boolean> {
+  // Per-instance pool override (Task #699). When createApp is built with
+  // a per-instance DbClient, the connection probe must hit THAT pool —
+  // otherwise the singleton's pool gets probed instead and the override
+  // can silently report healthy against the wrong DB.
+  const target = poolOverride ?? pool;
   let client = null;
   let lastError = null;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      client = await pool.connect();
+      client = await target.connect();
       await client.query('SELECT 1');
       log.info('Connection test successful');
       return true;

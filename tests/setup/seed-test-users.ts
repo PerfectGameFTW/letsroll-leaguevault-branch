@@ -8,11 +8,15 @@
  * (password rehashed, role/orgId enforced) and existing orgs are reused.
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../server/db';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { db as defaultDb } from '../../server/db';
+import * as schema from '@shared/schema';
 import { leagues, organizations, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { isReplitDeploymentValue } from '../../server/utils/replit-env';
 import { assertSafeDatabaseHost } from '../../server/utils/db-safety';
+
+type AnyDb = NodePgDatabase<typeof schema>;
 
 /**
  * Hard guard: this seeder forcibly resets passwords / roles / org for any
@@ -43,7 +47,7 @@ const TEST_ORG_PASSWORD = process.env.TEST_ORG_PASSWORD || 'org-local-dev';
 const TEST_ORG_A_SLUG = process.env.TEST_ORG_A_SLUG || 'vitest-org-a';
 const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
 
-async function ensureOrganization(name: string, slug: string): Promise<number> {
+async function ensureOrganization(db: AnyDb, name: string, slug: string): Promise<number> {
   const [existing] = await db
     .select({ id: organizations.id })
     .from(organizations)
@@ -84,6 +88,7 @@ interface UserSpec {
  * seasonNumber=1, empty skip/cancel arrays).
  */
 async function ensureBaselineLeague(
+  db: AnyDb,
   organizationId: number,
   name: string,
 ): Promise<void> {
@@ -104,7 +109,7 @@ async function ensureBaselineLeague(
   });
 }
 
-async function ensureUser(spec: UserSpec): Promise<void> {
+async function ensureUser(db: AnyDb, spec: UserSpec): Promise<void> {
   const hashed = await hashPassword(spec.password);
   const [existing] = await db
     .select({ id: users.id })
@@ -147,17 +152,17 @@ async function ensureUser(spec: UserSpec): Promise<void> {
   });
 }
 
-export async function seedTestUsers(): Promise<void> {
+export async function seedTestUsers(db: AnyDb = defaultDb): Promise<void> {
   assertSafeEnvironment();
   // Second, INDEPENDENT layer of defense (Task #609). Even if the
   // operator's NODE_ENV is wrong (e.g. development) but their
   // DATABASE_URL still points at the production tenant, this guard
   // refuses to run. See `server/utils/db-safety.ts`.
   assertSafeDatabaseHost('seed-test-users');
-  const orgAId = await ensureOrganization('Vitest Org A', TEST_ORG_A_SLUG);
-  const orgBId = await ensureOrganization('Vitest Org B', TEST_ORG_B_SLUG);
+  const orgAId = await ensureOrganization(db, 'Vitest Org A', TEST_ORG_A_SLUG);
+  const orgBId = await ensureOrganization(db, 'Vitest Org B', TEST_ORG_B_SLUG);
 
-  await ensureUser({
+  await ensureUser(db, {
     email: TEST_ADMIN_EMAIL,
     password: TEST_ADMIN_PASSWORD,
     name: 'Vitest System Admin',
@@ -165,7 +170,7 @@ export async function seedTestUsers(): Promise<void> {
     organizationId: null,
   });
 
-  await ensureUser({
+  await ensureUser(db, {
     email: TEST_ORG_A_EMAIL,
     password: TEST_ORG_PASSWORD,
     name: 'Vitest Org A Admin',
@@ -173,7 +178,7 @@ export async function seedTestUsers(): Promise<void> {
     organizationId: orgAId,
   });
 
-  await ensureUser({
+  await ensureUser(db, {
     email: TEST_ORG_B_EMAIL,
     password: TEST_ORG_PASSWORD,
     name: 'Vitest Org B Admin',
@@ -185,8 +190,8 @@ export async function seedTestUsers(): Promise<void> {
   // for why. Names are unique per org so tests that need a stable
   // identifier (or want to ignore the baseline and search for their
   // own) can do either.
-  await ensureBaselineLeague(orgAId, 'Vitest Org A Baseline League');
-  await ensureBaselineLeague(orgBId, 'Vitest Org B Baseline League');
+  await ensureBaselineLeague(db, orgAId, 'Vitest Org A Baseline League');
+  await ensureBaselineLeague(db, orgBId, 'Vitest Org B Baseline League');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

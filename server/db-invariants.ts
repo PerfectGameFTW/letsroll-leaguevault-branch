@@ -20,9 +20,13 @@
  * blocking every other suite while it stages the orphan rows.
  */
 import { sql } from 'drizzle-orm';
-import { db } from './db';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '@shared/schema';
+import { db as defaultDb } from './db';
 
-export async function installDbInvariants(): Promise<void> {
+export type AnyDb = NodePgDatabase<typeof schema>;
+
+export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> {
   // Retire the legacy CHECK constraint of the same name if it still
   // exists from older schema versions.
   await db.execute(
