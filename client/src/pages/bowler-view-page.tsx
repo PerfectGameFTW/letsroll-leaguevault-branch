@@ -244,7 +244,7 @@ export default function BowlerViewPage() {
 
       {canEditBowler && bowler && (
         <ErrorBoundary level="section">
-          <AdminBowlerLinkPanel bowlerId={bowler.id} />
+          <AdminBowlerLinkPanel bowlerId={bowler.id} organizationId={bowler.organizationId ?? null} />
         </ErrorBoundary>
       )}
 

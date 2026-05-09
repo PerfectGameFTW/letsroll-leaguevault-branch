@@ -17,20 +17,19 @@ interface LinkRow {
   organizationId: number;
 }
 
-/**
- * – admin direct-link panel on bowler-view-page.
- *
- * Lists the bowler's existing payment-partner rows and lets the admin
- * link this bowler to another bowler in the same org by id (status is
- * promoted directly to "accepted", bypassing the invite/accept dance).
- * The admin endpoint enforces same-org and rejects org-less bowlers.
- */
-export const AdminBowlerLinkPanel: FC<{ bowlerId: number }> = ({ bowlerId }) => {
+export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number | null }> = ({
+  bowlerId,
+  organizationId,
+}) => {
   const { toast } = useToast();
   const [partnerId, setPartnerId] = useState("");
 
+  const adminListUrl = organizationId
+    ? `/api/bowler-links/admin?organizationId=${organizationId}`
+    : "/api/bowler-links/admin";
   const { data } = useQuery<ApiResponse<{ links: LinkRow[] }>>({
-    queryKey: ["/api/bowler-links/admin"],
+    queryKey: ["/api/bowler-links/admin", organizationId],
+    queryFn: () => apiRequest<{ links: LinkRow[] }>(adminListUrl, "GET"),
     staleTime: 30_000,
   });
   const all = data?.data?.links ?? [];
