@@ -104,6 +104,17 @@ export const setupAdminLimiter = rateLimit({
   skip: testBypassSkip,
 });
 
+export const bowlerSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: userKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createSharedRateLimitStore('bowler-search'),
+  message: rateLimitMessage("Too many search requests, please try again later"),
+  skip: testBypassSkip,
+});
+
 export const inviteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,

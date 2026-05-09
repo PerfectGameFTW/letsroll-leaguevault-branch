@@ -44,6 +44,7 @@ export class DatabaseStorage implements IStorage {
   getBowlersByIds!: IStorage["getBowlersByIds"];
   getBowlerByEmail!: IStorage["getBowlerByEmail"];
   getBowlerByEmailInOrg!: IStorage["getBowlerByEmailInOrg"];
+  searchBowlersByName!: IStorage["searchBowlersByName"];
   getBowlerByEmailSystemAdmin!: IStorage["getBowlerByEmailSystemAdmin"];
   getBowlersByEmailSystemAdmin!: IStorage["getBowlersByEmailSystemAdmin"];
   createBowler!: IStorage["createBowler"];

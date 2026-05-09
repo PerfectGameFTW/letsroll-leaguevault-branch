@@ -1,4 +1,4 @@
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, ilike, asc } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   bowlers, bowlerLeagues, leagues, teams,
@@ -389,6 +389,95 @@ export async function getBowlerByEmailInOrg(
     .where(and(eq(bowlers.email, email), eq(bowlers.organizationId, organizationId)))
     .limit(1);
   return row;
+}
+
+/**
+ * Case-insensitive substring search of bowlers within an organization.
+ * Returns up to `limit` rows matching `q` against `bowlers.name` or
+ * `bowlers.email`. The `secondaryLabel` is the first league the bowler
+ * is on (for disambiguation in UI), falling back to a masked email
+ * when no league is found, or `null` when neither is available.
+ *
+ * Org-less bowlers are never returned (per the org-less data policy).
+ */
+export interface BowlerSearchResult {
+  id: number;
+  name: string;
+  organizationId: number;
+  secondaryLabel: string | null;
+}
+
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return email;
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  const visible = local.slice(0, 1);
+  return `${visible}${"*".repeat(Math.max(1, local.length - 1))}${domain}`;
+}
+
+export async function searchBowlersByName(
+  q: string,
+  organizationId: number,
+  limit = 10,
+): Promise<BowlerSearchResult[]> {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return [];
+  const pattern = `%${trimmed.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+  const rows = await db
+    .select({
+      id: bowlers.id,
+      name: bowlers.name,
+      email: bowlers.email,
+      organizationId: bowlers.organizationId,
+    })
+    .from(bowlers)
+    .where(
+      and(
+        eq(bowlers.organizationId, organizationId),
+        eq(bowlers.active, true),
+        sql`(${bowlers.name} ILIKE ${pattern} OR ${bowlers.email} ILIKE ${pattern})`,
+      ),
+    )
+    .orderBy(asc(bowlers.name))
+    .limit(limit);
+
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  // Pull a representative league name per bowler (the lowest-id active
+  // league row) for the secondary label.
+  const leagueRows = await db
+    .select({
+      bowlerId: bowlerLeagues.bowlerId,
+      leagueName: leagues.name,
+      leagueId: leagues.id,
+    })
+    .from(bowlerLeagues)
+    .innerJoin(leagues, eq(leagues.id, bowlerLeagues.leagueId))
+    .where(
+      and(
+        inArray(bowlerLeagues.bowlerId, ids),
+        eq(leagues.organizationId, organizationId),
+      ),
+    )
+    .orderBy(asc(bowlerLeagues.bowlerId), asc(leagues.id));
+  const firstLeagueByBowler = new Map<number, string>();
+  for (const r of leagueRows) {
+    if (!firstLeagueByBowler.has(r.bowlerId)) {
+      firstLeagueByBowler.set(r.bowlerId, r.leagueName);
+    }
+  }
+
+  return rows
+    .filter((r): r is typeof r & { organizationId: number } => r.organizationId !== null)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      organizationId: r.organizationId,
+      secondaryLabel:
+        firstLeagueByBowler.get(r.id) ??
+        (r.email ? maskEmail(r.email) : null),
+    }));
 }
 
 export async function getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined> {

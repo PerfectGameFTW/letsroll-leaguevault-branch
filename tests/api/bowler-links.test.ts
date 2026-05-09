@@ -281,6 +281,107 @@ describe('Bowler payment links — lifecycle + cross-org denial', () => {
     expect(remaining).toHaveLength(0);
   });
 
+  it('invite-by-bowlerId (task #702) blocks unclaimed bowler, self, cross-org; happy path links claimed bowler', async () => {
+    // Aviv is just a bowler row with no linked user account — invite
+    // must reject with UNCLAIMED_BOWLER so the inviter doesn't create
+    // an unactionable pending row.
+    const unclaimed = await apiPost('/api/bowler-links/invite', {
+      inviteeBowlerId: avivBowlerId,
+    }, sessionA);
+    expect(unclaimed.status, JSON.stringify(unclaimed.data)).toBe(400);
+    expect(unclaimed.data.error?.code).toBe('UNCLAIMED_BOWLER');
+
+    // Cross-org by bowlerId — Alice (org A) targets Bob (org B). Bob
+    // IS claimed (he has a user), so the route must still reject for
+    // the cross-org reason and never land a row.
+    const cross = await apiPost('/api/bowler-links/invite', {
+      inviteeBowlerId: bobBowlerId,
+    }, sessionA);
+    expect([403, 404]).toContain(cross.status);
+    expect(cross.data.success).toBe(false);
+
+    // Self-invite by bowlerId — must 400 SELF_LINK.
+    const selfInvite = await apiPost('/api/bowler-links/invite', {
+      inviteeBowlerId: aliceBowlerId,
+    }, sessionA);
+    expect(selfInvite.status, JSON.stringify(selfInvite.data)).toBe(400);
+    expect(selfInvite.data.error?.code).toBe('SELF_LINK');
+
+    // Happy path — provision a fresh claimed bowler in org A and
+    // invite by bowlerId. Stamp a user → bowler link so the
+    // unclaimed guard passes.
+    const { orgAId } = await getBaselineOrgIds();
+    const happyEmail = `vitest-link-claimed-${stamp}@example.com`;
+    const [happyBowler] = await db
+      .insert(bowlersTable)
+      .values({
+        organizationId: orgAId,
+        name: `Vitest Link Claimed ${stamp}`,
+        email: happyEmail,
+        active: true,
+      })
+      .returning({ id: bowlersTable.id });
+    if (!happyBowler) throw new Error('failed to insert claimed bowler');
+    const happyBowlerId = happyBowler.id;
+    const happyPwd = await hashPassword(password);
+    const [happyUser] = await db
+      .insert(users)
+      .values({
+        email: happyEmail,
+        password: happyPwd,
+        name: `Vitest Link Claimed User ${stamp}`,
+        role: 'user',
+        organizationId: orgAId,
+        bowlerId: happyBowlerId,
+      })
+      .returning({ id: users.id });
+    if (!happyUser) throw new Error('failed to insert claimed user');
+    const happyUserId = happyUser.id;
+
+    try {
+      const ok = await apiPost<LinkRow>('/api/bowler-links/invite', {
+        inviteeBowlerId: happyBowlerId,
+      }, sessionA);
+      expect(ok.status, JSON.stringify(ok.data)).toBe(201);
+      const row = ok.data.data as LinkRow;
+      createdLinkIds.push(row.id);
+      expect(row.status).toBe('pending');
+      // Tear down the link so the next test starts clean.
+      await apiDelete(`/api/bowler-links/${row.id}`, sessionA);
+    } finally {
+      await db.delete(users).where(eq(users.id, happyUserId));
+      await db.delete(bowlersTable).where(eq(bowlersTable.id, happyBowlerId));
+    }
+  });
+
+  it('search /api/bowlers/search returns in-org bowlers and excludes excludeIds (task #702)', async () => {
+    const stampStr = String(stamp);
+    const res = await apiGet<Array<{ id: number; name: string }>>(
+      `/api/bowlers/search?q=${encodeURIComponent('Vitest Link')}`,
+      sessionA,
+    );
+    expect(res.status, JSON.stringify(res.data)).toBe(200);
+    const ids = (res.data.data ?? []).map((r) => r.id);
+    // Both Alice and Aviv (org A) should be returned.
+    expect(ids).toContain(aliceBowlerId);
+    expect(ids).toContain(avivBowlerId);
+    // Bob (org B) must never appear.
+    expect(ids).not.toContain(bobBowlerId);
+
+    // excludeIds removes the listed bowler.
+    const excluded = await apiGet<Array<{ id: number }>>(
+      `/api/bowlers/search?q=${encodeURIComponent('Vitest Link')}&excludeIds=${aliceBowlerId}`,
+      sessionA,
+    );
+    expect(excluded.status).toBe(200);
+    const excludedIds = (excluded.data.data ?? []).map((r) => r.id);
+    expect(excludedIds).not.toContain(aliceBowlerId);
+    // Sanity: Aviv stays.
+    expect(excludedIds).toContain(avivBowlerId);
+    // Use stampStr to keep it referenced in a safe way.
+    void stampStr;
+  });
+
   it('admin direct-link succeeds within org and refuses cross-org pairs', async () => {
     // sessionA is the org-A org_admin. Linking alice + aviv (both
     // org A) must land an `accepted` row directly.

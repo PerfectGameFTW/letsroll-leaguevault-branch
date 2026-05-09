@@ -1,13 +1,13 @@
-import { useState, FC } from "react";
+import { useMemo, FC } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Users, Mail, X, Check } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ApiResponse } from "@shared/schema";
+import { BowlerSearchPicker } from "@/components/bowler-search-picker";
 
 interface LinkRow {
   id: number;
@@ -39,7 +39,6 @@ export const BowlerPaymentLinksSection: FC<{
   alwaysShow?: boolean;
 }> = ({ currentBowlerId, alwaysShow = false }) => {
   const { toast } = useToast();
-  const [inviteEmail, setInviteEmail] = useState("");
 
   const { data, isLoading } = useQuery<ApiResponse<LinksResponse>>({
     queryKey: ["/api/bowler-links"],
@@ -51,10 +50,9 @@ export const BowlerPaymentLinksSection: FC<{
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
 
   const inviteMutation = useMutation({
-    mutationFn: async (email: string) =>
-      apiRequest("/api/bowler-links/invite", "POST", { inviteeEmail: email }),
+    mutationFn: async (inviteeBowlerId: number) =>
+      apiRequest("/api/bowler-links/invite", "POST", { inviteeBowlerId }),
     onSuccess: () => {
-      setInviteEmail("");
       invalidate();
       toast({ title: "Invite sent" });
     },
@@ -77,10 +75,15 @@ export const BowlerPaymentLinksSection: FC<{
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),
   });
 
+  const links = useMemo(() => payload?.links ?? [], [payload?.links]);
+  const excludeIds = useMemo(
+    () => [currentBowlerId, ...links.map((l) => l.partnerBowlerId)],
+    [currentBowlerId, links],
+  );
+
   if (isLoading) return null;
   if (!hasAny && !alwaysShow) return null;
 
-  const links = payload?.links ?? [];
   const accepted = links.filter((l) => l.status === "accepted");
   const pending = links.filter((l) => l.status === "pending");
 
@@ -181,29 +184,15 @@ export const BowlerPaymentLinksSection: FC<{
           </div>
         )}
 
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const email = inviteEmail.trim().toLowerCase();
-            if (email) inviteMutation.mutate(email);
-          }}
-        >
-          <Input
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="bowler@example.com"
-            data-testid="input-invite-email"
+        <div className="space-y-1">
+          <BowlerSearchPicker
+            onSelect={(b) => inviteMutation.mutate(b.id)}
+            excludeIds={excludeIds}
+            placeholder="Search bowlers by name…"
+            disabled={inviteMutation.isPending}
+            testIdPrefix="invite-bowler"
           />
-          <Button
-            type="submit"
-            data-testid="button-send-invite"
-            disabled={inviteMutation.isPending || !inviteEmail.trim()}
-          >
-            Invite
-          </Button>
-        </form>
+        </div>
       </CardContent>
     </Card>
   );

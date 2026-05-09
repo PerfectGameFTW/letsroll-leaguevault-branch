@@ -14,6 +14,7 @@ import {
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
+import { bowlerSearchLimiter } from '../middleware/rate-limit.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from '../services/bowlnow-retry-flag.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
@@ -207,6 +208,46 @@ router.get("/", async (req, res) => {
   } catch (error) {
     log.error('Error fetching bowlers:', error);
     sendError(res, 'Failed to fetch bowlers');
+  }
+});
+
+/**
+ * Task #702: Bowler name-search endpoint used by the partner-link
+ * picker (mobile profile + admin direct-link). Returns up to ~10
+ * matches scoped to the caller's organization. system_admin may
+ * cross-scope via `?organizationId=`.
+ */
+router.get("/search", bowlerSearchLimiter, async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return sendError(res, "Authentication required", 401, "AUTH_REQUIRED");
+
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    if (q.trim().length < 2) {
+      return sendSuccess(res, []);
+    }
+
+    const isSysAdmin = user.role === "system_admin";
+    const rawOrgId = parseOptionalIntParam(req.query.organizationId);
+    if (rawOrgId === null) {
+      return sendError(res, "Invalid organization ID format", 400);
+    }
+    const orgId: number | null = isSysAdmin
+      ? (rawOrgId ?? user.organizationId ?? null)
+      : (user.organizationId ?? null);
+    if (!orgId) {
+      return sendError(res, "Organization required", 400, "ORG_REQUIRED");
+    }
+
+    const excludeIds = parseOptionalIntListParam(req.query.excludeIds) ?? [];
+    const results = await storage.searchBowlersByName(q, orgId, 10);
+    const filtered = excludeIds.length > 0
+      ? results.filter((r) => !excludeIds.includes(r.id))
+      : results;
+    return sendSuccess(res, filtered);
+  } catch (error) {
+    log.error('Error searching bowlers:', error);
+    sendError(res, 'Failed to search bowlers');
   }
 });
 

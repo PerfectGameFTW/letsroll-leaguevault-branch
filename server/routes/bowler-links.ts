@@ -10,9 +10,14 @@ import { createLogger } from "../logger";
 const log = createLogger("BowlerLinks");
 const router = Router();
 
-const inviteSchema = z.object({
-  inviteeEmail: z.string().trim().toLowerCase().email(),
-});
+const inviteSchema = z
+  .object({
+    inviteeEmail: z.string().trim().toLowerCase().email().optional(),
+    inviteeBowlerId: z.number().int().positive().optional(),
+  })
+  .refine((d) => !!d.inviteeEmail !== !!d.inviteeBowlerId, {
+    message: "Provide exactly one of inviteeEmail or inviteeBowlerId",
+  });
 
 const adminLinkSchema = z.object({
   bowlerAId: z.number().int().positive(),
@@ -61,19 +66,42 @@ router.post("/invite", inviteLimiter, async (req, res) => {
     if (!user.organizationId) {
       return sendError(res, "Organization required", 400, "ORG_REQUIRED");
     }
-    const { inviteeEmail } = inviteSchema.parse(req.body);
+    const { inviteeEmail, inviteeBowlerId } = inviteSchema.parse(req.body);
 
     const inviter = await storage.getBowler(user.bowlerId);
     if (!inviter || inviter.organizationId === null) {
       return sendError(res, "Inviter bowler is org-less", 403, "ORG_REQUIRED");
     }
-    if ((inviter.email ?? "").toLowerCase() === inviteeEmail) {
-      return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
-    }
 
-    const invitee = await storage.getBowlerByEmailInOrg(inviteeEmail, user.organizationId);
-    if (!invitee) {
-      return sendError(res, "No bowler in your organization has that email", 404, "NOT_FOUND");
+    let invitee;
+    if (inviteeBowlerId) {
+      if (inviteeBowlerId === user.bowlerId) {
+        return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
+      }
+      invitee = await storage.getBowler(inviteeBowlerId);
+      if (!invitee) {
+        return sendError(res, "Bowler not found", 404, "NOT_FOUND");
+      }
+      // Reject unclaimed bowlers — an invite is only actionable if the
+      // target bowler has a linked user account who can accept it.
+      const inviteeUser = await storage.getUserByBowlerId(invitee.id);
+      if (!inviteeUser) {
+        return sendError(
+          res,
+          "That bowler hasn't claimed their account yet, so they can't accept an invite.",
+          400,
+          "UNCLAIMED_BOWLER",
+        );
+      }
+    } else {
+      const email = inviteeEmail ?? "";
+      if ((inviter.email ?? "").toLowerCase() === email) {
+        return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
+      }
+      invitee = await storage.getBowlerByEmailInOrg(email, user.organizationId);
+      if (!invitee) {
+        return sendError(res, "No bowler in your organization has that email", 404, "NOT_FOUND");
+      }
     }
     if (invitee.id === user.bowlerId) {
       return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
@@ -255,7 +283,22 @@ router.get("/admin", async (req, res) => {
       return sendError(res, "Organization required", 400, "ORG_REQUIRED");
     }
     const all = await links.listLinksForOrg(orgId);
-    return sendSuccess(res, { links: all });
+    const enriched = await Promise.all(
+      all.map(async (l) => {
+        const [a, b] = await Promise.all([
+          storage.getBowler(l.bowlerAId),
+          storage.getBowler(l.bowlerBId),
+        ]);
+        const labelOf = (id: number, bowler: typeof a) =>
+          bowler ? bowler.name?.trim() || bowler.email || `Bowler #${id}` : `Bowler #${id}`;
+        return {
+          ...l,
+          bowlerAName: labelOf(l.bowlerAId, a),
+          bowlerBName: labelOf(l.bowlerBId, b),
+        };
+      }),
+    );
+    return sendSuccess(res, { links: enriched });
   } catch (err) {
     log.error("admin list error", err);
     return sendError(res, "Failed to list links");

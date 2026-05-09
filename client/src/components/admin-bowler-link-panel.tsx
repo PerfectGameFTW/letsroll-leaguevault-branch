@@ -1,13 +1,13 @@
-import { useState, FC } from "react";
+import { useMemo, FC } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ApiResponse } from "@shared/schema";
+import { BowlerSearchPicker } from "@/components/bowler-search-picker";
 
 interface LinkRow {
   id: number;
@@ -15,6 +15,8 @@ interface LinkRow {
   bowlerBId: number;
   status: "pending" | "accepted";
   organizationId: number;
+  bowlerAName?: string;
+  bowlerBName?: string;
 }
 
 export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number | null }> = ({
@@ -22,7 +24,6 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
   organizationId,
 }) => {
   const { toast } = useToast();
-  const [partnerId, setPartnerId] = useState("");
 
   const adminListUrl = organizationId
     ? `/api/bowler-links/admin?organizationId=${organizationId}`
@@ -35,6 +36,11 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
   const all = data?.data?.links ?? [];
   const mine = all.filter((l) => l.bowlerAId === bowlerId || l.bowlerBId === bowlerId);
 
+  const excludeIds = useMemo(
+    () => [bowlerId, ...mine.map((l) => (l.bowlerAId === bowlerId ? l.bowlerBId : l.bowlerAId))],
+    [bowlerId, mine],
+  );
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/bowler-links/admin"] });
     queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
@@ -44,7 +50,6 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
     mutationFn: async (otherId: number) =>
       apiRequest("/api/bowler-links/admin", "POST", { bowlerAId: bowlerId, bowlerBId: otherId }),
     onSuccess: () => {
-      setPartnerId("");
       invalidate();
       toast({ title: "Partner linked" });
     },
@@ -70,13 +75,15 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
           <div className="space-y-2">
             {mine.map((l) => {
               const otherId = l.bowlerAId === bowlerId ? l.bowlerBId : l.bowlerAId;
+              const otherName =
+                l.bowlerAId === bowlerId ? l.bowlerBName : l.bowlerAName;
               return (
                 <div
                   key={l.id}
                   data-testid={`row-admin-link-${l.id}`}
                   className="flex items-center justify-between rounded border p-2 text-sm"
                 >
-                  <span>Bowler #{otherId}</span>
+                  <span>{otherName?.trim() ? otherName : `Bowler #${otherId}`}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant={l.status === "accepted" ? "secondary" : "outline"}>
                       {l.status}
@@ -96,29 +103,14 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
             })}
           </div>
         )}
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const n = parseInt(partnerId, 10);
-            if (Number.isFinite(n) && n > 0) link.mutate(n);
-          }}
-        >
-          <Input
-            type="number"
-            value={partnerId}
-            onChange={(e) => setPartnerId(e.target.value)}
-            placeholder="Partner bowler id"
-            data-testid="input-admin-partner-id"
-          />
-          <Button
-            type="submit"
-            data-testid="button-admin-link"
-            disabled={link.isPending || !partnerId.trim()}
-          >
-            Link
-          </Button>
-        </form>
+        <BowlerSearchPicker
+          onSelect={(b) => link.mutate(b.id)}
+          excludeIds={excludeIds}
+          organizationId={organizationId}
+          placeholder="Search bowlers by name…"
+          disabled={link.isPending}
+          testIdPrefix="admin-link-bowler"
+        />
       </CardContent>
     </Card>
   );

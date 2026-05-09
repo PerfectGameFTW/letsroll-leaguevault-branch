@@ -459,6 +459,23 @@ describe('Organization Isolation', () => {
       }
     });
 
+    it('org A GET /api/bowlers/search?organizationId=<orgB> must not leak the org B bowler (task #702)', async () => {
+      // Non-system-admin callers cannot cross-scope the search; the
+      // route ignores the spoofed organizationId and falls back to the
+      // caller's own org. The org B bowler id must therefore never
+      // appear in the results.
+      expect(orgBBowlerId).not.toBeNull();
+      const orgBOrganizationId = sessionB.user.organizationId;
+      const { status, data } = await apiGet<Array<{ id: number }>>(
+        `/api/bowlers/search?q=Vitest+Iso&organizationId=${orgBOrganizationId}`,
+        sessionA,
+      );
+      expect([200, 403]).toContain(status);
+      if (status === 200 && Array.isArray(data.data) && orgBBowlerId != null) {
+        expect(data.data.map((r) => r.id)).not.toContain(orgBBowlerId);
+      }
+    });
+
     it('org A GET /api/bowlers?teamId=<orgBTeam> → 403/404 (no leak by team filter)', async () => {
       expect(orgBTeamId).not.toBeNull();
       const { status } = await apiGet<Bowler[]>(`/api/bowlers?teamId=${orgBTeamId}`, sessionA);

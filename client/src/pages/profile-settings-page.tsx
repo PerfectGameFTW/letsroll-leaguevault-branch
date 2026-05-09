@@ -13,6 +13,7 @@ import { apiRequest, clearCsrfToken } from "@/lib/queryClient";
 import { ProfileInfoCard, type CurrentUserWithSyncStatus } from "@/components/profile-info-card";
 import { ChangePasswordCard } from "@/components/change-password-card";
 import { SavedPaymentMethodsCard } from "@/components/saved-payment-methods-card";
+import { BowlerPaymentLinksSection } from "@/components/bowler-payment-links-section";
 import type { ApiResponse } from "@shared/schema";
 
 const STALE_TIME = 1000 * 60 * 5;
@@ -86,6 +87,9 @@ export const ProfileSettingsPage: FC = () => {
           <ProfileInfoCard currentUser={currentUser} />
           <ChangePasswordCard />
           {bowlerId && <SavedPaymentMethodsCard bowlerId={bowlerId} />}
+          {bowlerId && (
+            <BowlerPaymentLinksSection currentBowlerId={bowlerId} alwaysShow />
+          )}
 
           <Separator />
 
