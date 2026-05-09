@@ -346,26 +346,60 @@ describe('Organization Isolation', () => {
       }
     });
 
-    it('org A GET /api/teams/:id (org B team) → 403/404 and does not leak the row', async () => {
-      expect(orgBTeamId).not.toBeNull();
-      const { status, data } = await apiGet<Team>(`/api/teams/${orgBTeamId}`, sessionA);
+    // Parameterize the four homogeneous "GET org-B :id → 403/404 with no
+    // leak" cases. Each entry uses `${orgBTeamId}` / `${orgBBowlerId}`
+    // template-literal segments verbatim because
+    // `scripts/check-org-isolation-coverage.ts` matches each `:param`
+    // segment against the literal regex `\$\{[^}]+\}` in the test file
+    // source — replacing the segment with anything else (a string literal,
+    // a `String(id)` call, etc.) would break coverage detection.
+    it.each([
+      {
+        label: 'org A GET /api/teams/:id (org B team) → 403/404 and does not leak the row',
+        getResource: () => orgBTeamId,
+        path: () => `/api/teams/${orgBTeamId}`,
+        leak: () => `Vitest Iso Team ${stamp}`,
+        positiveControl: false,
+      },
+      {
+        label: 'org A GET /api/teams/:id/details (org B team) → 403/404 while session B gets 200 (positive control)',
+        getResource: () => orgBTeamId,
+        path: () => `/api/teams/${orgBTeamId}/details`,
+        leak: null,
+        positiveControl: true,
+      },
+      {
+        label: 'org A GET /api/bowlers/:id (org B bowler) → 403/404 and does not leak the row',
+        getResource: () => orgBBowlerId,
+        path: () => `/api/bowlers/${orgBBowlerId}`,
+        leak: () => `Vitest Iso Bowler ${stamp}`,
+        leak2: () => `vitest-iso-${stamp}@example.com`,
+        positiveControl: false,
+      },
+      {
+        label: 'org A GET /api/bowlers/:id/details (org B bowler) → 403/404 while session B gets 200 (positive control)',
+        getResource: () => orgBBowlerId,
+        path: () => `/api/bowlers/${orgBBowlerId}/details`,
+        leak: null,
+        positiveControl: true,
+      },
+    ])('$label', async ({ getResource, path, leak, leak2, positiveControl }) => {
+      expect(getResource()).not.toBeNull();
+      const { status, data } = await apiGet(path(), sessionA);
       expect([403, 404]).toContain(status);
       expect(data.success).toBe(false);
-      const payload = JSON.stringify(data);
-      expect(payload).not.toContain(`Vitest Iso Team ${stamp}`);
-    });
-
-    it('org A GET /api/teams/:id/details (org B team) → 403/404 while session B gets 200 (positive control)', async () => {
-      expect(orgBTeamId).not.toBeNull();
-      const { status, data } = await apiGet(`/api/teams/${orgBTeamId}/details`, sessionA);
-      expect([403, 404]).toContain(status);
-      expect(data.success).toBe(false);
-
-      // Positive control: session B (the owning org) must succeed on the
-      // same id, otherwise the 403 above would be a trivial pass.
-      const owner = await apiGet(`/api/teams/${orgBTeamId}/details`, sessionB);
-      expect(owner.status).toBe(200);
-      expect(owner.data.success).toBe(true);
+      if (leak) {
+        const payload = JSON.stringify(data);
+        expect(payload).not.toContain(leak());
+        if (leak2) expect(payload).not.toContain(leak2());
+      }
+      if (positiveControl) {
+        // Positive control: session B (the owning org) must succeed on
+        // the same id, otherwise the 403 above would be a trivial pass.
+        const owner = await apiGet(path(), sessionB);
+        expect(owner.status).toBe(200);
+        expect(owner.data.success).toBe(true);
+      }
     });
 
     it('org A GET /api/teams?leagueId=<orgBLeague> must not include the org B team', async () => {
@@ -429,28 +463,6 @@ describe('Organization Isolation', () => {
       expect(orgBTeamId).not.toBeNull();
       const { status } = await apiGet<Bowler[]>(`/api/bowlers?teamId=${orgBTeamId}`, sessionA);
       expect([403, 404]).toContain(status);
-    });
-
-    it('org A GET /api/bowlers/:id (org B bowler) → 403/404 and does not leak the row', async () => {
-      expect(orgBBowlerId).not.toBeNull();
-      const { status, data } = await apiGet<Bowler>(`/api/bowlers/${orgBBowlerId}`, sessionA);
-      expect([403, 404]).toContain(status);
-      expect(data.success).toBe(false);
-      const payload = JSON.stringify(data);
-      expect(payload).not.toContain(`Vitest Iso Bowler ${stamp}`);
-      expect(payload).not.toContain(`vitest-iso-${stamp}@example.com`);
-    });
-
-    it('org A GET /api/bowlers/:id/details (org B bowler) → 403/404 while session B gets 200 (positive control)', async () => {
-      expect(orgBBowlerId).not.toBeNull();
-      const { status, data } = await apiGet(`/api/bowlers/${orgBBowlerId}/details`, sessionA);
-      expect([403, 404]).toContain(status);
-      expect(data.success).toBe(false);
-
-      // Positive control: session B (the owning org) must succeed.
-      const owner = await apiGet(`/api/bowlers/${orgBBowlerId}/details`, sessionB);
-      expect(owner.status).toBe(200);
-      expect(owner.data.success).toBe(true);
     });
 
     it('org A PATCH /api/bowlers/:id (org B bowler) → 403/404 and does not mutate the bowler', async () => {
@@ -1036,36 +1048,36 @@ describe('Organization Isolation', () => {
         expect(owner.data.success).toBe(true);
       });
 
-      it('org A GET /api/locations/:id (org B location) → 403 and does not leak the row', async () => {
+      // Parameterize the three homogeneous "/api/locations/:id[...]" cases
+      // — each expects a strict 403 and uses the same org B location id.
+      // The `${orgBLocationId}` template-literal segments stay verbatim in
+      // source so `scripts/check-org-isolation-coverage.ts` (which greps
+      // each `:param` as `\$\{[^}]+\}`) keeps recognising the references.
+      it.each([
+        {
+          label: 'org A GET /api/locations/:id (org B location) → 403 and does not leak the row',
+          path: () => `/api/locations/${orgBLocationId}`,
+          checkLeak: true,
+        },
+        {
+          label: 'org A GET /api/locations/:id/clover-config (org B location) → 403',
+          path: () => `/api/locations/${orgBLocationId}/clover-config`,
+          checkLeak: false,
+        },
+        {
+          label: 'org A GET /api/locations/:id/square-config (org B location) → 403',
+          path: () => `/api/locations/${orgBLocationId}/square-config`,
+          checkLeak: false,
+        },
+      ])('$label', async ({ path, checkLeak }) => {
         expect(orgBLocationId).not.toBeNull();
-        const { status, data } = await apiGet<Location>(
-          `/api/locations/${orgBLocationId}`,
-          sessionA,
-        );
+        const { status, data } = await apiGet(path(), sessionA);
         expect(status).toBe(403);
         expect(data.success).toBe(false);
-        const payload = JSON.stringify(data);
-        expect(payload).not.toContain(`Vitest Iso Location ${stamp}`);
-      });
-
-      it('org A GET /api/locations/:id/clover-config (org B location) → 403', async () => {
-        expect(orgBLocationId).not.toBeNull();
-        const { status, data } = await apiGet(
-          `/api/locations/${orgBLocationId}/clover-config`,
-          sessionA,
-        );
-        expect(status).toBe(403);
-        expect(data.success).toBe(false);
-      });
-
-      it('org A GET /api/locations/:id/square-config (org B location) → 403', async () => {
-        expect(orgBLocationId).not.toBeNull();
-        const { status, data } = await apiGet(
-          `/api/locations/${orgBLocationId}/square-config`,
-          sessionA,
-        );
-        expect(status).toBe(403);
-        expect(data.success).toBe(false);
+        if (checkLeak) {
+          const payload = JSON.stringify(data);
+          expect(payload).not.toContain(`Vitest Iso Location ${stamp}`);
+        }
       });
 
       it('org A GET /api/scores/league/:leagueId/week/:weekNumber (org B league) → 403 (hasAccessToLeague gate)', async () => {

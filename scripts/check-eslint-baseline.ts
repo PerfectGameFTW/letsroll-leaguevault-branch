@@ -59,7 +59,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // `checkAndChargeFinalTwoWeeks` helper from
   // `server/services/payment-checks.ts`, which carried one
   // suppression for this rule.
-  '@typescript-eslint/no-non-null-assertion': 244,
+  // Ratcheted 244 → 220 in task #683 after the orphaned-data merge
+  // converted ~24 `value!` patterns into explicit `if (!x) throw`
+  // guards as part of the suppression-prune pass.
+  '@typescript-eslint/no-non-null-assertion': 220,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -71,7 +74,9 @@ const RULE_CEILINGS: Record<string, number> = {
   // Ratcheted 89 → 88 in task #646 after deleting the dead
   // `checkAndChargeFinalTwoWeeks` helper, which carried one
   // suppression for this rule.
-  '@typescript-eslint/no-unnecessary-type-assertion': 88,
+  // Ratcheted 88 → 85 in task #683 after the suppression-prune pass
+  // following the orphaned-data merge.
+  '@typescript-eslint/no-unnecessary-type-assertion': 85,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -96,7 +101,11 @@ const RULE_CEILINGS: Record<string, number> = {
   // tests/unit/use-bowler-payment-submit.test.ts collapsed six inline
   // `as unknown as` casts into three typed factory helpers (makeLeague,
   // makeBowler, makeCard).
-  'no-restricted-syntax': 153,
+  // Ratcheted 153 → 150 in task #683 after replacing the
+  // `as unknown as` double-cast in the streamlined Square-422 unit
+  // test with `Object.assign`-based narrowing and pruning two stale
+  // suppressions in deleted/merged orphan-data tests.
+  'no-restricted-syntax': 150,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
@@ -115,7 +124,12 @@ const RULE_CEILINGS: Record<string, number> = {
 // (89 → 88) — both came from the dead `checkAndChargeFinalTwoWeeks`
 // helper that was removed when the "Final 2 Weeks Due By" feature
 // retired.
-const TOTAL_CEILING = 511;
+// Ratcheted 511 → 481 in task #683 alongside the per-rule drops on
+// `no-non-null-assertion` (244 → 220), `no-unnecessary-type-assertion`
+// (88 → 85), and `no-restricted-syntax` (153 → 150) — all from the
+// suppression-prune pass that followed the orphaned-data test merge
+// and the Square-422 mocked-unit replacement.
+const TOTAL_CEILING = 481;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

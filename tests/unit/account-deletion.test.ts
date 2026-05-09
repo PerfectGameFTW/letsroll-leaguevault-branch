@@ -603,6 +603,10 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       const summary = await executeAccountDeletion(targetEmail, adminId);
 
       expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(summary.confirmationEmail).toEqual({
+        sent: true,
+        suppressedByUser: false,
+      });
       const [emailArg, payloadArg] = sendSpy.mock.calls[0]!;
       expect(emailArg).toBe(targetEmail);
 
@@ -699,15 +703,15 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       const summary = await executeAccountDeletion(targetEmail, adminId, true);
 
       expect(sendSpy).toHaveBeenCalledTimes(1);
-      // GDPR scrub still completed end-to-end despite the email blowup.
-      expect(summary.user.deleted).toBe(true);
-      expect(summary.bowlers.length).toBeGreaterThan(0);
-      expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
       // The thrown message lands on the audit summary so admins (and
       // the #350 UI) can see WHY the email didn't go.
       expect(summary.confirmationEmail?.sent).toBe(false);
       expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
       expect(summary.confirmationEmail?.error).toMatch(/connection reset/);
+      // GDPR scrub still completed end-to-end despite the email blowup.
+      expect(summary.user.deleted).toBe(true);
+      expect(summary.bowlers.length).toBeGreaterThan(0);
+      expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
 
       // And the same throw was logged at ERROR level with both the
       // helpful prefix and the underlying error message so on-call

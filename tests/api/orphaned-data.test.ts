@@ -61,6 +61,7 @@ const BOGUS_LEAGUE_ID = 2_000_000_000;
 
 describe('Orphaned Data API (system-admin)', () => {
   let admin: AuthSession;
+  let orgAdmin: AuthSession;
   let targetOrgId: number;
 
   let orphanLeagueA = 0; // children attach here; deleted in delete-success test
@@ -104,6 +105,10 @@ describe('Orphaned Data API (system-admin)', () => {
 
   beforeAll(async () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    // Non-system-admin session for the GET /orphaned-data-audits gate
+    // tests at the bottom of the file (merged from the deleted
+    // orphaned-data-audits.test.ts companion suite).
+    orgAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
 
     // Idempotent pre-purge: a previous run may have been interrupted
     // (SIGTERM, OOM, vitest crash) before its `afterAll` finished. The
@@ -420,11 +425,13 @@ describe('Orphaned Data API (system-admin)', () => {
       expect(ids).toContain(parentMissingTeamId);
       expect(ids).not.toContain(nonOrphanTeamId);
 
-      const orphanRow = rows.find((r) => r.id === orphanTeamId)!;
+      const orphanRow = rows.find((r) => r.id === orphanTeamId);
+      if (!orphanRow) throw new Error('expected orphan team row');
       expect(orphanRow.parentLeagueExists).toBe(true);
       expect(orphanRow.leagueOrganizationId).toBeNull();
 
-      const missingRow = rows.find((r) => r.id === parentMissingTeamId)!;
+      const missingRow = rows.find((r) => r.id === parentMissingTeamId);
+      if (!missingRow) throw new Error('expected parent-missing team row');
       expect(missingRow.parentLeagueExists).toBe(false);
     });
 
@@ -436,10 +443,10 @@ describe('Orphaned Data API (system-admin)', () => {
       const rows = data.data ?? [];
       const orphan = rows.find((r) => r.id === orphanBowlerLeagueId);
       const missing = rows.find((r) => r.id === parentMissingBowlerLeagueId);
-      expect(orphan).toBeTruthy();
-      expect(orphan!.parentLeagueExists).toBe(true);
-      expect(missing).toBeTruthy();
-      expect(missing!.parentLeagueExists).toBe(false);
+      if (!orphan) throw new Error('expected orphan bowler-league row');
+      if (!missing) throw new Error('expected parent-missing bowler-league row');
+      expect(orphan.parentLeagueExists).toBe(true);
+      expect(missing.parentLeagueExists).toBe(false);
     });
 
     it('lists orphan payments including both variants', async () => {
@@ -450,10 +457,10 @@ describe('Orphaned Data API (system-admin)', () => {
       const rows = data.data ?? [];
       const orphan = rows.find((r) => r.id === orphanPaymentId);
       const missing = rows.find((r) => r.id === parentMissingPaymentId);
-      expect(orphan).toBeTruthy();
-      expect(orphan!.parentLeagueExists).toBe(true);
-      expect(missing).toBeTruthy();
-      expect(missing!.parentLeagueExists).toBe(false);
+      if (!orphan) throw new Error('expected orphan payment row');
+      if (!missing) throw new Error('expected parent-missing payment row');
+      expect(orphan.parentLeagueExists).toBe(true);
+      expect(missing.parentLeagueExists).toBe(false);
     });
 
     it('lists orphan users but excludes system_admin and non-orphan users', async () => {
@@ -707,13 +714,13 @@ describe('Orphaned Data API (system-admin)', () => {
       const reassignAudit = (listed.data ?? []).find(
         (r) => r.action === 'reassign' && r.resourceType === 'leagues' && r.resourceId === orphanLeagueB,
       );
-      expect(reassignAudit, 'reassign audit row should exist').toBeTruthy();
-      expect(reassignAudit!.previousOrganizationId).toBeNull();
-      expect(reassignAudit!.organizationId).toBe(targetOrgId);
-      expect(reassignAudit!.undoneAt).toBeNull();
+      if (!reassignAudit) throw new Error('reassign audit row should exist');
+      expect(reassignAudit.previousOrganizationId).toBeNull();
+      expect(reassignAudit.organizationId).toBe(targetOrgId);
+      expect(reassignAudit.undoneAt).toBeNull();
 
       const { status } = await apiPost(
-        `/api/system-admin/orphaned-data-audits/${reassignAudit!.id}/undo`,
+        `/api/system-admin/orphaned-data-audits/${reassignAudit.id}/undo`,
         {},
         admin,
       );
@@ -732,19 +739,20 @@ describe('Orphaned Data API (system-admin)', () => {
         '/api/system-admin/orphaned-data-audits?limit=200',
         admin,
       );
-      const original = (after.data ?? []).find((r) => r.id === reassignAudit!.id);
-      expect(original!.undoneAt).not.toBeNull();
-      expect(original!.undoneByAuditId).not.toBeNull();
+      const original = (after.data ?? []).find((r) => r.id === reassignAudit.id);
+      if (!original) throw new Error('expected original audit row');
+      expect(original.undoneAt).not.toBeNull();
+      expect(original.undoneByAuditId).not.toBeNull();
       const undoRow = (after.data ?? []).find(
         (r) => r.action === 'undo_reassign' && r.resourceType === 'leagues' && r.resourceId === orphanLeagueB,
       );
-      expect(undoRow, 'undo audit row should exist').toBeTruthy();
-      expect(undoRow!.previousOrganizationId).toBe(targetOrgId);
-      expect(undoRow!.organizationId).toBeNull();
+      if (!undoRow) throw new Error('undo audit row should exist');
+      expect(undoRow.previousOrganizationId).toBe(targetOrgId);
+      expect(undoRow.organizationId).toBeNull();
 
       // Re-trying the same undo should fail with 409 ALREADY_UNDONE.
       const { status: again, data: againData } = await apiPost(
-        `/api/system-admin/orphaned-data-audits/${reassignAudit!.id}/undo`,
+        `/api/system-admin/orphaned-data-audits/${reassignAudit.id}/undo`,
         {},
         admin,
       );
@@ -785,12 +793,12 @@ describe('Orphaned Data API (system-admin)', () => {
       const deleteAudit = (data.data ?? []).find(
         (r) => r.action === 'delete' && r.resourceType === 'leagues',
       );
-      expect(deleteAudit, 'delete audit row should exist').toBeTruthy();
-      expect(deleteAudit!.snapshot).toBeTruthy();
-      expect((deleteAudit!.snapshot as { id: number }).id).toBeGreaterThan(0);
+      if (!deleteAudit) throw new Error('delete audit row should exist');
+      expect(deleteAudit.snapshot).toBeTruthy();
+      expect((deleteAudit.snapshot as { id: number }).id).toBeGreaterThan(0);
 
       const { status, data: errData } = await apiPost(
-        `/api/system-admin/orphaned-data-audits/${deleteAudit!.id}/undo`,
+        `/api/system-admin/orphaned-data-audits/${deleteAudit.id}/undo`,
         {},
         admin,
       );
@@ -805,6 +813,75 @@ describe('Orphaned Data API (system-admin)', () => {
         admin,
       );
       expect(status).toBe(404);
+    });
+
+    it('GET /orphaned-data-audits rejects non-system-admin sessions with 403', async () => {
+      // Merged from the deleted orphaned-data-audits.test.ts: the
+      // listing endpoint is system_admin-only.
+      const { status } = await apiGet('/api/system-admin/orphaned-data-audits', orgAdmin);
+      expect(status).toBe(403);
+    });
+
+    it('GET /orphaned-data-audits rejects unauthenticated callers with 401 or 403', async () => {
+      const { status } = await apiGet('/api/system-admin/orphaned-data-audits');
+      expect([401, 403]).toContain(status);
+    });
+
+    it('GET /orphaned-data-audits returns recent audit rows hydrated with admin and org info', async () => {
+      // Reuses audit rows already written by the success-path tests
+      // above (the league-B reassign in particular). The hydrated
+      // shape includes admin email + organization name joins that the
+      // raw DB row doesn't carry.
+      interface AuditRowDTO {
+        id: number;
+        action: string;
+        resourceType: string;
+        resourceId: number;
+        organizationId: number | null;
+        organizationName: string | null;
+        adminUserId: number | null;
+        adminUserEmail: string | null;
+        createdAt: string;
+      }
+      const { status, data } = await apiGet<AuditRowDTO[]>(
+        '/api/system-admin/orphaned-data-audits?limit=200',
+        admin,
+      );
+      expect(status).toBe(200);
+      const rows = data.data ?? [];
+      expect(rows.length).toBeGreaterThan(0);
+
+      const reassignRow = rows.find(
+        (r) => r.resourceType === 'leagues' && r.resourceId === orphanLeagueB && r.action === 'reassign',
+      );
+      if (!reassignRow) throw new Error('expected the league-B reassign audit row');
+      expect(reassignRow.adminUserId).toBe(admin.user.id);
+      expect(reassignRow.adminUserEmail?.toLowerCase()).toBe(
+        admin.user.email.toLowerCase(),
+      );
+      expect(reassignRow.organizationId).toBe(targetOrgId);
+      expect(reassignRow.organizationName).not.toBeNull();
+    });
+
+    it('GET /orphaned-data-audits honors the limit query parameter and clamps above 200', async () => {
+      // Two assertions in one test to keep the suite tight: the
+      // explicit-limit path and the upper-bound clamp share the same
+      // setup and the same fetch shape.
+      interface AuditRowDTO { id: number }
+
+      const small = await apiGet<AuditRowDTO[]>(
+        '/api/system-admin/orphaned-data-audits?limit=1',
+        admin,
+      );
+      expect(small.status).toBe(200);
+      expect((small.data.data ?? []).length).toBeLessThanOrEqual(1);
+
+      const huge = await apiGet<AuditRowDTO[]>(
+        '/api/system-admin/orphaned-data-audits?limit=99999',
+        admin,
+      );
+      expect(huge.status).toBe(200);
+      expect((huge.data.data ?? []).length).toBeLessThanOrEqual(200);
     });
 
     it('deletes the orphan system_admin user (after we strip the role) to confirm delete success path', async () => {
