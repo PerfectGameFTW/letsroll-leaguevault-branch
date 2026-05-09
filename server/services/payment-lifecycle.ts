@@ -176,11 +176,6 @@ async function handleSuccessfulPayment(
     const notes = paymentResult.isDoublePay
       ? 'Double-pay week (2× weekly fee)'
       : undefined;
-    const isCombinedRun = (scheduleRecord.additionalBowlerIds ?? []).length > 0;
-    const ownerPaidByUserId = isCombinedRun
-      ? await safeResolvePaidByUserId(scheduleRecord.bowlerId)
-      : null;
-
     await tx.insert(payments).values({
       bowlerId: scheduleRecord.bowlerId,
       leagueId: scheduleRecord.leagueId,
@@ -199,7 +194,6 @@ async function handleSuccessfulPayment(
           ? paymentResult.buyerEmailMissing ?? false
           : false,
       notes,
-      paidByUserId: ownerPaidByUserId,
     });
 
     logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {
