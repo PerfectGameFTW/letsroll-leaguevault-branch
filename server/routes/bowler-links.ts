@@ -79,7 +79,7 @@ router.post("/invite", inviteLimiter, async (req, res) => {
       return sendError(res, "Cannot link a bowler to themselves", 400, "SELF_LINK");
     }
 
-    const invitee = await storage.getBowlerByEmail(inviteeEmail, user.organizationId);
+    const invitee = await storage.getBowlerByEmailInOrg(inviteeEmail, user.organizationId);
     if (!invitee) {
       return sendError(res, "No bowler in your organization has that email", 404, "NOT_FOUND");
     }

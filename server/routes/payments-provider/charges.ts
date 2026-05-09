@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../../storage';
 import { sendError } from '../../utils/api.js';
-import { hasAccessToLeague, hasAccessToBowler } from '../../utils/access-control.js';
+import { hasAccessToLeague, hasAccessToBowler, isOrgOrHigher } from '../../utils/access-control.js';
 import { canUserPayForBowler } from '../../utils/bowler-payment-authz.js';
 import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
@@ -122,17 +122,15 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // gate the saved-card / wallet charge path on
-    // pay-for-partner authz instead of plain hasAccessToBowler so a
-    // linked adult bowler can charge their own saved card on behalf
-    // of an accepted partner. Admin "manual" payments use the
-    // /api/payments POST path, which still uses hasAccessToBowler.
+    // Authorize: self OR accepted-link partner OR org/system admin.
+    // Non-admin bowlers must pass canUserPayForBowler — same-league
+    // alone is NOT a valid pay path.
     const payAuthz = await canUserPayForBowler(req, bowlerId);
     let isAdminFallback = false;
     if (!payAuthz.allowed) {
-      // Fall back to the legacy bowler-access check so admins (without
-      // a payerBowlerId) still pass when their token-based source is
-      // an admin checkout flow that already validated org access.
+      if (!req.user || !isOrgOrHigher(req.user)) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
       if (!await hasAccessToBowler(req, bowlerId)) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
@@ -217,30 +215,9 @@ router.post('/payments', paymentLimiter, async (req, res) => {
 
     const provider = await getPaymentProvider(league.locationId ?? null);
 
-    // When the user opted to store the card on file, bootstrap a
-    // provider customer first if one doesn't already exist (task #573).
-    // Without this, first-time Clover bowlers — who never go through
-    // the Square-only profile sync — would charge successfully but
-    // silently skip the save-card step below.
-    // customer / card vault resolution.
-    // For partner-pay we MUST use the payer's vaulted customer id, not
-    // the target bowler's — saved cards live with the payer. For
-    // self-pay the legacy "use bowler's vault" still applies because
-    // payer === target.
-    //
-    // the admin-fallback branch is
-    // intentionally NOT a partner-pay flow — admins authenticate via
-    // hasAccessToBowler, not via canUserPayForBowler, so they have no
-    // payerBowlerId / vault of their own. Resolving `vaultBowler =
-    // bowler` (the target) for admin-fallback would let an admin
-    // checkout charge a saved card from the *recipient's* vault and,
-    // worse, save a freshly tokenized card into that recipient's vault
-    // without their consent. Refuse both:
-    //   - reject `storeCard` outright (admins must use the
-    //     `/api/payments` admin-record path to attach cards to bowlers).
-    //   - drop the recipient's customerId from the charge so the
-    //     provider treats it as a token-only one-shot instead of a
-    //     saved-card pull from the wrong vault.
+    // For partner-pay the saved-card / wallet customer id comes from
+    // the payer's vault. Admin-fallback never carries a payer vault and
+    // must not write into the recipient's vault.
     if (isAdminFallback && req.body.storeCard) {
       return sendError(
         res,

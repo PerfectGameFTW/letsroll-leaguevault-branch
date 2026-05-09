@@ -61,6 +61,7 @@ export interface IBowlerStorage {
   getBowler(id: number): Promise<Bowler | undefined>;
   getBowlersByIds(ids: number[]): Promise<Bowler[]>;
   getBowlerByEmail(email: string, organizationId: number): Promise<Bowler | undefined>;
+  getBowlerByEmailInOrg(email: string, organizationId: number): Promise<Bowler | undefined>;
   getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined>;
   getBowlersByEmailSystemAdmin(email: string): Promise<Bowler[]>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;

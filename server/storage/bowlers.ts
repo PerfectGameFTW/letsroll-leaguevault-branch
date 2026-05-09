@@ -372,6 +372,24 @@ export async function getBowlerByEmail(email: string, organizationId: number): P
   return results[0]?.bowler;
 }
 
+/**
+ * Look up a bowler by email directly via `bowlers.organization_id`,
+ * without requiring league membership. Used by the partner-link invite
+ * flow where an org bowler may be invitable before being placed on a
+ * league.
+ */
+export async function getBowlerByEmailInOrg(
+  email: string,
+  organizationId: number,
+): Promise<Bowler | undefined> {
+  const [row] = await db
+    .select()
+    .from(bowlers)
+    .where(and(eq(bowlers.email, email), eq(bowlers.organizationId, organizationId)))
+    .limit(1);
+  return row;
+}
+
 export async function getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined> {
   const [result] = await db.select().from(bowlers).where(eq(bowlers.email, email));
   return result;
