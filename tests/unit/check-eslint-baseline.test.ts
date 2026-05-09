@@ -37,12 +37,37 @@ function runIn(
   return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
 }
 
-function makeFixture(suppressions: unknown): string {
+// A permissive bump-reason ledger that records every current ceiling
+// (and the TOTAL aggregate) at a value high enough to satisfy the
+// gate added in task #696. Tests that exercise the per-rule / total
+// ratchet checks don't care about the ledger gate; they get this stub
+// so the bump check stays silent. Tests that DO exercise the ledger
+// gate write their own ledger explicitly.
+const PERMISSIVE_LEDGER = [
+  '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
+  '| --- | --- | --- | --- | --- | --- |',
+  '| @typescript-eslint/no-explicit-any | 0 | 0 | 0 | test stub | test |',
+  '| @typescript-eslint/no-non-null-assertion | 0 | 9999 | +9999 | test stub | test |',
+  '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | test stub | test |',
+  '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | test stub | test |',
+  '| no-restricted-syntax | 0 | 9999 | +9999 | test stub | test |',
+  '| TOTAL | 0 | 99999 | +99999 | test stub | test |',
+  '',
+].join('\n');
+
+function makeFixture(
+  suppressions: unknown,
+  opts: { ledger?: string | null } = {},
+): string {
   const dir = mkdtempSync(join(tmpdir(), 'eslint-baseline-check-'));
   writeFileSync(
     join(dir, 'eslint-suppressions.json'),
     JSON.stringify(suppressions, null, 2),
   );
+  const ledger = opts.ledger === undefined ? PERMISSIVE_LEDGER : opts.ledger;
+  if (ledger !== null) {
+    writeFileSync(join(dir, 'BASELINE_BUMP_REASON.md'), ledger);
+  }
   return dir;
 }
 
@@ -119,6 +144,7 @@ describe('check-eslint-baseline CI guard', () => {
 
   it('treats a missing eslint-suppressions.json as zero suppressions (clean repo)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'eslint-baseline-empty-'));
+    writeFileSync(join(dir, 'BASELINE_BUMP_REASON.md'), PERMISSIVE_LEDGER);
     const r = runIn(dir, ['--strict']);
     // Missing file → all counts are 0 → every ceiling is "above"
     // live, so we get RATCHET suggestions but exit 0.
@@ -129,6 +155,7 @@ describe('check-eslint-baseline CI guard', () => {
   it('fails loudly on a malformed eslint-suppressions.json instead of silently passing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'eslint-baseline-bad-'));
     writeFileSync(join(dir, 'eslint-suppressions.json'), '{ not valid json');
+    writeFileSync(join(dir, 'BASELINE_BUMP_REASON.md'), PERMISSIVE_LEDGER);
     const r = runIn(dir, ['--strict']);
     // tsx propagates the thrown Error → non-zero exit and the
     // failure message lands on stderr, so a corrupted baseline can't
@@ -175,6 +202,108 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stderr).not.toMatch(/some-other-rule/);
+  });
+
+  it('exits 1 in --strict mode when a per-rule ceiling is bumped above the BASELINE_BUMP_REASON.md ledger (task #696)', () => {
+    // Ledger records nna at 200, but the script's RULE_CEILINGS pins it at
+    // 220. A contributor who raised the literal to 220 without adding a
+    // ledger row gets caught here.
+    const ledger = [
+      '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| @typescript-eslint/no-non-null-assertion | 0 | 200 | +200 | seed | test |',
+      '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
+      '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
+      '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      '| TOTAL | 0 | 99999 | +99999 | seed | test |',
+      '',
+    ].join('\n');
+    const dir = makeFixture(
+      {
+        'src/foo.ts': {
+          '@typescript-eslint/no-non-null-assertion': { count: 1 },
+        },
+      },
+      { ledger },
+    );
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(
+      /FAIL: @typescript-eslint\/no-non-null-assertion: ceiling raised to 220 but BASELINE_BUMP_REASON\.md records 200/,
+    );
+    expect(r.stderr).toMatch(/Add a row in the same commit/);
+    // Echoes the row template so the contributor can copy/paste.
+    expect(r.stderr).toMatch(
+      /\| @typescript-eslint\/no-non-null-assertion \| 200 \| 220 \| \+20 \|/,
+    );
+  });
+
+  it('exits 1 in --strict mode when TOTAL_CEILING is bumped above the ledger (task #696)', () => {
+    // All per-rule entries match current literals; only TOTAL is below.
+    const ledger = [
+      '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| @typescript-eslint/no-non-null-assertion | 0 | 9999 | +9999 | seed | test |',
+      '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
+      '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
+      '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      '| TOTAL | 0 | 100 | +100 | seed | test |',
+      '',
+    ].join('\n');
+    const dir = makeFixture({ 'src/foo.ts': {} }, { ledger });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(
+      /FAIL: TOTAL: ceiling raised to 487 but BASELINE_BUMP_REASON\.md records 100/,
+    );
+  });
+
+  it('passes when ceilings match the recorded ledger value (task #696)', () => {
+    // Ledger entry exactly matches the script literal → no bump.
+    const ledger = [
+      '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| @typescript-eslint/no-non-null-assertion | 200 | 220 | +20 | seed | test |',
+      '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
+      '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
+      '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      '| TOTAL | 0 | 99999 | +99999 | seed | test |',
+      '',
+    ].join('\n');
+    const dir = makeFixture(
+      {
+        'src/foo.ts': {
+          '@typescript-eslint/no-non-null-assertion': { count: 220 },
+        },
+      },
+      { ledger },
+    );
+    const r = runIn(dir, ['--strict']);
+    expect(r.status, r.stderr || r.stdout).toBe(0);
+  });
+
+  it('does not require a ledger entry when a ceiling is ratcheted DOWN below the recorded value (task #696)', () => {
+    // Script literal (220) is below ledger (300) → cleanup, no entry needed.
+    const ledger = [
+      '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| @typescript-eslint/no-non-null-assertion | 0 | 300 | +300 | seed | test |',
+      '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
+      '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
+      '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      '| TOTAL | 0 | 99999 | +99999 | seed | test |',
+      '',
+    ].join('\n');
+    const dir = makeFixture(
+      {
+        'src/foo.ts': {
+          '@typescript-eslint/no-non-null-assertion': { count: 100 },
+        },
+      },
+      { ledger },
+    );
+    const r = runIn(dir, ['--strict']);
+    expect(r.status, r.stderr || r.stdout).toBe(0);
   });
 
   it('asserts the script header documents how operators ratchet the ceiling', () => {

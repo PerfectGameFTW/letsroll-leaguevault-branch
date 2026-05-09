@@ -146,6 +146,57 @@ const TOTAL_CEILING = 483;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');
+const BUMP_REASON_PATH = resolve(process.cwd(), 'BASELINE_BUMP_REASON.md');
+
+// Pseudo-rule key under which the aggregate `TOTAL_CEILING` is tracked
+// in `BASELINE_BUMP_REASON.md`. Treated like any other rule by the
+// ledger gate.
+const TOTAL_KEY = 'TOTAL';
+
+interface LedgerEntry {
+  rule: string;
+  oldCeiling: number;
+  newCeiling: number;
+  reason: string;
+  ref: string;
+}
+
+// Parse `BASELINE_BUMP_REASON.md` and return the most recent recorded
+// ceiling per rule. Each row in the markdown table is:
+//   | rule | old ceiling | new ceiling | delta | reason | commit/task ref |
+// The function tolerates surrounding prose, the header row, and the
+// `| --- | --- | ... |` divider.
+function loadLedger(path: string): Map<string, LedgerEntry> {
+  const latest = new Map<string, LedgerEntry>();
+  if (!existsSync(path)) return latest;
+  const text = readFileSync(path, 'utf8');
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('|') || !line.endsWith('|')) continue;
+    const cells = line
+      .slice(1, -1)
+      .split('|')
+      .map((c) => c.trim());
+    if (cells.length < 6) continue;
+    const [rule, oldStr, newStr, , reason, ref] = cells;
+    if (!rule) continue;
+    if (rule === 'rule') continue; // header
+    if (/^[-:\s]+$/.test(rule)) continue; // divider
+    const oldN = Number(oldStr);
+    const newN = Number(newStr);
+    if (!Number.isFinite(newN) || !Number.isInteger(newN) || newN < 0) {
+      continue;
+    }
+    latest.set(rule, {
+      rule,
+      oldCeiling: Number.isFinite(oldN) ? oldN : 0,
+      newCeiling: newN,
+      reason,
+      ref,
+    });
+  }
+  return latest;
+}
 
 interface SuppressionsFile {
   [filePath: string]: {
@@ -198,9 +249,24 @@ function loadCounts(path: string): {
 
 function main(): number {
   const { byRule, total } = loadCounts(SUPPRESSIONS_PATH);
+  const ledger = loadLedger(BUMP_REASON_PATH);
 
   const breaches: string[] = [];
   const ratchets: string[] = [];
+  const bumpFailures: string[] = [];
+
+  function checkBump(rule: string, ceiling: number): void {
+    const entry = ledger.get(rule);
+    const recorded = entry?.newCeiling ?? 0;
+    if (ceiling > recorded) {
+      const delta = ceiling - recorded;
+      bumpFailures.push(
+        `${rule}: ceiling raised to ${ceiling} but BASELINE_BUMP_REASON.md ` +
+          `records ${recorded}. Add a row in the same commit, e.g.:\n` +
+          `    | ${rule} | ${recorded} | ${ceiling} | +${delta} | <one-line reason> | <#task or commit sha> |`,
+      );
+    }
+  }
 
   for (const [rule, ceiling] of Object.entries(RULE_CEILINGS)) {
     const live = byRule.get(rule) ?? 0;
@@ -215,6 +281,7 @@ function main(): number {
           `Lower RULE_CEILINGS['${rule}'] in scripts/check-eslint-baseline.ts to ${live}.`,
       );
     }
+    checkBump(rule, ceiling);
   }
 
   if (total > TOTAL_CEILING) {
@@ -228,6 +295,7 @@ function main(): number {
         `Lower TOTAL_CEILING in scripts/check-eslint-baseline.ts to ${total}.`,
     );
   }
+  checkBump(TOTAL_KEY, TOTAL_CEILING);
 
   // Always print a summary so reviewers and CI logs have context.
   process.stdout.write(
@@ -244,19 +312,34 @@ function main(): number {
     process.stdout.write(`RATCHET: ${r}\n`);
   }
 
+  const banner = STRICT ? 'FAIL' : 'WARN';
   if (breaches.length > 0) {
-    const banner = STRICT ? 'FAIL' : 'WARN';
     for (const b of breaches) {
       process.stderr.write(`${banner}: ${b}\n`);
     }
-    if (STRICT) {
+  }
+  if (bumpFailures.length > 0) {
+    for (const b of bumpFailures) {
+      process.stderr.write(`${banner}: ${b}\n`);
+    }
+    process.stderr.write(
+      `\nA ceiling in scripts/check-eslint-baseline.ts was raised above ` +
+        `the value most recently recorded in BASELINE_BUMP_REASON.md. Add a ` +
+        `row to that ledger in the same commit (see the file's "How to bump ` +
+        `a ceiling" section) and re-run this script.\n`,
+    );
+  }
+
+  if (breaches.length > 0 || bumpFailures.length > 0) {
+    if (breaches.length > 0) {
       process.stderr.write(
         `\nThe ESLint suppression baseline grew. Either remove the new ` +
           `suppression(s) by typing the offending code, or — with reviewer ` +
-          `sign-off — raise the ceiling in scripts/check-eslint-baseline.ts.\n`,
+          `sign-off — raise the ceiling in scripts/check-eslint-baseline.ts ` +
+          `AND log the bump in BASELINE_BUMP_REASON.md.\n`,
       );
-      return 1;
     }
+    if (STRICT) return 1;
   } else {
     process.stdout.write('OK: no ceilings exceeded\n');
   }
