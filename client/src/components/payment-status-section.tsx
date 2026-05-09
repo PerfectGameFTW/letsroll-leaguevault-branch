@@ -8,10 +8,22 @@ import { useQuery } from "@tanstack/react-query";
 import { csrfFetch, queryClient } from '@/lib/queryClient';
 import { calculateFinancials } from "@/lib/financial-utils";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
-import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
+import type { League, Bowler, Payment, SavedCard, ApiResponse } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
 import { PaymentSetupForm } from "@/components/payment-setup-form";
 import { useBowlerPaymentSubmit } from "@/hooks/use-bowler-payment-submit";
+
+interface BowlerLinkRow {
+  id: number;
+  status: "pending" | "accepted";
+  partnerBowlerId: number;
+  partnerName: string;
+}
+
+interface BowlerLinksPayload {
+  links: BowlerLinkRow[];
+  hasAny: boolean;
+}
 
 type PaymentSchedule = "weekly" | "custom";
 
@@ -51,6 +63,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
+  // Task #678 (3rd review): selected payment recipient for partner-pay.
+  // Defaults to self; the picker (rendered below in PaymentSetupForm)
+  // lets the bowler swap to a linked partner. Reset whenever the form
+  // opens so a stale partner choice never silently rides into a new
+  // checkout.
+  const [targetBowlerId, setTargetBowlerId] = useState<number>(bowler.id);
 
   const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league.locationId ?? null);
 
@@ -77,6 +95,22 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const squareError = isClover ? cvError : sqError;
   const initializeCard = isClover ? cvInitCard : sqInitCard;
   const cleanupCard = isClover ? cvCleanup : sqCleanup;
+
+  // Task #678 (3rd review): pull accepted partner links so the
+  // recipient picker in PaymentSetupForm can offer them as targets.
+  // Org-scoping + accept-status filtering happen server-side; we
+  // additionally filter to status==='accepted' here as defense in depth.
+  const { data: linksResponse } = useQuery<ApiResponse<BowlerLinksPayload>>({
+    queryKey: ["/api/bowler-links"],
+    enabled: !!bowler.id,
+    staleTime: 30_000,
+  });
+  const partnerOptions = useMemo(() => {
+    const all = linksResponse?.data?.links ?? [];
+    return all
+      .filter((l) => l.status === "accepted")
+      .map((l) => ({ id: l.partnerBowlerId, name: l.partnerName }));
+  }, [linksResponse]);
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],
@@ -112,6 +146,16 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       cleanupCard();
     }
   }, [showPaymentSetup, cleanupCard]);
+
+  // Task #678: opening or closing the form, OR switching into autopay,
+  // resets the recipient back to self so a stale partner choice never
+  // silently rides into a new checkout. Autopay only supports self pay
+  // (combined-autopay is configured separately by the schedule owner).
+  useEffect(() => {
+    if (!showPaymentSetup || paymentMode === 'autopay') {
+      setTargetBowlerId(bowler.id);
+    }
+  }, [showPaymentSetup, paymentMode, bowler.id]);
 
   const bowlerPayments = useMemo(() => {
     return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
@@ -152,7 +196,10 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         body: JSON.stringify({
           sourceId: token,
           amount,
-          bowlerId: bowler.id,
+          // Task #678: chargeForBowlerId is the recipient bowler.
+          // Server resolves the payer's vault from the session and
+          // gates via canUserPayForBowler.
+          bowlerId: targetBowlerId,
           leagueId: league.id,
           storeCard: true,
         }),
@@ -173,6 +220,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id] });
+      // Task #678: when paying for a partner, refresh THEIR bowler-details
+      // cache so the recipient's payment-history surfaces pick up the new
+      // "Paid by …" attribution immediately.
+      if (targetBowlerId !== bowler.id) {
+        queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${targetBowlerId}/details`] });
+      }
       setShowPaymentSetup(false);
     } catch (err: unknown) {
       // task #514: route the wallet-payment failure path through the
@@ -184,7 +237,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [bowler.id, league.id, calculateTotalAmount, toast, setIsSubmitting, setShowPaymentSetup]);
+  }, [bowler.id, league.id, targetBowlerId, calculateTotalAmount, toast, setIsSubmitting, setShowPaymentSetup]);
 
   const {
     applePayAvailable,
@@ -229,6 +282,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     selectedSavedCardId,
     selectedSchedule,
     storeCard,
+    targetBowlerId,
     financials,
     calculateTotalAmount,
     setIsSubmitting,
@@ -308,6 +362,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         isWalletProcessing={isWalletProcessing}
         applePayTokenizeOnly={applePayTokenizeOnly}
         googlePayTokenizeOnly={googlePayTokenizeOnly}
+        partnerOptions={partnerOptions}
+        selfBowler={{ id: bowler.id, name: bowler.name || 'You' }}
+        targetBowlerId={targetBowlerId}
+        setTargetBowlerId={setTargetBowlerId}
+        // Autopay only supports self pay (combined-autopay is configured
+        // separately by the schedule owner). Lock the picker to self in
+        // autopay mode; allow partner selection in onetime / upfront.
+        allowPartnerSelection={paymentMode !== 'autopay'}
       />
     );
   }

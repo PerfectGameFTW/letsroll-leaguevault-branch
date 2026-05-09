@@ -36,6 +36,12 @@ interface UseBowlerPaymentSubmitOptions {
   // bowler has none on file. Threaded to the server so Square's
   // hosted receipt fires for this charge.
   buyerEmail?: string;
+  // Task #678 (3rd review): the dashboard recipient picker passes
+  // a partner's bowler id here when the logged-in bowler chose to
+  // pay for them. Defaults to the logged-in bowler's own id (self
+  // pay). Server-side `canUserPayForBowler` enforces that the actor
+  // is actually linked to the chosen target.
+  targetBowlerId?: number;
   financials: {
     fullSeasonAmount: number;
     amountPastDue: number;
@@ -55,11 +61,15 @@ export function useBowlerPaymentSubmit({
   selectedSchedule,
   storeCard,
   buyerEmail,
+  targetBowlerId,
   financials,
   calculateTotalAmount,
   setIsSubmitting,
   setShowPaymentSetup,
 }: UseBowlerPaymentSubmitOptions) {
+  // The bowler the charge is for — the picker's value when the
+  // logged-in bowler chose a linked partner, otherwise self.
+  const chargeForBowlerId = targetBowlerId ?? bowler.id;
   const { toast } = useToast();
   const [, navigate] = useLocation();
   // Look up the active provider for this league's location so the
@@ -113,7 +123,10 @@ export function useBowlerPaymentSubmit({
             body: JSON.stringify({
               sourceId: selectedSavedCardId,
               amount: upfrontAmount,
-              bowlerId: bowler.id,
+              // Task #678: target bowler is the payment recipient.
+              // Server resolves the payer's vault from the session and
+              // gates via canUserPayForBowler.
+              bowlerId: chargeForBowlerId,
               leagueId: league.id,
               storeCard: false,
               ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
@@ -124,8 +137,10 @@ export function useBowlerPaymentSubmit({
         } else {
           const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
           if (!newCard) throw new Error('Please enter your card details before proceeding.');
-          await createPayment(upfrontAmount, newCard, bowler.id, league.id, storeCard, overrideEmail);
+          await createPayment(upfrontAmount, newCard, chargeForBowlerId, league.id, storeCard, overrideEmail);
           if (storeCard) {
+            // Vault belongs to the payer (logged-in bowler), not the
+            // recipient — invalidate the payer's saved-card list.
             queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
           }
         }
@@ -170,7 +185,8 @@ export function useBowlerPaymentSubmit({
           body: JSON.stringify({
             sourceId: selectedSavedCardId,
             amount,
-            bowlerId: bowler.id,
+            // Task #678: chargeForBowlerId is the recipient bowler.
+            bowlerId: chargeForBowlerId,
             leagueId: league.id,
             storeCard: false,
             ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
@@ -185,7 +201,7 @@ export function useBowlerPaymentSubmit({
         const trimmedBuyerEmail = (buyerEmail ?? '').trim();
         const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
         if (!newCard) throw new Error('Please enter your card details before proceeding.');
-        const paymentResult = await createPayment(amount, newCard, bowler.id, league.id, shouldStore, overrideEmail);
+        const paymentResult = await createPayment(amount, newCard, chargeForBowlerId, league.id, shouldStore, overrideEmail);
         if (shouldStore) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
@@ -236,6 +252,12 @@ export function useBowlerPaymentSubmit({
 
       setShowPaymentSetup(false);
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      // Refresh the recipient's bowler details so payment-history
+      // surfaces (which read /api/bowlers/:id/details?includePayments=true)
+      // pick up the new "Paid by …" attribution immediately.
+      if (chargeForBowlerId !== bowler.id) {
+        queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${chargeForBowlerId}/details`] });
+      }
     } catch (error) {
       console.error('[Payment Error]:', error);
       if (isProviderNotConfiguredError(error)) {
@@ -262,7 +284,7 @@ export function useBowlerPaymentSubmit({
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard,
-    buyerEmail, financials, calculateTotalAmount, toast, navigate, isClover,
+    buyerEmail, chargeForBowlerId, financials, calculateTotalAmount, toast, navigate, isClover,
     setIsSubmitting, setShowPaymentSetup,
   ]);
 }

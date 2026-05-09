@@ -1,7 +1,15 @@
 import { FC, RefObject } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Users } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { League, SavedCard } from "@shared/schema";
 import { PaymentCustomAmount } from "@/components/payment-custom-amount";
 import { PaymentSetupCardInput } from "@/components/payment-setup-card-input";
@@ -55,6 +63,15 @@ interface PaymentSetupFormProps {
   isWalletProcessing: boolean;
   applePayTokenizeOnly: boolean;
   googlePayTokenizeOnly: boolean;
+  // Task #678 (3rd review): recipient picker. When the logged-in
+  // bowler has accepted-link partners, render a "Pay for" select.
+  // Locked to self when the form is in autopay mode (autopay charges
+  // the schedule's owner each week, partner autopay isn't supported).
+  partnerOptions?: { id: number; name: string }[];
+  selfBowler: { id: number; name: string };
+  targetBowlerId: number;
+  setTargetBowlerId: (id: number) => void;
+  allowPartnerSelection: boolean;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -95,7 +112,13 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   isWalletProcessing,
   applePayTokenizeOnly,
   googlePayTokenizeOnly,
+  partnerOptions = [],
+  selfBowler,
+  targetBowlerId,
+  setTargetBowlerId,
+  allowPartnerSelection,
 }) => {
+  const showPartnerPicker = allowPartnerSelection && partnerOptions.length > 0;
   return (
     <Card className="w-full">
       <CardHeader className={league.paymentMode !== 'upfront' && paymentMode === 'autopay' ? 'pb-4' : undefined}>
@@ -110,6 +133,44 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {showPartnerPicker && (
+            <div className="space-y-2" data-testid="recipient-picker">
+              <Label className="flex items-center gap-2 text-sm font-medium">
+                <Users className="h-4 w-4 text-muted-foreground" /> Pay for
+              </Label>
+              <Select
+                value={String(targetBowlerId)}
+                onValueChange={(v) => setTargetBowlerId(Number(v))}
+              >
+                <SelectTrigger data-testid="select-recipient">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    value={String(selfBowler.id)}
+                    data-testid={`recipient-option-${selfBowler.id}`}
+                  >
+                    {selfBowler.name} (you)
+                  </SelectItem>
+                  {partnerOptions.map((p) => (
+                    <SelectItem
+                      key={p.id}
+                      value={String(p.id)}
+                      data-testid={`recipient-option-${p.id}`}
+                    >
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {targetBowlerId !== selfBowler.id && (
+                <p className="text-xs text-muted-foreground">
+                  This payment will be recorded against your linked partner and
+                  attributed as paid by you.
+                </p>
+              )}
+            </div>
+          )}
           {league.paymentMode === 'upfront' ? (
             <div className="rounded-md border bg-muted/30 p-4 space-y-2">
               <div className="flex items-center justify-between py-1">

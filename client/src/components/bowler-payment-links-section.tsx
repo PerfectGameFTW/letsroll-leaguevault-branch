@@ -17,6 +17,7 @@ interface LinkRow {
   organizationId: number;
   createdByUserId: number | null;
   inviterBowlerId: number | null;
+  partnerBowlerId: number;
   partnerName: string;
 }
 

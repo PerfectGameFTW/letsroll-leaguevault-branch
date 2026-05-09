@@ -67,7 +67,11 @@ router.get("/", async (req, res) => {
         const partnerName = partner
           ? partner.name?.trim() || partner.email || `Bowler #${partnerId}`
           : `Bowler #${partnerId}`;
-        return { ...l, inviterBowlerId, partnerName };
+        // Task #678 (3rd review): expose partnerBowlerId so the
+        // dashboard recipient picker can target a linked bowler
+        // without re-querying or guessing which side of the pair
+        // the partner is on.
+        return { ...l, inviterBowlerId, partnerBowlerId: partnerId, partnerName };
       }),
     );
     return sendSuccess(res, { links: enriched, hasAny: enriched.length > 0 });

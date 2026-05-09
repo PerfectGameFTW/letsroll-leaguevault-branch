@@ -6,8 +6,14 @@ import { isCardPaymentType } from "@shared/schema/constants";
 import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment, League } from "@shared/schema";
 
+// Task #678: server-sanitized rows on /api/payments + bowler-details may
+// include the optional `paidByName` enrichment when a linked partner
+// funded the charge. Widen the prop here so the badge below typechecks
+// without forcing a `Payment & {…}` cast at every call site.
+type BowlerPayment = Payment & { paidByName?: string | null };
+
 interface BowlerPaymentTableProps {
-  payments: Payment[];
+  payments: BowlerPayment[];
   league: League;
 }
 
@@ -85,6 +91,18 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
                         {weekNumber && <> &bull; Week {weekNumber}</>}
                         {' '}&bull; {getPaymentMethodLabel(payment)}
                       </div>
+                      {/* Task #678 (3rd review): when a linked partner paid
+                          for this bowler, the server stamps `paidByName` on
+                          the wire (sanitized — never an email). Surface it
+                          here so the recipient sees who covered the charge. */}
+                      {payment.paidByName && (
+                        <div
+                          className="text-xs text-slate-500 mt-0.5"
+                          data-testid={`paid-by-${payment.id}`}
+                        >
+                          Paid by {payment.paidByName}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
