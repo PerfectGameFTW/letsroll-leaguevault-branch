@@ -1546,11 +1546,11 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       const reassignRow = rows.find(
         (r) => r.resourceType === 'leagues' && r.resourceId === leagueForReassign && r.action === 'reassign',
       );
-      expect(reassignRow).toBeTruthy();
-      expect(reassignRow!.adminUserId).toBe(admin.user.id);
-      expect(reassignRow!.adminUserEmail?.toLowerCase()).toBe(admin.user.email.toLowerCase());
-      expect(reassignRow!.organizationId).toBe(targetOrgId);
-      expect(reassignRow!.organizationName).not.toBeNull();
+      if (!reassignRow) throw new Error('expected a reassign audit row for the seeded league');
+      expect(reassignRow.adminUserId).toBe(admin.user.id);
+      expect(reassignRow.adminUserEmail?.toLowerCase()).toBe(admin.user.email.toLowerCase());
+      expect(reassignRow.organizationId).toBe(targetOrgId);
+      expect(reassignRow.organizationName).not.toBeNull();
     });
 
     it('orders results newest-first', async () => {

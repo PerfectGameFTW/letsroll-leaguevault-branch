@@ -167,12 +167,7 @@ async function deleteSeededBowlers(): Promise<void> {
   linkedBowlerIds.clear();
 }
 
-describe('payment-sync retry sweep — multi-process race coverage', () => {
-  if (!RUN) {
-    it.skip('opt-in via RUN_BOOTSTRAP_RACE_TESTS=1 (writes to shared bowlers table)', () => {});
-    return;
-  }
-
+describe.skipIf(!RUN)('payment-sync retry sweep — multi-process race coverage', () => {
   let orgAId: number;
 
   beforeAll(async () => {

@@ -114,11 +114,7 @@ async function uniqueEmail(prefix: string): Promise<string> {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@vitest.local`;
 }
 
-describe('first-admin bootstrap — race + status-code coverage', () => {
-  if (!RUN) {
-    it.skip('opt-in via RUN_BOOTSTRAP_RACE_TESTS=1 (mutates shared admin row)', () => {});
-    return;
-  }
+describe.skipIf(!RUN)('first-admin bootstrap — race + status-code coverage', () => {
   // Task #360: when the suite is *explicitly* opted into
   // (RUN_BOOTSTRAP_RACE_TESTS=1) but SETUP_SECRET is missing, the
   // POSTs below will all 401 and every meaningful assertion would
