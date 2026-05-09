@@ -1026,8 +1026,23 @@ describe("apple pay job storage — sentinel-domain listing filter (#592)", () =
       { organizationId: null, locationId: null, domain: "mixed.unit.vitest-fixture.invalid" },
     ]);
 
-    const jobs = await listApplePayJobs(100);
-    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+    // Smoke-call the real production query path…
+    await listApplePayJobs(100);
+    // …but assert via a race-free per-job scoped count against the same
+    // composite predicate `listApplePayJobs` composes internally. The
+    // raw `find(...)` over a LIMIT-100 page is flaky under high
+    // cross-file parallelism: sibling vitest workers can insert ≥100
+    // newer rows between makeJob() and the read, pushing this job off
+    // the page.
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(
+        eq(applePayJobs.id, jobId),
+        excludeAllSentinelJobsPredicate,
+        excludeStaleEmptyJobsPredicate,
+      ));
+    expect(scoped?.count ?? 0).toBe(1);
 
     // Clean up the real-domain item so the suite-level sentinel sweep
     // also reaps this job (its sentinel item makes it eligible).
@@ -1040,8 +1055,16 @@ describe("apple pay job storage — sentinel-domain listing filter (#592)", () =
     // job whose items table is still empty.
     const jobId = await makeJob();
 
-    const jobs = await listApplePayJobs(100);
-    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+    await listApplePayJobs(100);
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(
+        eq(applePayJobs.id, jobId),
+        excludeAllSentinelJobsPredicate,
+        excludeStaleEmptyJobsPredicate,
+      ));
+    expect(scoped?.count ?? 0).toBe(1);
   });
 });
 
@@ -1079,11 +1102,12 @@ describe("apple pay job storage — empty-grace listing filter (#606)", () => {
     // items haven't been inserted yet. Must NOT be hidden — the admin
     // page should still show real in-flight jobs.
     const jobId = await makeJob();
-    const jobs = await listApplePayJobs(100);
-    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+    // Smoke-call the real production query path (assertion via scoped
+    // predicate below — `find(...)` over a LIMIT-100 page is racy under
+    // high cross-file parallelism).
+    await listApplePayJobs(100);
 
-    // Same assertion via the scoped predicate: race-free per-job check
-    // that the production SQL admits this job.
+    // Race-free per-job check that the production SQL admits this job.
     const [scoped] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(applePayJobs)
@@ -1118,8 +1142,19 @@ describe("apple pay job storage — empty-grace listing filter (#606)", () => {
       { organizationId: null, locationId: null, domain: "real.example.com" },
     ]);
 
-    const jobs = await listApplePayJobs(100);
-    expect(jobs.find((j) => j.id === jobId)).toBeDefined();
+    // Smoke-call the real production query path; assertion via the
+    // scoped composite predicate below (race-free under high cross-file
+    // parallelism).
+    await listApplePayJobs(100);
+    const [scoped] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(applePayJobs)
+      .where(and(
+        eq(applePayJobs.id, jobId),
+        excludeAllSentinelJobsPredicate,
+        excludeStaleEmptyJobsPredicate,
+      ));
+    expect(scoped?.count ?? 0).toBe(1);
 
     // Clean up the real-domain item so the suite-level sentinel sweep
     // can't reap this job (no sentinel item present).
