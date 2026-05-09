@@ -1,5 +1,6 @@
-import * as Sentry from "@sentry/node";
 import { env } from "./config";
+
+const Sentry = await import("@sentry/node");
 
 Sentry.init({
   dsn: env.SENTRY_DSN,

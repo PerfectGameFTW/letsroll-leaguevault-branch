@@ -31,7 +31,21 @@
  *   SQUARE_ACCESS_TOKEN=<location_token> npx tsx server/scripts/create-square-customers.ts \
  *     --organizationId=<id> --locationId=<id>
  */
-import { SquareClient, SquareEnvironment } from "square";
+import { createRequire } from "node:module";
+
+// Lazy-load `square` (task #692). The script's module body builds
+// arg parsers and validators before any Square call; deferring the
+// multi-MB SDK import until the actual client construction keeps
+// `--help`-style invocations and the early validation failures
+// (missing flags, bad org/location) from paying the SDK import cost.
+const _squareRequire = createRequire(import.meta.url);
+let _squareSdk: typeof import("square") | null = null;
+function getSquareSdk(): typeof import("square") {
+  if (_squareSdk === null) {
+    _squareSdk = _squareRequire("square") as typeof import("square");
+  }
+  return _squareSdk;
+}
 import { db, cleanup as closeDbPool } from "../db";
 import { bowlers, locations, organizations } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -137,9 +151,10 @@ async function buildSquareClient(): Promise<SquareClientLike> {
   // option key is `token` now, not `accessToken`, and the environment
   // values are URLs from the SquareEnvironment record (Production /
   // Sandbox), not the legacy `Environment` enum.
-  return new SquareClient({
+  const sdk = getSquareSdk();
+  return new sdk.SquareClient({
     token: accessToken,
-    environment: isProductionToken ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
+    environment: isProductionToken ? sdk.SquareEnvironment.Production : sdk.SquareEnvironment.Sandbox,
   });
 }
 

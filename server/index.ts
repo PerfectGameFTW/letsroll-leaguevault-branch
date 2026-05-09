@@ -1,5 +1,4 @@
 import { env, isDev, appEnv, isBetaEnv } from "./config";
-import * as Sentry from "@sentry/node";
 import { commitSha } from './utils/build-info';
 import { findLiveCredentials } from './utils/live-credential-check';
 import express, { type Request, Response, NextFunction } from "express";
@@ -228,36 +227,20 @@ app.all('/api/*', (req, res) => {
   });
 });
 
-if (isDev) {
-  setupVite(app, server)
-    .then(() => {
-      log.info('Vite middleware ready');
-      startServer();
-    })
-    .catch((error) => {
-      log.error('Critical error setting up Vite:', error);
-      process.exit(1);
-    });
-} else {
-  app.use(express.static(path.join(process.cwd(), 'dist/public'), {
-    maxAge: '1y',
-    immutable: true,
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('index.html')) {
-        res.setHeader('Cache-Control', 'no-store');
-      }
-    }
-  }));
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    res.setHeader('Cache-Control', 'no-store');
-    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
-  });
-  startServer();
-}
-
+// Lazy-load `@sentry/node` (task #692). The package pulls a large
+// OpenTelemetry transitive tree; deferring the import to right
+// before the single setup call keeps cold-start (and any unit-test
+// path that transitively reaches this module) from paying the cost
+// up front. Sentry.init() lives in `server/instrument.ts` for the
+// production deploy contract; this is the only other call site.
+//
+// IMPORTANT: this `await import` MUST complete (and the error
+// middleware below MUST be registered) before any path that calls
+// `server.listen(...)` runs, otherwise requests can be served before
+// `Sentry.setupExpressErrorHandler(app)` is attached. We therefore
+// do the import + middleware registration here, before the
+// `setupVite` / `startServer` dispatch below.
+const Sentry = await import("@sentry/node");
 Sentry.setupExpressErrorHandler(app);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -415,6 +398,36 @@ async function startServer() {
     log.error('Critical startup error:', error);
     process.exit(1);
   }
+}
+
+if (isDev) {
+  setupVite(app, server)
+    .then(() => {
+      log.info('Vite middleware ready');
+      startServer();
+    })
+    .catch((error) => {
+      log.error('Critical error setting up Vite:', error);
+      process.exit(1);
+    });
+} else {
+  app.use(express.static(path.join(process.cwd(), 'dist/public'), {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    }
+  }));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
+  });
+  startServer();
 }
 
 registerShutdownHandlers(server);

@@ -52,7 +52,7 @@ interface CapturedRequest {
  * `FailedResponse` lets us surface the captured request even though
  * the SDK throws downstream.
  */
-function buildClientCapturingRequests(): { captured: CapturedRequest[]; client: ReturnType<typeof buildSquareClient> } {
+async function buildClientCapturingRequests(): Promise<{ captured: CapturedRequest[]; client: Awaited<ReturnType<typeof buildSquareClient>> }> {
   const captured: CapturedRequest[] = [];
   const fetcher = vi.fn(async (args: { url: string; method: string; headers?: Record<string, unknown> }) => {
     captured.push({
@@ -77,7 +77,7 @@ function buildClientCapturingRequests(): { captured: CapturedRequest[]; client: 
   // exercises the same Production environment URL the live code
   // uses). The token is a well-formed prefix only; no real call
   // leaves the test because `fetcher` short-circuits.
-  const client = buildSquareClient(
+  const client = await buildSquareClient(
     'EAAAEvFAKE_TEST_TOKEN_NOT_A_REAL_SECRET',
     undefined,
     { fetcher },
@@ -87,7 +87,7 @@ function buildClientCapturingRequests(): { captured: CapturedRequest[]; client: 
 
 describe('Square SDK Square-Version header (task #614)', () => {
   it('sends Square-Version: SQUARE_EXPECTED_VERSION on payments.get', async () => {
-    const { captured, client } = buildClientCapturingRequests();
+    const { captured, client } = await buildClientCapturingRequests();
 
     // Any real SDK method works — `payments.get` is small and has
     // no required body. The SDK will throw because our fetcher
@@ -124,7 +124,7 @@ describe('Square SDK Square-Version header (task #614)', () => {
     // independently — see `node_modules/square/api/resources/*/client/Client.js`).
     // Asserting on a second resource catches the (unlikely) case
     // where one client drifts from the rest after a regen.
-    const { captured, client } = buildClientCapturingRequests();
+    const { captured, client } = await buildClientCapturingRequests();
 
     // `catalog.list` returns an `HttpResponsePromise<Page<>>`. Just
     // await it directly — it dispatches the first page on await,

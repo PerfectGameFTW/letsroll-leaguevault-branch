@@ -1,6 +1,49 @@
-import { SquareClient, SquareEnvironment, SquareError } from 'square';
-import type { CreatePaymentRequest, CatalogObject, BaseClientOptions } from 'square';
+import type {
+  SquareClient,
+  SquareEnvironment as SquareEnvironmentT,
+  SquareError as SquareErrorT,
+  CreatePaymentRequest,
+  CatalogObject,
+  BaseClientOptions,
+} from 'square';
+import { createRequire } from 'node:module';
 import crypto from 'crypto';
+
+// Lazy-load the `square` SDK (task #692). The package is multi-MB
+// and pulls a large dependency tree; deferring it until the first
+// real Square code path executes keeps cold-start (and unit-test
+// import-time) lean.
+//
+// Two access paths share one cache:
+//   - `getSquareSdkAsync()` uses dynamic `await import('square')` so
+//     vitest's `vi.mock('square', ...)` ESM module-mock is honored.
+//     This is the path async production code (and the SDK probe)
+//     takes on first use.
+//   - `getSquareSdk()` (sync) returns the cached module if a prior
+//     async call already loaded it; otherwise it falls back to
+//     `createRequire('square')` for synchronous `instanceof`
+//     discrimination in catch blocks. In production the cache is
+//     always primed by `buildSquareClient` before any catch runs.
+const _squareRequire = createRequire(import.meta.url);
+let _squareSdk: typeof import('square') | null = null;
+async function getSquareSdkAsync(): Promise<typeof import('square')> {
+  if (_squareSdk === null) {
+    _squareSdk = await import('square');
+  }
+  return _squareSdk;
+}
+function getSquareSdk(): typeof import('square') {
+  if (_squareSdk === null) {
+    _squareSdk = _squareRequire('square') as typeof import('square');
+  }
+  return _squareSdk;
+}
+// Local re-exposed value handles. Each is lazily resolved on first
+// access so test files that never construct or catch a Square error
+// don't pay the SDK import cost transitively.
+function getSquareErrorCtor(): typeof SquareErrorT {
+  return getSquareSdk().SquareError;
+}
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
@@ -177,20 +220,22 @@ export const SQUARE_EXPECTED_VERSION = '2026-01-22' as const;
  * accidentally change which token or environment we exercise).
  * Production callers always pass none.
  */
-export function buildSquareClient(
+export async function buildSquareClient(
   accessToken: string,
   appId?: string,
   extraOptions?: Partial<BaseClientOptions>,
-): SquareClient {
+): Promise<SquareClient> {
   const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
   const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
   const isProductionToken = cleanToken.startsWith('EAAAEv') || cleanToken.startsWith('EAAAl7');
+  const sdk = await getSquareSdkAsync();
+  const SquareEnvironment: typeof SquareEnvironmentT = sdk.SquareEnvironment;
   const environment = (isProductionAppId || isProductionToken) ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
   // v40+ flat-client SDK shape (task #603 / Phase 2 of #600). Note the
   // option key is `token` now, not `accessToken`, and the environment
   // values are URLs from the SquareEnvironment record (Production /
   // Sandbox), not the legacy `Environment` enum.
-  return new SquareClient({ ...extraOptions, token: cleanToken, environment });
+  return new sdk.SquareClient({ ...extraOptions, token: cleanToken, environment });
 }
 
 /**
@@ -267,7 +312,7 @@ async function defaultProbeSquareSdkVersion(): Promise<PinProbeResult> {
     // routes to the Production environment URL — same path
     // production traffic exercises. No real call leaves the process
     // because `fetcher` short-circuits.
-    probe = buildSquareClient(
+    probe = await buildSquareClient(
       'EAAAEvSDK_VERSION_PROBE_NOT_A_REAL_SECRET',
       undefined,
       { fetcher },
@@ -432,7 +477,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     try {
       const creds = await storage.getLocationSquareConfig(this.locationId);
       if (creds?.accessToken && creds.accessToken.trim().length > 0) {
-        return buildSquareClient(creds.accessToken, creds.appId);
+        return await buildSquareClient(creds.accessToken, creds.appId);
       }
       log.warn(`No Square credentials configured for location ${this.locationId}`);
       return null;
@@ -546,7 +591,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // SquareError instance (`.errors[]`, `.statusCode`, `.body`); the
       // legacy `.result.errors[]` wrapper is gone. We capture the first
       // `detail` for server-side logs only — never forwarded to the user.
-      const apiErr = error instanceof SquareError ? error : null;
+      const apiErr = error instanceof getSquareErrorCtor() ? error : null;
       const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 400) {
         throw new PaymentProviderError(
@@ -678,7 +723,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       ) {
         throw error;
       }
-      const apiErr = error instanceof SquareError ? error : null;
+      const apiErr = error instanceof getSquareErrorCtor() ? error : null;
       const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 402) {
         throw new PaymentProviderError(
@@ -778,7 +823,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // `.result.errors[]` wrapper is gone. Raw Square `detail` is
       // captured for logs only — never forwarded as the user-facing
       // `userMessage` (task #514).
-      const apiErr = error instanceof SquareError ? error : null;
+      const apiErr = error instanceof getSquareErrorCtor() ? error : null;
       const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 401 || apiErr?.statusCode === 403) {
         throw new PaymentProviderError(
@@ -861,7 +906,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       ) {
         throw error;
       }
-      const apiErr = error instanceof SquareError ? error : null;
+      const apiErr = error instanceof getSquareErrorCtor() ? error : null;
       const detail = apiErr?.errors?.[0]?.detail;
       if (apiErr?.statusCode === 400) {
         throw new PaymentProviderError(
@@ -1529,7 +1574,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       // SquareError instance — no `.result` wrapper. We read the first
       // `detail` for the operator-facing message.
       const detail =
-        error instanceof SquareError ? error.errors?.[0]?.detail : undefined;
+        error instanceof getSquareErrorCtor() ? error.errors?.[0]?.detail : undefined;
       log.error('Apple Pay domain registration error:', detail || error);
       return { success: false, message: detail || 'Failed to register domain for Apple Pay' };
     }

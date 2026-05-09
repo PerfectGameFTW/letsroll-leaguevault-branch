@@ -31,9 +31,22 @@
  * `square-provider.ts`. Per-seller bootstrap caching lives on the
  * provider where the locationId is naturally available.
  */
-import type { SquareClient } from 'square';
-import { SquareError } from 'square';
+import type { SquareClient, SquareError as SquareErrorT } from 'square';
+import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+
+// Lazy-load `square` (task #692). Only `SquareError` is used as a
+// runtime value in this module (for `instanceof` discrimination in
+// the helpers). Defer the multi-MB SDK import until the first call
+// site actually needs to introspect a thrown error.
+const _squareRequire = createRequire(import.meta.url);
+let _squareSdk: typeof import('square') | null = null;
+function getSquareErrorCtor(): typeof SquareErrorT {
+  if (_squareSdk === null) {
+    _squareSdk = _squareRequire('square') as typeof import('square');
+  }
+  return _squareSdk.SquareError;
+}
 import { createLogger } from '../logger';
 
 const log = createLogger('SquareCustomAttrs');
@@ -88,7 +101,7 @@ const DEFINITIONS: DefinitionSpec[] = [
  * Both are SUCCESS for our idempotent bootstrap.
  */
 export function isAlreadyExistsError(err: unknown): boolean {
-  if (!(err instanceof SquareError)) return false;
+  if (!(err instanceof getSquareErrorCtor())) return false;
   if (err.statusCode === 409) return true;
   // v40+ flat-client SDK exposes structured errors directly on the
   // SquareError instance; the legacy `.result.errors[]` wrapper is
@@ -198,7 +211,7 @@ export async function ensureDefinitions(
  * retry the upsert once.
  */
 export function isDefinitionMissingError(err: unknown): boolean {
-  if (!(err instanceof SquareError)) return false;
+  if (!(err instanceof getSquareErrorCtor())) return false;
   // v40+ flat-client SDK exposes structured errors directly on the
   // SquareError instance (`.errors[]`, `.statusCode`, `.body`); the
   // legacy `.result.errors[]` wrapper is gone.
