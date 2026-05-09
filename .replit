@@ -201,4 +201,4 @@ DEV_DB_HOST_ALLOWLIST = "ep-dawn-unit-a66zn28k"
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 60000
+timeoutMs = 180000
