@@ -22,6 +22,7 @@ import {
 import {
   apiPost,
   login,
+  purgeSessionCache,
   BASE_URL,
   getBaselineOrgAId,
   type AuthSession,
@@ -224,7 +225,9 @@ describe('POST /api/account/change-password — account lockout (task #357)', ()
     expect(row.count).toBe(0);
     expect(row.lockedUntil).toBeNull();
 
-    // New credentials work end-to-end.
+    // New credentials work end-to-end. Drop the cached pre-rotation
+    // session so this is a real round-trip against the new password.
+    purgeSessionCache(email);
     const newSession = await login(email, NEW_STRONG_PASSWORD);
     expect(newSession.user.email).toBe(email);
   });

@@ -126,27 +126,85 @@ async function getCsrfToken(cookies: string): Promise<string> {
   return data.data?.token ?? '';
 }
 
+/**
+ * Per-file in-memory cache of `login()` results, keyed by email.
+ *
+ * The auth round-trip (`POST /api/auth/login` + a follow-up
+ * `GET /api/csrf-token` to mint the CSRF pair) is ~150-300ms each. The
+ * majority of API tests log in 1-3 immutable fixture users (the seeded
+ * system admin, org-A admin, org-B admin) inside `beforeAll` and reuse
+ * the resulting session across every `it` in the file. Caching by email
+ * collapses every call after the first to a synchronous map lookup,
+ * shaving ~10-30s off `npm test` (#688).
+ *
+ * Lifetime semantics:
+ *   - With vitest's default `isolate: true`, each test file gets its own
+ *     module instance, so this map is per-file. Cookies are never
+ *     shared across files (which is desirable — different files run in
+ *     different worker processes).
+ *   - The cache stores the in-flight `Promise<AuthSession>` (not the
+ *     resolved value) so concurrent first calls dedupe to a single HTTP
+ *     round-trip instead of racing.
+ *
+ * When you MUST bypass the cache (because the suite mutates the auth
+ * state of the cached user, or it deliberately wants two distinct
+ * sessions for the same email), call `purgeSessionCache(email)` first.
+ * Examples in the wild: `change-password.test.ts`,
+ * `change-password-lockout.test.ts`, `set-password.test.ts` — all of
+ * which rotate the user's password mid-test and need a fresh login
+ * afterward.
+ */
+const loginCache: Map<string, Promise<AuthSession>> = new Map();
+
+/**
+ * Drop the cached `login()` result for `email` so the next `login()`
+ * call performs a real HTTP round-trip. Use this AFTER any flow that
+ * invalidates the underlying credential or session (password change,
+ * password set, account deletion) and BEFORE issuing a second
+ * `login()` for the same email when the suite needs two distinct
+ * session objects.
+ */
+export function purgeSessionCache(email: string): void {
+  loginCache.delete(email);
+}
+
 export async function login(email: string, password: string): Promise<AuthSession> {
-  const res = await fetch(`${BASE_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: withTestBypassHeader({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ email, password }),
+  const cached = loginCache.get(email);
+  if (cached !== undefined) return cached;
+
+  const promise = (async (): Promise<AuthSession> => {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: withTestBypassHeader({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ email, password }),
+    });
+
+    const cookies = await extractCookies(res);
+    const data: ApiResponse = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(`Login failed for ${email}: ${data.error?.message ?? res.statusText}`);
+    }
+
+    const csrfToken = await getCsrfToken(cookies);
+
+    return {
+      cookies,
+      user: data.data as AuthSession['user'],
+      csrfToken,
+    };
+  })();
+
+  // Cache the in-flight promise so concurrent callers dedupe. Drop it
+  // on rejection so a transient failure doesn't poison every later
+  // call in the file with the original error.
+  loginCache.set(email, promise);
+  promise.catch(() => {
+    if (loginCache.get(email) === promise) {
+      loginCache.delete(email);
+    }
   });
-
-  const cookies = await extractCookies(res);
-  const data: ApiResponse = await res.json();
-
-  if (!res.ok || !data.success) {
-    throw new Error(`Login failed for ${email}: ${data.error?.message ?? res.statusText}`);
-  }
-
-  const csrfToken = await getCsrfToken(cookies);
-
-  return {
-    cookies,
-    user: data.data as AuthSession['user'],
-    csrfToken,
-  };
+  return promise;
 }
 
 export async function apiGet<T = unknown>(

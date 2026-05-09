@@ -15,7 +15,7 @@ import { db } from '../../server/db';
 import { users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { storage } from '../../server/storage';
-import { login, BASE_URL, getBaselineOrgAId, type AuthSession } from '../helpers';
+import { login, purgeSessionCache, BASE_URL, getBaselineOrgAId, type AuthSession } from '../helpers';
 
 const ORIGINAL_PASSWORD = 'SetPwTest!2026';
 const NEW_PASSWORD = 'BrandNewSetPw!2026XX';
@@ -90,6 +90,11 @@ describe('POST /api/auth/set-password · force-log-out (task #352)', () => {
     // BOTH leftover sessions must be dead.
     const { userId, email } = await createUserWithPassword();
     const sessionA = await loggedInSession(email);
+    // Drop the cached entry so sessionB is a genuinely distinct
+    // session row, not a return of the same `sessionA` object — the
+    // load-bearing assertion below requires both sessions to be
+    // independently invalidated by the reset.
+    purgeSessionCache(email);
     const sessionB = await loggedInSession(email);
 
     // Sanity: both are live before the reset.
@@ -114,6 +119,7 @@ describe('POST /api/auth/set-password · force-log-out (task #352)', () => {
 
     // The new password actually works (the rotation committed; the
     // session destruction didn't somehow roll it back).
+    purgeSessionCache(email);
     const newSession = await login(email, NEW_PASSWORD);
     expect(newSession.user.email).toBe(email);
   });

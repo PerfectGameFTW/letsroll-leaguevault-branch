@@ -9,6 +9,7 @@ import { hashPassword } from '../../server/lib/password';
 import {
   apiPost,
   login,
+  purgeSessionCache,
   BASE_URL,
   getBaselineOrgAId,
   type AuthSession,
@@ -82,6 +83,10 @@ describe('POST /api/account/change-password', () => {
     });
     expect(oldLogin.status).toBe(401);
 
+    // Password just rotated — the cached session for `email` is now
+    // tied to the OLD credential. Drop it so the next `login()` call
+    // performs a real round-trip against the new password.
+    purgeSessionCache(email);
     const newSession = await login(email, NEW_STRONG_PASSWORD);
     expect(newSession.user.email).toBe(email);
   });
@@ -140,6 +145,10 @@ describe('POST /api/account/change-password', () => {
     const { email, session: sessionA } = await createUserAndLogin();
     // Second session for the SAME user — simulates another device or a
     // stolen cookie that we want force-logged-out by the password change.
+    // Purge the cached entry from createUserAndLogin so this is a
+    // genuinely distinct HTTP login (and therefore a distinct session
+    // row), not a return of the same `sessionA` object.
+    purgeSessionCache(email);
     const sessionB = await login(email, ORIGINAL_PASSWORD);
 
     // Sanity: sessionB can hit an authenticated endpoint before the change.
@@ -242,6 +251,8 @@ describe('POST /api/account/change-password', () => {
     });
     expect(oldLogin.status).toBe(401);
 
+    // Password rotated — drop the cached old-credential session.
+    purgeSessionCache(email);
     const newSession = await login(email, NEW_STRONG_PASSWORD);
     expect(newSession.user.email).toBe(email);
   });

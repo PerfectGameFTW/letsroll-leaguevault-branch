@@ -37,11 +37,42 @@ import { seedTestUsers } from './seed-test-users';
 import { cleanup as closeDbPool } from '../../server/db';
 import { installDbInvariants } from '../../server/db-invariants';
 
+/**
+ * Vitest invokes `globalSetup` once per *project*, and `vitest.config.ts`
+ * defines three projects (`serial-fk-bypass`, `parallel`,
+ * `client-components`). Both `installDbInvariants()` (idempotent
+ * trigger + table installs) and `seedTestUsers()` (idempotent upserts
+ * of the fixture user/org/league rows) are pure waste on the second
+ * and third project boots.
+ *
+ * The vitest worker boundary respects Node module identity within a
+ * single process, so a module-level promise survives across project
+ * setups in the same `npm test` invocation. Guard each expensive call
+ * with a memoized promise so it runs exactly once across the whole
+ * test workflow. (#688)
+ */
+let installInvariantsPromise: Promise<void> | null = null;
+let seedUsersPromise: Promise<void> | null = null;
+
+function memoizedInstallInvariants(): Promise<void> {
+  if (installInvariantsPromise === null) {
+    installInvariantsPromise = installDbInvariants();
+  }
+  return installInvariantsPromise;
+}
+
+function memoizedSeedTestUsers(): Promise<void> {
+  if (seedUsersPromise === null) {
+    seedUsersPromise = seedTestUsers();
+  }
+  return seedUsersPromise;
+}
+
 export default async function setup() {
-  await installDbInvariants();
+  await memoizedInstallInvariants();
 
   if (process.env.SKIP_TEST_SEED !== '1') {
-    await seedTestUsers();
+    await memoizedSeedTestUsers();
   }
 
   return async function teardown() {
