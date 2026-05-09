@@ -18,6 +18,18 @@ export async function runBowlerPostCreateSync(
   let current = bowler;
 
   const bowlerEmail = current.email;
+  // Track whether the post-create Square sync ended up with a linked
+  // customer id. Every code path that today silently leaves the
+  // bowler without a `paymentCustomerId` (no Square location
+  // configured for the org, ProviderNotConfiguredError, generic
+  // provider throw, provider returned no customer id) must now stamp
+  // `paymentSyncPendingAt` so the background retry sweep
+  // (`server/services/payment-sync-retry.ts`) picks the bowler up
+  // and re-runs the customer sync. The `bowlerEmail` guard below is
+  // intentionally kept — a bowler with no email genuinely has
+  // nothing to sync, mirroring `syncBowlerForUser`'s `'skipped'`
+  // contract. Task #682.
+  let squareCustomerLinked = false;
   if (bowlerEmail) {
     try {
       const matchingUser = await storage.getUserByEmail(bowlerEmail);
@@ -80,6 +92,7 @@ export async function runBowlerPostCreateSync(
           }
         }
         if (providerCustomer) {
+          squareCustomerLinked = true;
           current = await storage.updateBowler(current.id, {
             ...current,
             paymentCustomerId: providerCustomer.id,
@@ -119,6 +132,33 @@ export async function runBowlerPostCreateSync(
       }
     } catch (syncError) {
       log.error('Payment provider error during bowler sync:', syncError);
+    }
+
+    // Task #682: if every code path above failed to link a Square
+    // customer (no Square location configured for the org,
+    // ProviderNotConfiguredError, generic provider throw, or provider
+    // returned no customer id), flag the bowler so the background
+    // retry sweep picks it up and re-runs the customer sync. Without
+    // this flag the bowler stays in `paymentCustomerId IS NULL`
+    // limbo forever — the sweep only walks rows whose
+    // `paymentSyncPendingAt` is set, and no other code path was
+    // restamping it after the silent failure.
+    //
+    // Leave `paymentSyncAttempts` at 0 so the first sweep tick
+    // retries promptly (the backoff math anchors on the most recent
+    // attempt; with attempts=0 the backoff is the base 60s).
+    if (!squareCustomerLinked && current.paymentSyncPendingAt == null) {
+      try {
+        current = await storage.updateBowler(current.id, {
+          ...current,
+          paymentSyncPendingAt: new Date().toISOString(),
+        });
+      } catch (markErr) {
+        log.error(
+          'Bowler sync: failed to flag bowler for post-create retry',
+          markErr,
+        );
+      }
     }
   }
 

@@ -27,6 +27,7 @@ import { applePayWorker } from './services/apple-pay-worker';
 import { startLeagueSquareCatalogAudit } from './services/league-square-catalog-audit';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
 import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
+import { backfillMissingPaymentCustomers } from './migrations/backfill-missing-payment-customers';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
@@ -320,6 +321,16 @@ async function startServer() {
       await backfillDoublePayDates();
     } catch (error) {
       log.error('Error backfilling double-pay dates:', error);
+    }
+
+    // Task #682: optionally flag every legacy bowler with an email
+    // but no `payment_customer_id` so the background sweep retries
+    // them. Guarded by `BACKFILL_MISSING_PAYMENT_CUSTOMERS=true`;
+    // a no-op without the flag. See the migration file header.
+    try {
+      await backfillMissingPaymentCustomers();
+    } catch (error) {
+      log.error('Error backfilling missing payment customers:', error);
     }
 
     server.listen({ port: PORT, host: HOST }, () => {

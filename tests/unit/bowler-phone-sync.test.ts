@@ -207,14 +207,29 @@ describe('runBowlerPostCreateSync — phone sync from linked user', () => {
     expect(result.phone).toBe('5551234');
   });
 
-  it('does not write when matching user has no phone', async () => {
+  it('does not write a phone change when matching user has no phone', async () => {
+    // The bowler row already carries a phone, the matching user
+    // doesn't, so the phone-sync helper must NOT write. (Task #682
+    // adds a separate post-create flag-on-failure write — no
+    // Square location is configured here so that path stamps
+    // `paymentSyncPendingAt`. We assert the phone-sync helper
+    // didn't fire by checking the patches; we don't assert
+    // updateBowler was never called overall.)
     const bowler = fakeBowler({ phone: '9998888' });
 
     mockGetUserByEmail.mockResolvedValue({ id: 9, email: 'jon@example.com', phone: null, bowlerId: null });
     mockLinkUserToBowler.mockResolvedValue(undefined);
+    mockUpdateBowler.mockImplementation(async (_id, patch) => ({
+      ...(bowler as object),
+      ...(patch as Record<string, unknown>),
+    }));
 
     const result = await runBowlerPostCreateSync(bowler, 5);
-    expect(mockUpdateBowler).not.toHaveBeenCalled();
+    const phoneWrite = mockUpdateBowler.mock.calls.find(
+      (c) => Object.keys(c[1] as object).length === 1
+        && (c[1] as Record<string, unknown>).phone !== undefined,
+    );
+    expect(phoneWrite).toBeUndefined();
     expect(result.phone).toBe('9998888');
   });
 });

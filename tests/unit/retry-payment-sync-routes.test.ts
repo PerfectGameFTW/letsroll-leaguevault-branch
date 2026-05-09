@@ -361,6 +361,43 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync (admin)', () => {
     expect(profile.email).toBe(PLAIN_USER_LINKED.email);
   });
 
+  it('returns 422 NO_EMAIL when the bowler and linked user both have no email (task #682)', async () => {
+    nextAuthState = { isAuthenticated: true, user: SYSTEM_ADMIN_USER };
+    mockGetBowler.mockResolvedValue({
+      id: 777,
+      name: 'Emailless Bowler',
+      email: null,
+      phone: null,
+    });
+    mockGetUserByBowlerId.mockResolvedValue({ ...PLAIN_USER_LINKED, email: null });
+
+    const { status, body } = await post('/api/account/bowlers/777/retry-payment-sync');
+
+    expect(status).toBe(422);
+    expect(body.error?.code).toBe('NO_EMAIL');
+    expect(mockSyncBowlerForUser).not.toHaveBeenCalled();
+  });
+
+  it('runs the sync even when paymentSyncPendingAt is null (task #682)', async () => {
+    nextAuthState = { isAuthenticated: true, user: SYSTEM_ADMIN_USER };
+    mockGetBowler.mockResolvedValue({
+      id: 777,
+      name: 'Never-Flagged Bowler',
+      email: 'never-flagged@example.com',
+      phone: null,
+      paymentCustomerId: null,
+      paymentSyncPendingAt: null,
+    });
+    mockGetUserByBowlerId.mockResolvedValue(PLAIN_USER_LINKED);
+    mockSyncBowlerForUser.mockResolvedValue('synced');
+
+    const { status, body } = await post('/api/account/bowlers/777/retry-payment-sync');
+
+    expect(status).toBe(200);
+    expect(body.data?.paymentSyncStatus).toBe('synced');
+    expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(1);
+  });
+
   it('returns 400 INVALID_ID when the path param is not a number', async () => {
     nextAuthState = { isAuthenticated: true, user: SYSTEM_ADMIN_USER };
 

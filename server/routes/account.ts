@@ -937,6 +937,24 @@ router.post(
         );
       }
 
+      // Task #682: the bowler must have an email — `syncBowlerForUser`
+      // returns `'skipped'` for emailless bowlers (nothing to push to
+      // Square). Surface that contract as a clean 422 here so admins
+      // viewing a data-integrity row see why the retry is a no-op
+      // instead of getting a misleading `synced` / `skipped` status
+      // back. The `linkedUser.email ?? bowler.email` order below is
+      // the same fallback the helper itself uses, so this guard
+      // checks the same value the helper would have seen.
+      const effectiveEmail = linkedUser.email ?? bowler.email;
+      if (!effectiveEmail) {
+        return sendError(
+          res,
+          'Bowler has no email; nothing to sync',
+          422,
+          'NO_EMAIL',
+        );
+      }
+
       // Source-of-truth for retry is the linked **user's** profile, not the
       // bowler row. The bowler row may carry stale values from the failed
       // sync attempt; the user record reflects what the user submitted.
