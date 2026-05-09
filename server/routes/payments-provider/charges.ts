@@ -122,7 +122,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Task #678: gate the saved-card / wallet charge path on
+    // gate the saved-card / wallet charge path on
     // pay-for-partner authz instead of plain hasAccessToBowler so a
     // linked adult bowler can charge their own saved card on behalf
     // of an accepted partner. Admin "manual" payments use the
@@ -138,7 +138,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       }
       isAdminFallback = true;
     }
-    // Task #678: when the payer is a *different* bowler from the target
+    // when the payer is a *different* bowler from the target
     // (partner pay), the saved-card / wallet customer id MUST come from
     // the PAYER's vault, not the target's — the card on file lives with
     // the payer. We resolve `payerBowler` here and use it below to
@@ -222,13 +222,13 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     // Without this, first-time Clover bowlers — who never go through
     // the Square-only profile sync — would charge successfully but
     // silently skip the save-card step below.
-    // Task #678: customer / card vault resolution.
+    // customer / card vault resolution.
     // For partner-pay we MUST use the payer's vaulted customer id, not
     // the target bowler's — saved cards live with the payer. For
     // self-pay the legacy "use bowler's vault" still applies because
     // payer === target.
     //
-    // Task #678 (3rd-review hardening): the admin-fallback branch is
+    // the admin-fallback branch is
     // intentionally NOT a partner-pay flow — admins authenticate via
     // hasAccessToBowler, not via canUserPayForBowler, so they have no
     // payerBowlerId / vault of their own. Resolving `vaultBowler =
@@ -395,7 +395,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       receiptNumber: payment.receiptNumber,
       receiptEmailMissing: false,
       idempotencyKey,
-      // Task #678: only stamp paidByUserId when the actor is paying for
+      // only stamp paidByUserId when the actor is paying for
       // SOMEONE ELSE'S bowler (partner pay or admin-on-behalf). Self-pay
       // leaves it null because attribution would be redundant with the
       // bowler's own owning user.

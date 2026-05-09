@@ -73,7 +73,7 @@ vi.mock('../../server/db', async () => {
       select: () => ({
         from: (table: unknown) => ({
           where: () => {
-            // Task #678: see square-autopay-failures.test.ts for the
+            // see square-autopay-failures.test.ts for the
             // rationale — `getUserByBowlerId` chains `.limit(1)` on the
             // where result, so the mock must support both `await where`
             // and `await where.limit(1)`.

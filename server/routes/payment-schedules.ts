@@ -14,7 +14,7 @@ import { isTestKickSuppressed, PAYMENT_SCHEDULER_KICK_HEADER } from '../utils/te
 import { getAcceptedPartnerBowlerIds } from '../storage/bowler-payment-links';
 
 /**
- * Task #678: validate `additionalBowlerIds` (combined autopay).
+ * validate `additionalBowlerIds` (combined autopay).
  * - de-duplicates and removes self
  * - rejects ids that aren't accepted-linked partners of the payer in the org
  * - rejects ids whose bowler row is in a different org or org-less

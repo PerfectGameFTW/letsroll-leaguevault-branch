@@ -63,13 +63,13 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
-  // Task #678 (3rd review): selected payment recipient for partner-pay.
+  // selected payment recipient for partner-pay.
   // Defaults to self; the picker (rendered below in PaymentSetupForm)
   // lets the bowler swap to a linked partner. Reset whenever the form
   // opens so a stale partner choice never silently rides into a new
   // checkout.
   const [targetBowlerId, setTargetBowlerId] = useState<number>(bowler.id);
-  // Task #678 (3rd review): combined-autopay recipients. The
+  // combined-autopay recipients. The
   // PaymentSetupForm renders a checkbox group when paymentMode ===
   // 'autopay' AND there are accepted partners; selected ids are POSTed
   // as `additionalBowlerIds` on /api/payment-schedules. Reset whenever
@@ -103,7 +103,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const initializeCard = isClover ? cvInitCard : sqInitCard;
   const cleanupCard = isClover ? cvCleanup : sqCleanup;
 
-  // Task #678 (3rd review): pull accepted partner links so the
+  // pull accepted partner links so the
   // recipient picker in PaymentSetupForm can offer them as targets.
   // Org-scoping + accept-status filtering happen server-side; we
   // additionally filter to status==='accepted' here as defense in depth.
@@ -154,7 +154,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [showPaymentSetup, cleanupCard]);
 
-  // Task #678: opening or closing the form, OR switching into autopay,
+  // opening or closing the form, OR switching into autopay,
   // resets the recipient back to self so a stale partner choice never
   // silently rides into a new checkout. Autopay only supports self pay
   // (combined-autopay is configured separately by the schedule owner).
@@ -164,7 +164,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [showPaymentSetup, paymentMode, bowler.id]);
 
-  // Task #678 (3rd review): combined-autopay reset. Clear selected
+  // combined-autopay reset. Clear selected
   // combined-autopay partners whenever the form closes or the mode
   // leaves autopay — the checkbox group is only meaningful in autopay
   // mode and a stale selection must never carry into a one-time charge.
@@ -213,7 +213,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         body: JSON.stringify({
           sourceId: token,
           amount,
-          // Task #678: chargeForBowlerId is the recipient bowler.
+          // chargeForBowlerId is the recipient bowler.
           // Server resolves the payer's vault from the session and
           // gates via canUserPayForBowler.
           bowlerId: targetBowlerId,
@@ -237,7 +237,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id] });
-      // Task #678: when paying for a partner, refresh THEIR bowler-details
+      // when paying for a partner, refresh THEIR bowler-details
       // cache so the recipient's payment-history surfaces pick up the new
       // "Paid by …" attribution immediately.
       if (targetBowlerId !== bowler.id) {

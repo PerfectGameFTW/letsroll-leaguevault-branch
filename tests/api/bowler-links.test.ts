@@ -33,7 +33,7 @@ interface LinksList {
 }
 
 /**
- * Task #678 — bowler payment-link lifecycle + cross-org denial.
+ * – bowler payment-link lifecycle + cross-org denial.
  *
  * Critical infrastructure note: the user-deserialization cache
  * (`server/auth.ts:159`, 60s TTL) lives in the **server process**.

@@ -33,7 +33,7 @@ vi.mock('../../server/services/payment-provider-factory', async () => {
 });
 
 vi.mock('../../server/db', () => {
-  // Task #678: payment-execution selects bowler rows with `.where(...)`
+  // payment-execution selects bowler rows with `.where(...)`
   // (await directly), while `getUserByBowlerId` adds a `.limit(1)` step.
   // Make the mock thenable AND expose `.limit(...)` so both shapes work.
   const rows = [{ email: 'bowler@example.com', paymentCustomerId: 'cust_abc' }];

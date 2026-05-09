@@ -355,7 +355,7 @@ const SAFE_PAYMENT_FIELDS = [
   'receiptEmailMissing',
   // Free-text admin notes attached to the payment row.
   'notes',
-  // Task #678: payer-attribution. Stamped on every autopay row
+  // payer-attribution. Stamped on every autopay row
   // (including combined-autopay partner rows) so the UI can render a
   // "Paid by <name>" badge when someone other than the bowler funded
   // the payment. The id is safe to expose — paired with the
@@ -365,7 +365,7 @@ const SAFE_PAYMENT_FIELDS = [
 ] as const;
 
 export type SanitizedPayment = Pick<Payment, typeof SAFE_PAYMENT_FIELDS[number]> & {
-  // Task #678: optional display-only enrichment computed by the route
+  // optional display-only enrichment computed by the route
   // (NOT stored on the row). Set when `paidByUserId` resolves to a
   // user whose name (or fallback email) we can publish.
   paidByName?: string | null;

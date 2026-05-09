@@ -64,7 +64,7 @@ interface PaymentSetupFormProps {
   isWalletProcessing: boolean;
   applePayTokenizeOnly: boolean;
   googlePayTokenizeOnly: boolean;
-  // Task #678 (3rd review): recipient picker. When the logged-in
+  // recipient picker. When the logged-in
   // bowler has accepted-link partners, render a "Pay for" select.
   // Locked to self when the form is in autopay mode (autopay charges
   // the schedule's owner each week, partner autopay isn't supported).
@@ -73,7 +73,7 @@ interface PaymentSetupFormProps {
   targetBowlerId: number;
   setTargetBowlerId: (id: number) => void;
   allowPartnerSelection: boolean;
-  // Task #678 (3rd review): combined-autopay target multi-select. When
+  // combined-autopay target multi-select. When
   // the bowler is setting up autopay AND has accepted partners, we
   // render a checkbox group that lets them have ONE schedule charge
   // their card weekly for themselves PLUS each selected partner. The

@@ -166,7 +166,7 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
-// Task #678 (3rd review): provider-parity tests run as the bowler
+// provider-parity tests run as the bowler
 // themselves (self-pay), not as an admin acting on behalf. The
 // admin-fallback path no longer forwards the recipient's vaulted
 // customer id — the dedicated /api/payments admin-record endpoint

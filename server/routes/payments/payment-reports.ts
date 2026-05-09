@@ -22,7 +22,7 @@ import { requireOrganizationAccess } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 
 /**
- * Task #678: build a Map<paidByUserId, displayName> for the rows in
+ * build a Map<paidByUserId, displayName> for the rows in
  * `payments`. Uses the user's `name` only — never the email — so a
  * partner's address is never disclosed via paid-by attribution even
  * if a row has somehow lost its name. Returns an empty map when no

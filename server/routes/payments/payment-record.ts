@@ -80,7 +80,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
         ...payment,
         lineageAmount,
         prizeFundAmount,
-        // Task #678: do NOT auto-stamp the admin actor as payer here.
+        // do NOT auto-stamp the admin actor as payer here.
         // Admin-recorded cash/check entries must keep paidByUserId null
         // (the admin is recording, not paying). Only honor an explicit
         // paidByUserId provided by the caller (e.g. partner-pay surfaces

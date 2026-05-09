@@ -18,7 +18,7 @@ interface LinkRow {
 }
 
 /**
- * Task #678 — admin direct-link panel on bowler-view-page.
+ * – admin direct-link panel on bowler-view-page.
  *
  * Lists the bowler's existing payment-partner rows and lets the admin
  * link this bowler to another bowler in the same org by id (status is

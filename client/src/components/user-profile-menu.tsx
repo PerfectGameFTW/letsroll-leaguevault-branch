@@ -24,7 +24,7 @@ interface UserProfileMenuProps {
     email: string;
     role: string;
     avatar?: string | null;
-    // Task #678: surfaced on /api/user (SAFE_USER_FIELDS includes
+    // surfaced on /api/user (SAFE_USER_FIELDS includes
     // bowlerId). When set, the user is an adult bowler who can
     // open the "Payment partners" dialog directly from the profile
     // menu — even before they have any links.

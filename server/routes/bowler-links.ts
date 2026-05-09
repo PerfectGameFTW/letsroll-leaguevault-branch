@@ -67,7 +67,7 @@ router.get("/", async (req, res) => {
         const partnerName = partner
           ? partner.name?.trim() || partner.email || `Bowler #${partnerId}`
           : `Bowler #${partnerId}`;
-        // Task #678 (3rd review): expose partnerBowlerId so the
+        // expose partnerBowlerId so the
         // dashboard recipient picker can target a linked bowler
         // without re-querying or guessing which side of the pair
         // the partner is on.
@@ -208,7 +208,7 @@ router.post("/:id/decline", async (req, res) => {
     // and keeps the cleanup path uniform with DELETE.
     const prunedSchedules = await links.pruneSchedulesForRemovedLink(link);
     await links.deleteLink(id);
-    // Task #678 / reviewer follow-up: mirror the DELETE route's audit
+    // mirror the DELETE route's audit
     // trail so security review can reconstruct who declined which
     // invite and (if it ever happens) which schedules were touched.
     log.info("audit:bowler_link_decline", {
@@ -252,7 +252,7 @@ router.delete("/:id", async (req, res) => {
     if (!isAdmin && !isParty) {
       return sendError(res, "Not allowed", 403, "FORBIDDEN");
     }
-    // Task #678: scrub the now-removed partner from any combined-autopay
+    // scrub the now-removed partner from any combined-autopay
     // schedule's additionalBowlerIds BEFORE deleting the link row, so
     // an in-flight scheduler never sees a stale partner without an
     // accepted link. (Lifecycle also re-validates at firing time —
@@ -316,7 +316,9 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
     if (!user || !isOrgOrHigher(user)) {
       return sendError(res, "Admin access required", 403, "FORBIDDEN");
     }
-    if (!user.organizationId) {
+    // Org admins must have an org; system admins derive the org from
+    // the target bowler pair (validated below).
+    if (!user.organizationId && !isSystemAdmin(user)) {
       return sendError(res, "Organization required", 400, "ORG_REQUIRED");
     }
     const { bowlerAId, bowlerBId } = adminLinkSchema.parse(req.body);
@@ -355,7 +357,7 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
       organizationId: a.organizationId,
       createdByUserId: user.id,
     });
-    // Task #678: audit trail for admin direct-link.
+    // audit trail for admin direct-link.
     log.info("admin_audit:bowler_link_create", {
       adminUserId: user.id,
       organizationId: a.organizationId,

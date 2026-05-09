@@ -142,7 +142,7 @@ export async function deleteLink(id: number): Promise<void> {
 }
 
 /**
- * Task #678 — when a bowler-payment link is removed (decline OR unlink),
+ * – when a bowler-payment link is removed (decline OR unlink),
  * scrub each bowler's id from the OTHER bowler's combined-autopay
  * `additionalBowlerIds` arrays. We only touch schedules owned by the
  * two bowlers in the pair (and only within the link's organization), so

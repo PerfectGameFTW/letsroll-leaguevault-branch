@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import * as links from "../storage/bowler-payment-links";
 
 /**
- * Task #678 pay-for-partner authorization.
+ * Partner-pay: pay-for-partner authorization.
  *
  * Returns true when the request's session user is allowed to initiate
  * a charge whose target bowler is `targetBowlerId`. Allowed when:

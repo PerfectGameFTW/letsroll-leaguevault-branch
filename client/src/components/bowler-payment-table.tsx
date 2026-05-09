@@ -6,7 +6,7 @@ import { isCardPaymentType } from "@shared/schema/constants";
 import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment, League } from "@shared/schema";
 
-// Task #678: server-sanitized rows on /api/payments + bowler-details may
+// server-sanitized rows on /api/payments + bowler-details may
 // include the optional `paidByName` enrichment when a linked partner
 // funded the charge. Widen the prop here so the badge below typechecks
 // without forcing a `Payment & {…}` cast at every call site.
@@ -91,7 +91,7 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
                         {weekNumber && <> &bull; Week {weekNumber}</>}
                         {' '}&bull; {getPaymentMethodLabel(payment)}
                       </div>
-                      {/* Task #678 (3rd review): when a linked partner paid
+                      {/* when a linked partner paid
                           for this bowler, the server stamps `paidByName` on
                           the wire (sanitized — never an email). Surface it
                           here so the recipient sees who covered the charge. */}

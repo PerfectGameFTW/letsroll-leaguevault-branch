@@ -36,13 +36,13 @@ interface UseBowlerPaymentSubmitOptions {
   // bowler has none on file. Threaded to the server so Square's
   // hosted receipt fires for this charge.
   buyerEmail?: string;
-  // Task #678 (3rd review): the dashboard recipient picker passes
+  // the dashboard recipient picker passes
   // a partner's bowler id here when the logged-in bowler chose to
   // pay for them. Defaults to the logged-in bowler's own id (self
   // pay). Server-side `canUserPayForBowler` enforces that the actor
   // is actually linked to the chosen target.
   targetBowlerId?: number;
-  // Task #678 (3rd review): combined-autopay recipients. Forwarded as
+  // combined-autopay recipients. Forwarded as
   // `additionalBowlerIds` on POST /api/payment-schedules so the
   // autopay executor charges the payer's vault once per cycle for
   // every selected partner. Ignored unless `isAutoPay`.
@@ -129,7 +129,7 @@ export function useBowlerPaymentSubmit({
             body: JSON.stringify({
               sourceId: selectedSavedCardId,
               amount: upfrontAmount,
-              // Task #678: target bowler is the payment recipient.
+              // target bowler is the payment recipient.
               // Server resolves the payer's vault from the session and
               // gates via canUserPayForBowler.
               bowlerId: chargeForBowlerId,
@@ -191,7 +191,7 @@ export function useBowlerPaymentSubmit({
           body: JSON.stringify({
             sourceId: selectedSavedCardId,
             amount,
-            // Task #678: chargeForBowlerId is the recipient bowler.
+            // chargeForBowlerId is the recipient bowler.
             bowlerId: chargeForBowlerId,
             leagueId: league.id,
             storeCard: false,
@@ -232,7 +232,7 @@ export function useBowlerPaymentSubmit({
             amount: recurringAmount,
             nextPaymentDate: new Date(),
             paymentCardId,
-            // Task #678 (3rd review): combined-autopay. Only sent when
+            // combined-autopay. Only sent when
             // the bowler picked at least one accepted partner in the
             // checkbox group. Server validates each id is currently
             // linked & accepted to the schedule owner.

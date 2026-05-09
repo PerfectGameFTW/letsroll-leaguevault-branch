@@ -1,5 +1,5 @@
 /**
- * Task #678 storage helper unit tests for `bowler_payment_links`.
+ * Partner-pay: storage helper unit tests for `bowler_payment_links`.
  *
  * Verifies the canonical pair ordering (`bowlerAId < bowlerBId`) and
  * the lifecycle helpers create / accept / decline / list / partners

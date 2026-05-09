@@ -1,5 +1,5 @@
 /**
- * Task #678 (3rd review): pay-for-partner authorization unit tests.
+ * pay-for-partner authorization unit tests.
  *
  * Covers `canUserPayForBowler` — the gate every saved-card / wallet
  * partner-pay route runs through. Mocks `storage.getBowler` and the

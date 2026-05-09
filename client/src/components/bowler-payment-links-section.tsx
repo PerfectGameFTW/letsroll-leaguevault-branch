@@ -27,7 +27,7 @@ interface LinksResponse {
 }
 
 /**
- * Task #678 — adult-bowler partner linking UI.
+ * – adult-bowler partner linking UI.
  *
  * By default the section is hidden until `hasAny` is true (avoids cluttering
  * the bowler dashboard for users who have never linked anyone). When mounted

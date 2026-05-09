@@ -8,12 +8,12 @@ import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage";
 import { isDateSkippedOrCancelled } from "@shared/schedule-utils";
-import { executeScheduledPayment, executeChargeForLocation, buildLineItems, computePaymentSplit, type ChargeResult } from "./payment-execution";
+import { executeScheduledPayment, executeChargeForLocation, buildLineItems, computePaymentSplit, fetchBowlerPaymentInfo, type ChargeResult } from "./payment-execution";
 import { checkPaidInFull } from "./payment-checks";
 import { getUserByBowlerId } from "../storage/users";
 
 /**
- * Task #678: payer-user attribution is best-effort. If the lookup
+ * payer-user attribution is best-effort. If the lookup
  * throws (e.g. transient DB hiccup, or a unit-test mock that doesn't
  * stub the chained `.limit(1)`), we must not fail the autopay write
  * — the row is far more important than its attribution column. Log
@@ -189,7 +189,7 @@ async function handleSuccessfulPayment(
     const notes = paymentResult.isDoublePay
       ? 'Double-pay week (2× weekly fee)'
       : undefined;
-    // Task #678: derive payer user once. The schedule's bowlerId is
+    // derive payer user once. The schedule's bowlerId is
     // the payer; combined-autopay rows for additional bowlers carry
     // the same paidByUserId.
     const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
@@ -224,7 +224,7 @@ async function handleSuccessfulPayment(
     });
   });
 
-  // Task #678: combined autopay — charge each linked partner on the
+  // combined autopay — charge each linked partner on the
   // SAME card (the payer's vault) and stamp the payer as paidByUserId.
   // Each partner is re-validated as an accepted link at firing time
   // so a since-removed link is not silently honored.
@@ -253,13 +253,16 @@ async function handleSuccessfulPayment(
           continue;
         }
         const partnerLineItems = buildLineItems(league, '1');
+        // Reuse payer's vaulted customer id via the same helper used by
+        // the primary autopay path so Square/Clover customer-id
+        // resolution stays consistent across all charge entry points.
+        const { paymentCustomerId: payerCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
         const partnerCharge = await executeChargeForLocation(
           scheduleRecord.paymentCardId,
           scheduleRecord.amount,
           partnerLineItems,
           league?.locationId ?? null,
-          // Reuse payer's customer id (saved card lives in payer's vault).
-          (await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]))?.paymentCustomerId ?? undefined,
+          payerCustomerId,
           partnerBowlerRow.email ?? undefined,
         );
         const { lineageAmount: pLineage, prizeFundAmount: pPrize } = computePaymentSplit(scheduleRecord.amount, league);

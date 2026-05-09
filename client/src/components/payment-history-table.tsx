@@ -16,7 +16,7 @@ import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
 import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment } from "@shared/schema";
 
-// Task #678: server enriches list responses with `paidByName` when a
+// server enriches list responses with `paidByName` when a
 // row's `paidByUserId` resolves to a real user (typed as optional on
 // SanitizedPayment in server/utils/api.ts). The base Payment type
 // doesn't carry it; widen our row reads with this view-only union.

@@ -91,7 +91,7 @@ vi.mock('../../server/db', async () => {
       select: () => ({
         from: (table: unknown) => ({
           where: () => {
-            // Task #678: lifecycle now resolves the payer user via
+            // lifecycle now resolves the payer user via
             // `getUserByBowlerId(...)` which calls `.where(...).limit(1)`,
             // while older callers just await `.where(...)`. Return a
             // thenable that ALSO exposes `.limit(...)` so both shapes
