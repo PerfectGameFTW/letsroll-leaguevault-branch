@@ -254,7 +254,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(
-      /FAIL: TOTAL: ceiling raised to 487 but BASELINE_BUMP_REASON\.md records 100/,
+      /FAIL: TOTAL: ceiling raised to 483 but BASELINE_BUMP_REASON\.md records 100/,
     );
   });
 

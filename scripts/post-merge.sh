@@ -12,4 +12,4 @@ bash scripts/setup-ssh.sh --quiet || true
 # Snapshot pre-existing typecheck/lint/test failures into .local/known-failures.md
 # so the next task can see what was already red on merge. Never block the merge
 # itself if the snapshot script blows up.
-bash scripts/snapshot-failures.sh || true
+bash scripts/snapshot-failures.sh --fast || true

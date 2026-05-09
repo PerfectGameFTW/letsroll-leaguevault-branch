@@ -96,7 +96,6 @@ function fakeBowler(overrides: Partial<BowlerArg> = {}): BowlerArg {
     bnSyncPendingAt: null,
     bnSyncAttempts: 0,
     bnSyncLastAttemptAt: null,
-    isMinor: false,
     ...overrides,
   });
   // `id` is omitted from the insert schema; re-add it for the SELECT

@@ -35,7 +35,13 @@ describe('known-failures banner', () => {
   it('has Typecheck, Lint, and Tests sections', () => {
     expect(contents).toMatch(/Typecheck.*\b(PASS|FAIL)\b/);
     expect(contents).toMatch(/Lint.*\b(PASS|FAIL)\b/);
-    expect(contents).toMatch(/Tests.*\b(PASS|FAIL)\b/);
+    // Tests section may be PENDING after a fast post-merge snapshot;
+    // it gets rewritten to PASS/FAIL once the async worker finishes.
+    expect(contents).toMatch(/Tests.*\b(PASS|FAIL|PENDING)\b/);
+  });
+
+  it('declares a `_Test section:` freshness marker', () => {
+    expect(contents).toMatch(/_Test section: (fresh|pending|stale)_/);
   });
 
   it('has a timestamp within the last 24 hours', () => {
