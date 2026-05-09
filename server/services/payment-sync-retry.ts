@@ -23,6 +23,7 @@ import { lockedSweep } from './_internal/locked-sweep';
 import {
   PAYMENT_SYNC_MAX_ATTEMPTS,
   syncBowlerForUser,
+  syncUnclaimedBowler,
 } from './payment-customer-sync';
 import type { PaymentSyncStatus } from '@shared/schema';
 
@@ -186,43 +187,50 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
     }
 
     const linkedUser = await storage.getUserByBowlerId(bowler.id);
-    if (!linkedUser) {
-      // No user means we have no source-of-truth profile to push, and
-      // the manual retry endpoint already returns 422 in this case.
-      // Surface it once per tick so ops can clean it up.
-      log.warn('Skipping payment-sync retry: bowler has no linked user', {
-        bowlerId: bowler.id,
-        pendingSince: bowler.paymentSyncPendingAt,
-        attempts: bowler.paymentSyncAttempts,
-      });
-      result.skippedNoUser++;
-      continue;
-    }
 
+    // Task #705: unclaimed-bowler path. Previously the sweep skipped
+    // any flagged row that had no linked user, which left bowlers
+    // stuck in `payment_sync_pending_at` forever any time the
+    // foreground PATCH path stamped the flag (e.g. attribute upsert
+    // failed, no Square location resolvable at the moment, transient
+    // Square error) on a bowler that hadn't been claimed by a user
+    // account yet. The bowler row itself has a perfectly good name +
+    // email + phone to push, so we sync directly from it via
+    // `syncUnclaimedBowler`. Same `createOrUpdateCustomer` +
+    // attribute-sync helpers, same attempt counter / pending flag
+    // bookkeeping as the linked-user path. The `skippedNoUser`
+    // counter is now reserved for the genuinely-unsyncable case
+    // (no email / no org / no Square location), where the helper
+    // returns `'skipped'` without bumping attempts.
     result.retried++;
     let status: PaymentSyncStatus;
     try {
-      // Source-of-truth for the retry is the linked user's profile,
-      // matching what the manual admin endpoint does. We mark every
-      // field as "changed" so the helper writes the local bowler row
-      // and re-issues the provider call without inspecting deltas.
-      status = await syncBowlerForUser(
-        {
-          id: linkedUser.id,
-          bowlerId: bowler.id,
-          name: linkedUser.name ?? bowler.name,
-          email: linkedUser.email ?? bowler.email,
-          phone: linkedUser.phone ?? bowler.phone,
-          locationId: linkedUser.locationId,
-          organizationId: linkedUser.organizationId,
-        },
-        { nameChanged: true, emailChanged: true, phoneChanged: true },
-      );
+      if (linkedUser) {
+        // Source-of-truth for the retry is the linked user's
+        // profile, matching what the manual admin endpoint does.
+        // We mark every field as "changed" so the helper writes the
+        // local bowler row and re-issues the provider call without
+        // inspecting deltas.
+        status = await syncBowlerForUser(
+          {
+            id: linkedUser.id,
+            bowlerId: bowler.id,
+            name: linkedUser.name ?? bowler.name,
+            email: linkedUser.email ?? bowler.email,
+            phone: linkedUser.phone ?? bowler.phone,
+            locationId: linkedUser.locationId,
+            organizationId: linkedUser.organizationId,
+          },
+          { nameChanged: true, emailChanged: true, phoneChanged: true },
+        );
+      } else {
+        status = await syncUnclaimedBowler(bowler.id);
+      }
     } catch (err) {
       result.errors++;
       log.error('Payment-sync retry threw unexpectedly', {
         bowlerId: bowler.id,
-        userId: linkedUser.id,
+        userId: linkedUser?.id ?? null,
         error: err instanceof Error ? { name: err.name, message: err.message } : err,
       });
       continue;
@@ -232,6 +240,24 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
       result.succeeded++;
     } else if (status === 'pending_retry') {
       result.pendingAgain++;
+    } else if (status === 'skipped') {
+      // Genuinely unsyncable on this tick (no email, no org Square
+      // location, or provider-not-configured). Surface once per tick
+      // so ops can clean it up — same intent as the original
+      // "no linked user" warn line, but covering both the unclaimed
+      // and the not-claimable-via-org cases.
+      if (!linkedUser) {
+        log.warn('Skipping payment-sync retry: unclaimed bowler not syncable', {
+          bowlerId: bowler.id,
+          pendingSince: bowler.paymentSyncPendingAt,
+          attempts: bowler.paymentSyncAttempts,
+          hasEmail: bowler.email != null,
+          organizationId: bowler.organizationId,
+        });
+      }
+      result.skippedNoUser++;
+      // Don't double-count: a skipped row didn't actually retry.
+      result.retried--;
     }
   }
 

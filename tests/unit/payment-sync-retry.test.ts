@@ -75,6 +75,7 @@ vi.mock('../../server/storage', () => ({
 }));
 
 const mockSyncBowlerForUser = vi.fn();
+const mockSyncUnclaimedBowler = vi.fn();
 
 vi.mock('../../server/services/payment-customer-sync', async () => {
   const actual = await vi.importActual<typeof import('../../server/services/payment-customer-sync')>(
@@ -83,6 +84,7 @@ vi.mock('../../server/services/payment-customer-sync', async () => {
   return {
     ...actual,
     syncBowlerForUser: (...args: unknown[]) => mockSyncBowlerForUser(...args),
+    syncUnclaimedBowler: (...args: unknown[]) => mockSyncUnclaimedBowler(...args),
   };
 });
 
@@ -116,6 +118,7 @@ beforeEach(() => {
   mockSelect.mockReset();
   mockGetUserByBowlerId.mockReset();
   mockSyncBowlerForUser.mockReset();
+  mockSyncUnclaimedBowler.mockReset();
   mockUpdateClaim.mockReset();
 });
 
@@ -200,22 +203,66 @@ describe('runPaymentSyncRetrySweep', () => {
     expect(result.succeeded).toBe(0);
   });
 
-  it('skips bowlers with no linked user and continues processing the rest', async () => {
+  it('routes unclaimed bowlers through syncUnclaimedBowler and counts skipped (no email/no Square location) without bumping retried (task #705)', async () => {
     mockSelect.mockResolvedValue([
-      bowler({ id: 100 }),
+      bowler({ id: 100, email: null }),
       bowler({ id: 101 }),
     ]);
-    mockGetUserByBowlerId.mockImplementation(async (id: number) =>
-      id === 100 ? undefined : { id: 9, name: 'L', email: 'l@x.io', phone: null, locationId: null, organizationId: 3 },
+    mockGetUserByBowlerId.mockResolvedValue(undefined);
+    // First bowler has no email so the unclaimed helper returns 'skipped';
+    // second bowler is fine, unclaimed sync succeeds.
+    mockSyncUnclaimedBowler.mockImplementation(async (id: number) =>
+      id === 100 ? 'skipped' : 'synced',
     );
-    mockSyncBowlerForUser.mockResolvedValue('synced');
 
     const result = await runPaymentSyncRetrySweep(NOW);
 
     expect(result.scanned).toBe(2);
+    expect(mockSyncUnclaimedBowler).toHaveBeenCalledTimes(2);
+    expect(mockSyncBowlerForUser).not.toHaveBeenCalled();
     expect(result.skippedNoUser).toBe(1);
     expect(result.retried).toBe(1);
     expect(result.succeeded).toBe(1);
+  });
+
+  it('syncs an unclaimed bowler with email + Square configured and reports success (task #705)', async () => {
+    mockSelect.mockResolvedValue([bowler({ id: 100 })]);
+    mockGetUserByBowlerId.mockResolvedValue(undefined);
+    mockSyncUnclaimedBowler.mockResolvedValue('synced');
+
+    const result = await runPaymentSyncRetrySweep(NOW);
+
+    expect(mockSyncUnclaimedBowler).toHaveBeenCalledWith(100);
+    expect(mockSyncBowlerForUser).not.toHaveBeenCalled();
+    expect(result.retried).toBe(1);
+    expect(result.succeeded).toBe(1);
+    expect(result.skippedNoUser).toBe(0);
+  });
+
+  it('counts pending_retry from unclaimed bowler sync separately (task #705)', async () => {
+    mockSelect.mockResolvedValue([bowler({ id: 100 })]);
+    mockGetUserByBowlerId.mockResolvedValue(undefined);
+    mockSyncUnclaimedBowler.mockResolvedValue('pending_retry');
+
+    const result = await runPaymentSyncRetrySweep(NOW);
+
+    expect(result.retried).toBe(1);
+    expect(result.pendingAgain).toBe(1);
+    expect(result.succeeded).toBe(0);
+    expect(result.skippedNoUser).toBe(0);
+  });
+
+  it('still respects the max-attempts ceiling for unclaimed rows (task #705)', async () => {
+    mockSelect.mockResolvedValue([
+      bowler({ id: 100, paymentSyncAttempts: PAYMENT_SYNC_MAX_ATTEMPTS }),
+    ]);
+    mockGetUserByBowlerId.mockResolvedValue(undefined);
+
+    const result = await runPaymentSyncRetrySweep(NOW);
+
+    expect(result.skippedMaxAttempts).toBe(1);
+    expect(result.retried).toBe(0);
+    expect(mockSyncUnclaimedBowler).not.toHaveBeenCalled();
   });
 
   it('treats an unexpected throw as an error and continues with the next bowler', async () => {

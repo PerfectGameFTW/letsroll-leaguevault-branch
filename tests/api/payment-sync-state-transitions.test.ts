@@ -41,7 +41,10 @@ import {
   locations,
 } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
-import { syncBowlerForUser } from '../../server/services/payment-customer-sync';
+import {
+  syncBowlerForUser,
+  syncUnclaimedBowler,
+} from '../../server/services/payment-customer-sync';
 import { getBaselineOrgAId } from '../helpers';
 
 // Task #607: attach test rows to the seeded `vitest-org-a` baseline.
@@ -201,5 +204,113 @@ describe('payment_sync_pending_at lifecycle (mocked provider)', () => {
 
     // Sanity: the original failure timestamp existed before being cleared.
     expect(flaggedAt).not.toBeNull();
+  });
+
+  // Task #705: the same lifecycle for an unclaimed bowler — no linked
+  // user, source-of-truth is the bowler row itself.
+  it('unclaimed bowler: flags on provider failure, then a sweep-style retry via syncUnclaimedBowler clears the flag and stamps paymentCustomerId', async () => {
+    const org = { id: await getBaselineOrgAId() };
+
+    const [location] = await db
+      .insert(locations)
+      .values({
+        name: uniq('unclaimed-location'),
+        organizationId: org.id,
+        squareCredentials: {
+          appId: 'sq0idp-mocked-app-id',
+          accessToken: 'mocked-access-token-for-unclaimed-test',
+          locationId: 'L_MOCK_UNCLAIMED',
+        },
+      })
+      .returning();
+    createdLocationIds.push(location.id);
+
+    // No user is created — this bowler is genuinely unclaimed.
+    const [bowler] = await db
+      .insert(bowlers)
+      .values({
+        name: uniq('unclaimed-bowler'),
+        email: `${uniq('ub')}@vitest.local`,
+        phone: null,
+        active: true,
+        order: 0,
+        organizationId: org.id,
+        paymentCustomerId: null,
+        cloverCustomerId: null,
+        bnContactId: null,
+        // Pre-flag the row as if the foreground PATCH had stamped it.
+        paymentSyncPendingAt: new Date().toISOString(),
+        paymentSyncAttempts: 1,
+        paymentSyncLastAttemptAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      })
+      .returning();
+    createdBowlerIds.push(bowler.id);
+
+    // --- Act 1: provider call fails → bowler stays flagged with bumped attempts.
+    mockCreateOrUpdateCustomer.mockRejectedValueOnce(
+      new Error('Square 502: bad gateway (mocked)'),
+    );
+
+    const failureStatus = await syncUnclaimedBowler(bowler.id);
+    expect(failureStatus).toBe('pending_retry');
+
+    const [afterFailure] = await db
+      .select()
+      .from(bowlers)
+      .where(eq(bowlers.id, bowler.id));
+    expect(afterFailure.paymentSyncPendingAt).not.toBeNull();
+    expect(afterFailure.paymentSyncAttempts).toBe(2);
+    expect(afterFailure.paymentCustomerId).toBeNull();
+
+    // --- Act 2: provider call succeeds → flag cleared, attempts reset,
+    // paymentCustomerId stamped from the bowler's own row data.
+    mockCreateOrUpdateCustomer.mockResolvedValueOnce({ id: 'cust_unclaimed_ok' });
+    const retryStatus = await syncUnclaimedBowler(bowler.id);
+    expect(retryStatus).toBe('synced');
+
+    const [afterRetry] = await db
+      .select()
+      .from(bowlers)
+      .where(eq(bowlers.id, bowler.id));
+    expect(afterRetry.paymentSyncPendingAt).toBeNull();
+    expect(afterRetry.paymentSyncAttempts).toBe(0);
+    expect(afterRetry.paymentSyncLastAttemptAt).toBeNull();
+    expect(afterRetry.paymentCustomerId).toBe('cust_unclaimed_ok');
+    // The org may already have a baseline Square-configured location,
+    // and `getFirstSquareConfiguredLocation` returns whichever one ranks
+    // first. Just assert SOMETHING was stamped — exact id depends on org
+    // baseline ordering and is not what this test exercises.
+    expect(afterRetry.paymentProviderLocationId).not.toBeNull();
+
+    // The mocked provider was called with the bowler's own name/email/phone
+    // (not a linked user's profile).
+    const [, calledEmail] = mockCreateOrUpdateCustomer.mock.calls[1];
+    expect(calledEmail).toBe(bowler.email);
+  });
+
+  it('unclaimed bowler with no email returns skipped without bumping attempts (task #705)', async () => {
+    const org = { id: await getBaselineOrgAId() };
+    const [bowler] = await db
+      .insert(bowlers)
+      .values({
+        name: uniq('unclaimed-noemail'),
+        email: null,
+        phone: null,
+        active: true,
+        order: 0,
+        organizationId: org.id,
+        paymentSyncPendingAt: new Date().toISOString(),
+        paymentSyncAttempts: 1,
+      })
+      .returning();
+    createdBowlerIds.push(bowler.id);
+
+    const status = await syncUnclaimedBowler(bowler.id);
+    expect(status).toBe('skipped');
+    expect(mockCreateOrUpdateCustomer).not.toHaveBeenCalled();
+
+    const [after] = await db.select().from(bowlers).where(eq(bowlers.id, bowler.id));
+    expect(after.paymentSyncPendingAt).not.toBeNull();
+    expect(after.paymentSyncAttempts).toBe(1); // not bumped
   });
 });

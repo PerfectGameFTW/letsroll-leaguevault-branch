@@ -16,7 +16,7 @@ import type { PaymentProvider } from './payment-provider';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from './bowlnow-retry-flag.js';
-import type { PaymentSyncStatus } from '@shared/schema';
+import type { Bowler, PaymentSyncStatus } from '@shared/schema';
 
 const log = createLogger('PaymentCustomerSync');
 
@@ -265,6 +265,172 @@ export async function syncBowlerForUser(
       await storage.updateBowler(bowler.id, { ...bowler, ...updates });
     } catch (e) {
       log.error('Failed to persist post-sync bowler updates:', e);
+      return 'pending_retry';
+    }
+  }
+  return attrSyncOk ? 'synced' : 'pending_retry';
+}
+
+/**
+ * Sync a bowler that has no linked user to the payment provider, using
+ * the bowler row itself as the source of truth (task #705).
+ *
+ * `syncBowlerForUser` is the source-of-truth path for *claimed* bowlers
+ * (a User row's name/email/phone wins). When an admin adds an email to
+ * an unclaimed bowler — or any time a bowler with `bowlerId IS NULL` on
+ * its linked user side ends up in `payment_sync_pending_at` (no Square
+ * location at the moment of the foreground PATCH, transient Square
+ * 5xx, attribute upsert failure, etc.) — there is no user profile to
+ * push, but the bowler row itself has a perfectly good name + email +
+ * phone. This helper reuses the same provider semantics
+ * (`createOrUpdateCustomer` + `syncBowlerLeagueAttributesToProvider`)
+ * and the same attempt-counter / pending-flag bookkeeping as the
+ * claimed-bowler path so retries converge identically.
+ *
+ * Skip semantics (returns `'skipped'`, does NOT bump attempts, does
+ * NOT clear the pending flag):
+ *   - bowler has no email                 (nothing to push)
+ *   - bowler has no organizationId        (no provider context)
+ *   - org has no Square-configured location
+ *   - resolved provider raises ProviderNotConfiguredError
+ *
+ * Failure semantics (returns `'pending_retry'`, bumps
+ * `paymentSyncAttempts`, sets/preserves `paymentSyncPendingAt`,
+ * stamps `paymentSyncLastAttemptAt`, logs the structured "given up"
+ * line at the cap): mirrors `syncBowlerForUser`.
+ *
+ * Success semantics (returns `'synced'`, clears the pending flag and
+ * attempt counter, stamps `paymentCustomerId` +
+ * `paymentProviderLocationId`): also mirrors `syncBowlerForUser`.
+ *
+ * BowlNow re-sync is intentionally NOT performed here — task #705
+ * scope explicitly excludes BowlNow behavior changes, and unclaimed
+ * bowlers go through their own BN sync path on creation.
+ */
+export async function syncUnclaimedBowler(bowlerId: number): Promise<PaymentSyncStatus> {
+  const bowler = await storage.getBowler(bowlerId);
+  if (!bowler) return 'not_applicable';
+  return syncUnclaimedBowlerRow(bowler);
+}
+
+async function syncUnclaimedBowlerRow(bowler: Bowler): Promise<PaymentSyncStatus> {
+  if (!bowler.email) return 'skipped';
+  if (!bowler.organizationId) return 'skipped';
+
+  const sq = await storage.getFirstSquareConfiguredLocation(bowler.organizationId);
+  const resolvedSquareLocationId = sq?.id ?? null;
+  if (!resolvedSquareLocationId) {
+    if (isDev) log.info('Unclaimed bowler sync: no payment-configured location, skipping');
+    return 'skipped';
+  }
+
+  let providerCustomer: { id: string } | null = null;
+  let provider: PaymentProvider | null = null;
+  try {
+    provider = await getPaymentProvider(resolvedSquareLocationId);
+    providerCustomer = await provider.createOrUpdateCustomer(
+      bowler.name,
+      bowler.email,
+      bowler.phone,
+      `bowler:${bowler.id}`,
+    );
+  } catch (e) {
+    if (e instanceof ProviderNotConfiguredError) {
+      log.warn('Unclaimed bowler sync: provider not configured, skipping', {
+        bowlerId: bowler.id,
+        locationId: resolvedSquareLocationId,
+      });
+      return 'skipped';
+    }
+    log.warn('Unclaimed bowler sync failed, marking bowler for retry', {
+      bowlerId: bowler.id,
+      locationId: resolvedSquareLocationId,
+      errorName: e instanceof Error ? e.name : 'unknown',
+      errorMessage: e instanceof Error ? e.message : String(e),
+    });
+    const nowIso = new Date().toISOString();
+    const nextAttempts = (bowler.paymentSyncAttempts ?? 0) + 1;
+    try {
+      await storage.updateBowler(bowler.id, {
+        ...bowler,
+        paymentSyncPendingAt: bowler.paymentSyncPendingAt ?? nowIso,
+        paymentSyncAttempts: nextAttempts,
+        paymentSyncLastAttemptAt: nowIso,
+      });
+    } catch (markErr) {
+      log.error('Failed to flag unclaimed bowler for payment-sync retry:', markErr);
+    }
+    if (nextAttempts >= PAYMENT_SYNC_MAX_ATTEMPTS) {
+      log.error('Unclaimed bowler payment-sync gave up after max retry attempts', {
+        bowlerId: bowler.id,
+        locationId: resolvedSquareLocationId,
+        attempts: nextAttempts,
+        maxAttempts: PAYMENT_SYNC_MAX_ATTEMPTS,
+        pendingSince: bowler.paymentSyncPendingAt ?? nowIso,
+        errorName: e instanceof Error ? e.name : 'unknown',
+        errorMessage: e instanceof Error ? e.message : String(e),
+      });
+    }
+    return 'pending_retry';
+  }
+
+  let attrSyncOk = true;
+  if (providerCustomer && provider) {
+    const attrResult = await syncBowlerLeagueAttributesToProvider(
+      provider,
+      providerCustomer.id,
+      bowler.id,
+    );
+    attrSyncOk = attrResult.ok;
+  }
+
+  const updates: Record<string, unknown> = {};
+  let needsWrite = false;
+  if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
+    updates.paymentCustomerId = providerCustomer.id;
+    updates.paymentProviderLocationId = resolvedSquareLocationId;
+    needsWrite = true;
+    log.info('Linked payment customer to unclaimed bowler:', providerCustomer.id);
+  }
+  if (attrSyncOk) {
+    if (bowler.paymentSyncPendingAt !== null) {
+      updates.paymentSyncPendingAt = null;
+      needsWrite = true;
+    }
+    if ((bowler.paymentSyncAttempts ?? 0) > 0) {
+      updates.paymentSyncAttempts = 0;
+      needsWrite = true;
+    }
+    if (bowler.paymentSyncLastAttemptAt != null) {
+      updates.paymentSyncLastAttemptAt = null;
+      needsWrite = true;
+    }
+  } else {
+    const nowIso = new Date().toISOString();
+    const nextAttempts = (bowler.paymentSyncAttempts ?? 0) + 1;
+    if (bowler.paymentSyncPendingAt == null) {
+      updates.paymentSyncPendingAt = nowIso;
+      needsWrite = true;
+    }
+    updates.paymentSyncAttempts = nextAttempts;
+    updates.paymentSyncLastAttemptAt = nowIso;
+    needsWrite = true;
+    if (nextAttempts >= PAYMENT_SYNC_MAX_ATTEMPTS) {
+      log.error('Unclaimed bowler payment-sync gave up after max retry attempts', {
+        bowlerId: bowler.id,
+        locationId: resolvedSquareLocationId,
+        attempts: nextAttempts,
+        maxAttempts: PAYMENT_SYNC_MAX_ATTEMPTS,
+        pendingSince: bowler.paymentSyncPendingAt ?? nowIso,
+        stage: 'custom_attribute_upsert',
+      });
+    }
+  }
+  if (needsWrite) {
+    try {
+      await storage.updateBowler(bowler.id, { ...bowler, ...updates });
+    } catch (e) {
+      log.error('Failed to persist post-sync unclaimed bowler updates:', e);
       return 'pending_retry';
     }
   }
