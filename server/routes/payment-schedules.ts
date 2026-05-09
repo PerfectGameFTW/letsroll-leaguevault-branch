@@ -24,6 +24,7 @@ async function validateAdditionalBowlerIds(
   payerBowlerId: number,
   organizationId: number,
   raw: unknown,
+  payerUserId?: number,
 ): Promise<{ ok: true; ids: number[] } | { ok: false; message: string }> {
   if (raw === undefined || raw === null) return { ok: true, ids: [] };
   if (!Array.isArray(raw)) return { ok: false, message: 'additionalBowlerIds must be an array' };
@@ -37,9 +38,21 @@ async function validateAdditionalBowlerIds(
   if (cleaned.length === 0) return { ok: true, ids: [] };
   const partners = new Set(await getAcceptedPartnerBowlerIds(payerBowlerId, organizationId));
   for (const id of cleaned) {
-    if (!partners.has(id)) {
-      return { ok: false, message: `Bowler ${id} is not an accepted payment partner` };
+    if (partners.has(id)) continue;
+    // Task #679: allow combined autopay where the partner is a minor child
+    // of the payer (guardian). Org check happens via storage.getBowler below.
+    if (payerUserId) {
+      const partner = await storage.getBowler(id);
+      if (
+        partner &&
+        partner.organizationId === organizationId &&
+        partner.isMinor &&
+        (await storage.isUserGuardianOfBowler(payerUserId, id))
+      ) {
+        continue;
+      }
     }
+    return { ok: false, message: `Bowler ${id} is not an accepted payment partner` };
   }
   return { ok: true, ids: cleaned };
 }
@@ -117,6 +130,7 @@ router.post('/', adminWriteLimiter, async (req, res) => {
         req.body.bowlerId,
         league.organizationId,
         req.body.additionalBowlerIds,
+        req.user?.id,
       );
       if (!v.ok) return sendError(res, v.message, 400, 'INVALID_PARTNER');
       cleanedAdditional = v.ids;
@@ -271,6 +285,7 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
         schedule.bowlerId,
         league2.organizationId,
         req.body.additionalBowlerIds,
+        req.user?.id,
       );
       if (!v.ok) return sendError(res, v.message, 400, 'INVALID_PARTNER');
       updates.additionalBowlerIds = v.ids.length > 0 ? v.ids : null;

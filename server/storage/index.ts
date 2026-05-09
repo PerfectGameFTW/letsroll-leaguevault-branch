@@ -13,6 +13,7 @@ import * as deletionRequestStorage from "./deletion-requests";
 import * as emailChangeRequestStorage from "./email-change-requests";
 import * as applePayJobStorage from "./apple-pay-jobs";
 import * as alerterStateStorage from "./alerter-state";
+import * as bowlerGuardianStorage from "./bowler-guardians";
 
 export type { IStorage };
 
@@ -199,6 +200,19 @@ export class DatabaseStorage implements IStorage {
   retryApplePayJob!: IStorage["retryApplePayJob"];
   retryApplePayJobItem!: IStorage["retryApplePayJobItem"];
 
+  // Task #679: bowler guardian storage
+  getGuardiansForChild!: typeof bowlerGuardianStorage.getGuardiansForChild;
+  getChildrenForGuardian!: typeof bowlerGuardianStorage.getChildrenForGuardian;
+  getGuardianRow!: typeof bowlerGuardianStorage.getGuardianRow;
+  getGuardianForPair!: typeof bowlerGuardianStorage.getGuardianForPair;
+  isUserGuardianOfBowler!: typeof bowlerGuardianStorage.isUserGuardianOfBowler;
+  createGuardian!: typeof bowlerGuardianStorage.createGuardian;
+  updateGuardian!: typeof bowlerGuardianStorage.updateGuardian;
+  deleteGuardian!: typeof bowlerGuardianStorage.deleteGuardian;
+  countGuardiansForChild!: typeof bowlerGuardianStorage.countGuardiansForChild;
+  getPrimaryContactGuardian!: typeof bowlerGuardianStorage.getPrimaryContactGuardian;
+  resolveBowlerContact!: typeof bowlerGuardianStorage.resolveBowlerContact;
+
   tryClaimAlerterSlot!: IStorage["tryClaimAlerterSlot"];
   recordAlerterSummary!: IStorage["recordAlerterSummary"];
   getRecentAlerterEvent!: IStorage["getRecentAlerterEvent"];
@@ -220,6 +234,7 @@ export class DatabaseStorage implements IStorage {
       ...emailChangeRequestStorage,
       ...applePayJobStorage,
       ...alerterStateStorage,
+      ...bowlerGuardianStorage,
     });
   }
 }

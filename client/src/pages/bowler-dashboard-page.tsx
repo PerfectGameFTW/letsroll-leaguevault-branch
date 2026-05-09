@@ -12,6 +12,8 @@ import { DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
 import { BowlerPaymentLinksSection } from "@/components/bowler-payment-links-section";
+import { Users } from "lucide-react";
+import type { BowlerGuardian } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
@@ -346,6 +348,9 @@ export const BowlerDashboardPage: FC = () => {
         />
 
         <BowlerPaymentLinksSection currentBowlerId={bowler.id} />
+
+        <MyChildrenSection />
+
       </div>
       </ErrorBoundary>
 
@@ -365,3 +370,50 @@ export const BowlerDashboardPage: FC = () => {
 };
 
 export default BowlerDashboardPage;
+
+interface MyChild {
+  link: BowlerGuardian;
+  bowler: Bowler;
+}
+
+const MyChildrenSection: FC = () => {
+  const { data, isLoading } = useQuery<ApiResponse<MyChild[]>>({
+    queryKey: ['/api/my-children'],
+  });
+  const children = data?.data ?? [];
+  if (isLoading || children.length === 0) return null;
+  return (
+    <Card data-testid="card-my-children">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Users className="h-4 w-4" /> My Children
+        </CardTitle>
+        <CardDescription>Bowlers you are a guardian for.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y">
+          {children.map(({ link, bowler: child }) => (
+            <li
+              key={link.id}
+              className="flex items-center justify-between py-2"
+              data-testid={`row-my-child-${child.id}`}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">{child.name}</span>
+                <span className="text-xs text-muted-foreground capitalize">
+                  {link.relationship}
+                  {link.isPrimaryContact ? " · primary contact" : ""}
+                  {link.isPayer ? " · payer" : ""}
+                </span>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/bowler/${child.id}`}>View</Link>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+};
+

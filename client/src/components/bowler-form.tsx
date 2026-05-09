@@ -70,8 +70,11 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       email: bowler?.email ?? "",
       phone: bowler?.phone ?? "",
       active: bowler?.active ?? true,
+      isMinor: bowler?.isMinor ?? false,
     },
   });
+
+  const watchedIsMinor = form.watch("isMinor") === true;
 
   useEffect(() => {
     if (open && bowler) {
@@ -80,6 +83,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         email: bowler.email ?? "",
         phone: bowler.phone ?? "",
         active: bowler.active,
+        isMinor: bowler.isMinor ?? false,
       });
       if (bowlerLeagues && bowlerLeagues.length > 0) {
         setSelectedLeagueId(bowlerLeagues[0].leagueId);
@@ -91,6 +95,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         email: "",
         phone: "",
         active: true,
+        isMinor: false,
       });
       setSelectedLeagueId(null);
       setSelectedTeamId(null);
@@ -273,12 +278,39 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
 
               <FormField
                 control={form.control}
+                name="isMinor"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3" data-testid="field-isMinor">
+                    <div className="space-y-0.5">
+                      <FormLabel>Minor (Youth Bowler)</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        Email is optional for minors. Notifications and payments are routed through a guardian.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value === true}
+                        onCheckedChange={field.onChange}
+                        data-testid="switch-isMinor"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{watchedIsMinor ? "Email (optional)" : "Email"}</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} value={field.value ?? undefined} />
+                      <Input
+                        type="email"
+                        {...field}
+                        value={field.value ?? undefined}
+                        onChange={(e) => field.onChange(e.target.value === "" ? null : e.target.value)}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

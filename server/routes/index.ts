@@ -28,6 +28,7 @@ import { registerAuthRoutes } from './auth.js';
 import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
 import bowlerLinksRouter from './bowler-links.js';
+import { bowlerGuardiansChildRouter, bowlerGuardiansRowRouter, bowlerGuardiansMyChildrenRouter } from './bowler-guardians.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotated } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -140,6 +141,12 @@ export function registerRoutes(app: Express): void {
   app.use('/api/account', accountRouter);
   app.use('/api/search', requireAuth, searchRouter);
   app.use('/api/bowler-links', requireAuth, bowlerLinksRouter);
+  // Task #679: bowler guardian management. The child-scoped router
+  // is mounted under /api/bowlers/:childId/guardians; per-row
+  // updates/deletes live under /api/bowler-guardians/:id.
+  app.use('/api/bowlers/:childId/guardians', requireAuth, bowlerGuardiansChildRouter);
+  app.use('/api/bowler-guardians', requireAuth, bowlerGuardiansRowRouter);
+  app.use('/api/my-children', requireAuth, bowlerGuardiansMyChildrenRouter);
 
   log.info('API routes registered');
 }

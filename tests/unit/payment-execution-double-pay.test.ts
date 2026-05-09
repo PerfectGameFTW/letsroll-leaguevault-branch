@@ -110,6 +110,7 @@ function makeLeague(overrides: Partial<League> = {}): League {
     skipDates: [],
     cancelledDates: [],
     doublePayDates: [],
+    isYouth: false,
   };
   return Object.assign(base, overrides);
 }

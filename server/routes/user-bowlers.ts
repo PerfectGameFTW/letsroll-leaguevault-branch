@@ -35,6 +35,12 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
       return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
     }
 
+    // Task #679: minors cannot own a user account / login. Guardians
+    // manage them exclusively through the guardian relationship.
+    if (bowler.isMinor) {
+      return sendError(res, "This bowler is a minor and cannot be claimed", 403, "MINOR_BOWLER");
+    }
+
     // Check if user has access to this bowler based on organization
     if (!(await hasAccessToBowler(req, bowlerId))) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');

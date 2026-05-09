@@ -87,8 +87,11 @@ export { sessions } from "./sessions";
 export { bowlerPaymentLinks, insertBowlerPaymentLinkSchema, LINK_STATUSES } from "./bowler-payment-links";
 export type { BowlerPaymentLink, InsertBowlerPaymentLink, LinkStatus } from "./bowler-payment-links";
 
+export { bowlerGuardians, insertBowlerGuardianSchema, updateBowlerGuardianSchema, GUARDIAN_RELATIONSHIPS } from "./bowler-guardians";
+export type { BowlerGuardian, InsertBowlerGuardian, UpdateBowlerGuardian, GuardianRelationship } from "./bowler-guardians";
+
 export { rateLimitBuckets } from "./rate-limit-buckets";
 
-export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
+export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, bowlerGuardianRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
 export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse, BowlerWithAccount } from "./api-types";

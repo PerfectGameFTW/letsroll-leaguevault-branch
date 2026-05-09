@@ -118,6 +118,10 @@ export const leagues = pgTable("leagues", {
   // legacy column stays on the table only as a backfill source; new
   // code never reads it.
   doublePayDates: text("double_pay_dates").array().notNull().default(sql`'{}'`),
+  // Task #679: when true the league is treated as a youth league; minor
+  // bowlers placed on a team in this league require at least one
+  // guardian (see `bowler_guardians`). Adult leagues are unaffected.
+  isYouth: boolean("is_youth").notNull().default(false),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
@@ -156,6 +160,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   skipDates: z.array(z.string()).default([]),
   cancelledDates: z.array(z.string()).default([]),
   doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed").default([]),
+  isYouth: z.boolean().default(false),
 }).omit({ id: true, finalTwoWeeksDueWeek: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -214,6 +219,7 @@ export const updateLeagueSchema = z.object({
   skipDates: z.array(z.string()),
   cancelledDates: z.array(z.string()),
   doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed"),
+  isYouth: z.boolean(),
   organizationId: z.number().int().positive(),
 }).partial().refine(
   (data) => {

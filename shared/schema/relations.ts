@@ -4,6 +4,7 @@ import { locations } from "./locations";
 import { leagues } from "./leagues";
 import { teams } from "./teams";
 import { bowlers, bowlerLeagues } from "./bowlers";
+import { bowlerGuardians } from "./bowler-guardians";
 import { payments, paymentSchedules } from "./payments";
 import { users } from "./users";
 import { games, scores } from "./games";
@@ -54,6 +55,22 @@ export const bowlerRelations = relations(bowlers, ({ many }) => ({
   bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
   users: many(users),
+  guardians: many(bowlerGuardians),
+}));
+
+export const bowlerGuardianRelations = relations(bowlerGuardians, ({ one }) => ({
+  child: one(bowlers, {
+    fields: [bowlerGuardians.childBowlerId],
+    references: [bowlers.id],
+  }),
+  guardian: one(users, {
+    fields: [bowlerGuardians.guardianUserId],
+    references: [users.id],
+  }),
+  organization: one(organizations, {
+    fields: [bowlerGuardians.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({

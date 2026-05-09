@@ -29,6 +29,7 @@ function makeFullyPopulatedBowler(): Bowler {
     bnSyncPendingAt: '2024-01-01T00:00:00.000Z',
     bnSyncAttempts: 1,
     bnSyncLastAttemptAt: '2024-01-01T00:00:00.000Z',
+    isMinor: false,
   };
 }
 
