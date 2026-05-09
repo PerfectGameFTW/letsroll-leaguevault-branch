@@ -9,3 +9,4 @@ uploads/avatars/
 attached_assets/
 
 .git.backup.*
+.local/known-failures.md
