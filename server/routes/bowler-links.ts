@@ -225,6 +225,17 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Not allowed", 403, "FORBIDDEN");
     }
     await links.deleteLink(id);
+    // Task #678: audit trail. Admin removals are persisted via structured
+    // log so security review can reconstruct who unlinked which pair.
+    if (isAdmin) {
+      log.info("admin_audit:bowler_link_remove", {
+        adminUserId: user.id,
+        organizationId: link.organizationId,
+        linkId: id,
+        bowlerAId: link.bowlerAId,
+        bowlerBId: link.bowlerBId,
+      });
+    }
     return sendSuccess(res, { id });
   } catch (err) {
     log.error("delete error", err);
@@ -299,6 +310,14 @@ router.post("/admin", adminWriteLimiter, async (req, res) => {
       bowlerBId: b.id,
       organizationId: a.organizationId,
       createdByUserId: user.id,
+    });
+    // Task #678: audit trail for admin direct-link.
+    log.info("admin_audit:bowler_link_create", {
+      adminUserId: user.id,
+      organizationId: a.organizationId,
+      linkId: created.id,
+      bowlerAId: a.id,
+      bowlerBId: b.id,
     });
     return sendSuccess(res, created, 201);
   } catch (err) {

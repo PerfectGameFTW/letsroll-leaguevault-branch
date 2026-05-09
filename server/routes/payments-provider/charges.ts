@@ -128,6 +128,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     // of an accepted partner. Admin "manual" payments use the
     // /api/payments POST path, which still uses hasAccessToBowler.
     const payAuthz = await canUserPayForBowler(req, bowlerId);
+    let isAdminFallback = false;
     if (!payAuthz.allowed) {
       // Fall back to the legacy bowler-access check so admins (without
       // a payerBowlerId) still pass when their token-based source is
@@ -135,6 +136,23 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       if (!await hasAccessToBowler(req, bowlerId)) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
+      isAdminFallback = true;
+    }
+    // Task #678: when the payer is a *different* bowler from the target
+    // (partner pay), the saved-card / wallet customer id MUST come from
+    // the PAYER's vault, not the target's — the card on file lives with
+    // the payer. We resolve `payerBowler` here and use it below to
+    // derive `customerId` instead of the target bowler.
+    const isPartnerPay =
+      !isAdminFallback &&
+      payAuthz.payerBowlerId !== undefined &&
+      payAuthz.payerBowlerId !== bowlerId;
+    const payerBowler =
+      isPartnerPay && payAuthz.payerBowlerId !== undefined
+        ? await storage.getBowler(payAuthz.payerBowlerId)
+        : null;
+    if (isPartnerPay && !payerBowler) {
+      return sendError(res, "Payer bowler not found", 404, 'NOT_FOUND');
     }
 
     const league = await storage.getLeague(leagueId);
@@ -168,7 +186,10 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     }
     const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
-    const existingPayments = await storage.getPayments({ bowlerId, leagueId, organizationId: league.organizationId! });
+    if (league.organizationId == null) {
+      return sendError(res, 'League is not assigned to an organization', 400, 'LEAGUE_NOT_CONFIGURED');
+    }
+    const existingPayments = await storage.getPayments({ bowlerId, leagueId, organizationId: league.organizationId });
     const totalPaid = existingPayments
       .filter((p) => p.status === 'paid')
       .reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -201,13 +222,20 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     // Without this, first-time Clover bowlers — who never go through
     // the Square-only profile sync — would charge successfully but
     // silently skip the save-card step below.
-    let customerId = getProviderCustomerId(bowler, provider);
+    // Task #678: customer / card vault resolution.
+    // For partner-pay we MUST use the payer's vaulted customer id, not
+    // the target bowler's — saved cards live with the payer. For
+    // self-pay or admin-fallback the legacy "use bowler's vault" still
+    // applies. `storeCard` similarly bootstraps against the payer when
+    // a partner is paying (so the card stays in the payer's vault).
+    const vaultBowler = isPartnerPay && payerBowler ? payerBowler : bowler;
+    let customerId = getProviderCustomerId(vaultBowler, provider);
     if (req.body.storeCard && !customerId) {
-      const bootstrapped = await ensureProviderCustomer(provider, bowler);
+      const bootstrapped = await ensureProviderCustomer(provider, vaultBowler);
       if (bootstrapped) {
         customerId = bootstrapped;
       } else {
-        log.warn('Cannot store card — bowler has no customer ID and bootstrap failed:', bowlerId);
+        log.warn('Cannot store card — bowler has no customer ID and bootstrap failed:', vaultBowler.id);
       }
     }
 
@@ -306,15 +334,16 @@ router.post('/payments', paymentLimiter, async (req, res) => {
           log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
           try {
+            // Card saved against payer vault — schedule belongs to vault owner.
             await storage.updatePaymentScheduleCard(
-              bowlerId,
+              vaultBowler.id,
               leagueId,
               savedCard.id
             );
           } catch (schedError) {
             if (isDev) log.info('No payment schedule to update (normal for one-time payments)');
           }
-          await persistCloverCustomer(provider, cid, bowlerId);
+          await persistCloverCustomer(provider, cid, vaultBowler.id);
         }
       } catch (error) {
         log.error('Failed to save card on file:', error);
@@ -343,10 +372,14 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       receiptNumber: payment.receiptNumber,
       receiptEmailMissing: false,
       idempotencyKey,
-      // Task #678: stamp the actor user — non-null for every
-      // interactive charge (req.user is always present here because
-      // requireAuth runs at the mount).
-      paidByUserId: req.user?.id ?? null,
+      // Task #678: only stamp paidByUserId when the actor is paying for
+      // SOMEONE ELSE'S bowler (partner pay or admin-on-behalf). Self-pay
+      // leaves it null because attribution would be redundant with the
+      // bowler's own owning user.
+      paidByUserId:
+        isPartnerPay || (isAdminFallback && req.user?.bowlerId !== bowlerId)
+          ? req.user?.id ?? null
+          : null,
     });
 
     if (isDev) log.info('Payment recorded in DB:', {

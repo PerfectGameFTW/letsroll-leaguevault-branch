@@ -80,9 +80,12 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
         ...payment,
         lineageAmount,
         prizeFundAmount,
-        // Task #678: server-stamp the actor user so manual admin
-        // entries carry attribution for the payments-history badge.
-        paidByUserId: req.user?.id ?? payment.paidByUserId ?? null,
+        // Task #678: do NOT auto-stamp the admin actor as payer here.
+        // Admin-recorded cash/check entries must keep paidByUserId null
+        // (the admin is recording, not paying). Only honor an explicit
+        // paidByUserId provided by the caller (e.g. partner-pay surfaces
+        // that already resolved the payer user).
+        paidByUserId: payment.paidByUserId ?? null,
       });
     } catch (insertError: unknown) {
       if (

@@ -204,11 +204,6 @@
       "count": 31
     }
   },
-  "server/routes/payments-provider/charges.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
   "server/routes/payments/payment-reports.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
