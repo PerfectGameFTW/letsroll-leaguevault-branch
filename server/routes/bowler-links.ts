@@ -1,11 +1,3 @@
-/**
- * Bowler payment-link routes. Mounted at `/api/bowler-links`.
- *
- * All endpoints require an authenticated session; admin endpoints
- * additionally require org_admin or system_admin via `requireOrgAdmin`.
- * Every link row carries `organizationId` NOT NULL (DB-enforced); cross-org
- * pairs and org-less callers/bowlers are rejected.
- */
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
@@ -210,7 +202,9 @@ router.delete("/:id", async (req, res) => {
     const link = await links.getLinkById(id);
     if (!link) return sendError(res, "Link not found", 404, "NOT_FOUND");
 
-    const isAdmin = isOrgOrHigher(user) && user.organizationId === link.organizationId;
+    const isAdmin =
+      isSystemAdmin(user) ||
+      (isOrgOrHigher(user) && user.organizationId === link.organizationId);
     const isParty =
       !!user.bowlerId &&
       user.organizationId === link.organizationId &&
@@ -251,12 +245,14 @@ router.get("/admin", async (req, res) => {
     if (!user || !isOrgOrHigher(user)) {
       return sendError(res, "Admin access required", 403, "FORBIDDEN");
     }
-    if (!user.organizationId && !isSystemAdmin(user)) {
-      return sendError(res, "Organization required", 400, "ORG_REQUIRED");
+    let orgId = user.organizationId ?? null;
+    if (isSystemAdmin(user)) {
+      const raw = req.query.organizationId;
+      const parsed = typeof raw === "string" ? parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed) && parsed > 0) orgId = parsed;
     }
-    const orgId = user.organizationId;
     if (!orgId) {
-      return sendSuccess(res, { links: [] });
+      return sendError(res, "Organization required", 400, "ORG_REQUIRED");
     }
     const all = await links.listLinksForOrg(orgId);
     return sendSuccess(res, { links: all });

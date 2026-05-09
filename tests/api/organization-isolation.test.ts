@@ -1122,6 +1122,23 @@ describe('Organization Isolation', () => {
         expect(payload).not.toContain(`Vitest #341 Payment ${stamp}`);
       });
 
+      it('org A GET /api/bowler-links/admin?organizationId=<orgB> must return [] or 403 and not list org B links', async () => {
+        expect(orgBId).not.toBeNull();
+        const { status, data } = await apiGet(
+          `/api/bowler-links/admin?organizationId=${orgBId}`,
+          sessionA,
+        );
+        if (status === 200) {
+          const payload = (data as { data?: { links?: unknown[] } }).data;
+          const links = payload?.links ?? [];
+          expect(Array.isArray(links)).toBe(true);
+          expect(links.length).toBe(0);
+        } else {
+          expect([400, 403]).toContain(status);
+          expect(data.success).toBe(false);
+        }
+      });
+
       it('org A GET /api/system-admin/admin-email-change-audits?targetUserId=<orgB user> → 403 (system_admin only)', async () => {
         // Task #487 added this audit-list endpoint for system admins
         // to inspect a target user's admin-initiated email-change

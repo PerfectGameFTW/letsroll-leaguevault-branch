@@ -12,13 +12,6 @@ import { executeScheduledPayment, executeChargeForLocation, buildLineItems, comp
 import { checkPaidInFull } from "./payment-checks";
 import { getUserByBowlerId } from "../storage/users";
 
-/**
- * payer-user attribution is best-effort. If the lookup
- * throws (e.g. transient DB hiccup, or a unit-test mock that doesn't
- * stub the chained `.limit(1)`), we must not fail the autopay write
- * — the row is far more important than its attribution column. Log
- * and fall back to `null`.
- */
 async function safeResolvePaidByUserId(bowlerId: number): Promise<number | null> {
   try {
     const u = await getUserByBowlerId(bowlerId);
@@ -178,21 +171,11 @@ async function handleSuccessfulPayment(
       recordTime: new Date().toISOString()
     });
 
-    // Task #646: prefer the actual charged amount (which may be 2× the
-    // schedule's stored weekly amount on a double-pay week) so the
-    // persisted payment row matches what the provider actually billed.
     const billedAmount = paymentResult.chargedAmount ?? scheduleRecord.amount;
     const { lineageAmount, prizeFundAmount } = computePaymentSplit(billedAmount, league);
-    // Task #646: stamp a clear marker on double-pay charges so admins
-    // viewing the payment history can tell at a glance why the row is
-    // 2× the usual weekly amount.
     const notes = paymentResult.isDoublePay
       ? 'Double-pay week (2× weekly fee)'
       : undefined;
-    // derive payer user once. The schedule's bowlerId is
-    // the payer; combined-autopay rows for additional bowlers carry
-    // the same paidByUserId.
-    const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
 
     await tx.insert(payments).values({
       bowlerId: scheduleRecord.bowlerId,
@@ -205,9 +188,6 @@ async function handleSuccessfulPayment(
       weekOf: scheduleRecord.nextPaymentDate,
       providerPaymentId: paymentResult.paymentId,
       cloverChargeId: paymentResult.providerRef?.cloverChargeId,
-      // same receipt fields the one-off charge path
-      // persists. `buyerEmailMissing` is meaningful for Square only —
-      // Clover never emits a hosted receipt regardless.
       receiptUrl: paymentResult.receiptUrl,
       receiptNumber: paymentResult.receiptNumber,
       receiptEmailMissing:
@@ -215,7 +195,7 @@ async function handleSuccessfulPayment(
           ? paymentResult.buyerEmailMissing ?? false
           : false,
       notes,
-      paidByUserId,
+      paidByUserId: null,
     });
 
     logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {
@@ -224,10 +204,6 @@ async function handleSuccessfulPayment(
     });
   });
 
-  // combined autopay — charge each linked partner on the
-  // SAME card (the payer's vault) and stamp the payer as paidByUserId.
-  // Each partner is re-validated as an accepted link at firing time
-  // so a since-removed link is not silently honored.
   const additional = scheduleRecord.additionalBowlerIds ?? [];
   if (additional.length > 0) {
     const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
@@ -253,9 +229,6 @@ async function handleSuccessfulPayment(
           continue;
         }
         const partnerLineItems = buildLineItems(league, '1');
-        // Reuse payer's vaulted customer id via the same helper used by
-        // the primary autopay path so Square/Clover customer-id
-        // resolution stays consistent across all charge entry points.
         const { paymentCustomerId: payerCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
         const partnerCharge = await executeChargeForLocation(
           scheduleRecord.paymentCardId,
@@ -357,7 +330,6 @@ async function handleFailedPayment(
     failureTime: new Date().toISOString()
   });
 
-  const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
   await db.insert(payments).values({
     bowlerId: scheduleRecord.bowlerId,
     leagueId: scheduleRecord.leagueId,
@@ -366,6 +338,6 @@ async function handleFailedPayment(
     type: providerNameToPaymentType(paymentResult.providerName || ''),
     weekOf: scheduleRecord.nextPaymentDate,
     notes: `Failed payment: ${paymentResult.error}`,
-    paidByUserId,
+    paidByUserId: null,
   });
 }
