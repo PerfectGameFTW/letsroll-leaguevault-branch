@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import leaguevault from './tools/eslint-plugin-leaguevault/index.js';
 
 // Lint config for tasks #299, #328, and #371: catch silent type-escape
 // hatches.
@@ -185,6 +186,19 @@ export default tseslint.config(
       'no-useless-catch': 'off',
       'getter-return': 'off',
       'no-empty-pattern': 'off',
+    },
+  },
+  // Local custom rules (#695). These three rules codify recurring
+  // test-shape footguns that have each cost multiple tasks to clean
+  // up. They are scoped to test files only — production code is
+  // intentionally out of scope.
+  {
+    files: ['tests/**/*.{ts,tsx}'],
+    plugins: { leaguevault },
+    rules: {
+      'leaguevault/no-it-skip-placeholder': 'error',
+      'leaguevault/no-unscoped-table-query-in-test-assertion': 'error',
+      'leaguevault/no-spawn-tsx-in-test': 'error',
     },
   },
 );

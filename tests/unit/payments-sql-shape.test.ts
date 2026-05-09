@@ -13,6 +13,7 @@ import { payments } from '@shared/schema';
 import { buildPaymentConditions } from '../../server/storage/payments';
 
 function sqlFor(conditions: ReturnType<typeof buildPaymentConditions>): string {
+  // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- this query is never executed: `.toSQL().sql` only inspects the emitted SQL string for shape assertions.
   return db.select().from(payments).where(and(...conditions)).toSQL().sql;
 }
 

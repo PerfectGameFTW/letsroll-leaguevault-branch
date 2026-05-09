@@ -188,6 +188,7 @@ describe('Bowler creation routes — organization context guards (task #415)', (
       // silently-coerced id `1`. If the parser ever regresses to the
       // loose `parseInt` pattern, this would catch any accidental
       // stamp by the test name.
+      // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by a unique-by-construction synthetic bowler name; no .id available because the assertion is "row was NOT inserted".
       const accidentalRows = await db
         .select()
         .from(bowlers)

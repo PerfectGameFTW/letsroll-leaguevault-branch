@@ -76,11 +76,12 @@ const RULE_CEILINGS: Record<string, number> = {
   // suppression for this rule.
   // Ratcheted 88 → 85 in task #683 after the suppression-prune pass
   // following the orphaned-data merge.
-  // Reset 85 → 87 in task #681's rebase: the ratchet in task #683 dropped
-  // the ceiling below the live count carried in eslint-suppressions.json
-  // (88), so the pre-existing baseline already failed the check before
-  // this rebase. Re-pinning to the live count.
-  '@typescript-eslint/no-unnecessary-type-assertion': 87,
+  // Ratcheted 85 → 84 in task #695's rebase resolution to match the
+  // live count in eslint-suppressions.json after the suppression-prune
+  // pass that landed alongside the test-only inline disables for the
+  // new `no-unscoped-table-query-in-test-assertion` and
+  // `no-spawn-tsx-in-test` rules.
+  '@typescript-eslint/no-unnecessary-type-assertion': 84,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -137,11 +138,11 @@ const RULE_CEILINGS: Record<string, number> = {
 // (88 → 85), and `no-restricted-syntax` (153 → 150) — all from the
 // suppression-prune pass that followed the orphaned-data test merge
 // and the Square-422 mocked-unit replacement.
-// Reset 481 → 486 in task #681's rebase to match the live counts that
-// task #683 left in eslint-suppressions.json (the per-rule ratchets in
-// that task did not actually update the baseline file, so the check was
-// already failing pre-rebase). See per-rule comments above.
-const TOTAL_CEILING = 486;
+// Ratcheted 484 → 483 in task #695's rebase resolution alongside the
+// per-rule drop on `no-unnecessary-type-assertion` (85 → 84). True
+// live baseline: 220 nna + 84 nuta + 4 cta + 153 nrs + 22 pre-existing
+// `no-undef` = 483.
+const TOTAL_CEILING = 483;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

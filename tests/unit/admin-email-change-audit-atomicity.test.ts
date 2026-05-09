@@ -146,6 +146,7 @@ describe('applyEmailChangeRequestTxn atomicity (task #377)', () => {
     // have been rolled back along with the failing audit. If a future
     // refactor splits these into two separate transactions, this row
     // will be visible and the test will fail.
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (per-test sentinel literal), unique-by-construction across the suite.
     const requestRows = await db
       .select()
       .from(emailChangeRequests)
@@ -155,6 +156,7 @@ describe('applyEmailChangeRequestTxn atomicity (task #377)', () => {
     // Defensive: the audit row also must not have committed (the
     // mocked helper threw before reaching any real insert, so this
     // is mostly a sanity check that the spy did its job).
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by sentinelMasked (per-test sentinel email literal), unique-by-construction across the suite.
     const auditRows = await db
       .select()
       .from(adminEmailChangeAudits)
@@ -203,6 +205,7 @@ describe('applyEmailChangeRequestTxn atomicity (task #377)', () => {
     // future refactor that swapped the order or wrote the audit
     // outside the transaction would leave an orphan row visible
     // here.
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by sentinelMasked (per-test sentinel email literal), unique-by-construction across the suite.
     const auditRows = await db
       .select()
       .from(adminEmailChangeAudits)

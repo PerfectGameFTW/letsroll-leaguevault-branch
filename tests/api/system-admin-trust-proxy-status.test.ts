@@ -148,17 +148,10 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
   // skip themselves with a loud message if it's missing so a fresh
   // checkout doesn't register a false positive.
   // ----------------------------------------------------------------
-  describe('X-Probe-Token auth path', () => {
-    const probeToken = process.env.TRUST_PROXY_PROBE_TOKEN?.trim();
-    const probeConfigured = !!probeToken && probeToken.length >= 32;
+  const probeToken = process.env.TRUST_PROXY_PROBE_TOKEN?.trim();
+  const probeConfigured = !!probeToken && probeToken.length >= 32;
 
-    if (!probeConfigured) {
-      it.skip('skipped: TRUST_PROXY_PROBE_TOKEN not set in this env (>=32 chars)', () => {
-        // Intentional skip — see comment above.
-      });
-      return;
-    }
-
+  describe.skipIf(!probeConfigured)('X-Probe-Token auth path', () => {
     it('accepts a matching X-Probe-Token with no session and returns the status body', async () => {
       const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
         headers: {

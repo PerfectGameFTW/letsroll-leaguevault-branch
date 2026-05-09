@@ -147,6 +147,7 @@ describe('applyConfirmEmailChangeTxn atomicity (task #494)', () => {
     // login email is now permanently out of sync with a now-dead
     // token — exactly the split-brain state the transaction exists
     // to prevent.
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (per-test sentinel literal), unique-by-construction across the suite.
     const [requestRow] = await db
       .select()
       .from(emailChangeRequests)
@@ -189,6 +190,7 @@ describe('applyConfirmEmailChangeTxn atomicity (task #494)', () => {
       expect(outcome.user.email).toBe(newEmail);
     }
 
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (per-test sentinel literal), unique-by-construction across the suite.
     const [requestRow] = await db
       .select()
       .from(emailChangeRequests)

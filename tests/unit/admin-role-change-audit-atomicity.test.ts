@@ -185,6 +185,7 @@ describe('applyRoleChangeWithAuditTxn atomicity (task #544)', () => {
     // Defensive: the audit row also must not have committed (the
     // mocked helper threw before reaching any real insert, so this
     // is mostly a sanity check that the spy did its job).
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by sentinelUa (per-test sentinel user-agent literal), unique-by-construction across the suite.
     const auditRows = await db
       .select()
       .from(adminRoleChangeAudits)
@@ -267,6 +268,7 @@ describe('applyRoleChangeWithAuditTxn atomicity (task #544)', () => {
     // though the helper's current ordering is role-first, a future
     // refactor that swapped the order or wrote the audit outside
     // the transaction would leave an orphan row visible here.
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by sentinelUa (per-test sentinel user-agent literal), unique-by-construction across the suite.
     const auditRows = await db
       .select()
       .from(adminRoleChangeAudits)

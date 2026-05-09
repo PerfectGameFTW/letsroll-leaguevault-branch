@@ -156,6 +156,7 @@ describe('Orphaned Data API (system-admin)', () => {
         ),
       );
 
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- bootstrap pick of any seeded org; not a result asserted on for cardinality and the row is read-only.
     const [org] = await db
       .select({ id: organizations.id })
       .from(organizations)
@@ -1004,6 +1005,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
   let suiteStartedAt = '1970-01-01 00:00:00';
 
   async function refreshWatermark() {
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- watermark sample of MAX(id) used to scope downstream queries; the watermark itself is not order-sensitive.
     const [row] = await db
       .select({ value: sql<number>`coalesce(max(${orphanCleanupAudits.id}), 0)::int` })
       .from(orphanCleanupAudits);
@@ -1034,6 +1036,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
     orgAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
 
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- bootstrap pick of any seeded org; not a result asserted on for cardinality and the row is read-only.
     const [org] = await db
       .select({ id: organizations.id })
       .from(organizations)

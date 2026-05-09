@@ -70,6 +70,7 @@ function runScript(env: Record<string, string | undefined>, args: string[]): Run
       childEnv[k] = v;
     }
   }
+  // eslint-disable-next-line leaguevault/no-spawn-tsx-in-test -- script-as-subprocess pattern; converting to in-process invocation tracked under task #684.
   const r = spawnSync('npx', ['tsx', SCRIPT, ...args], {
     env: childEnv,
     encoding: 'utf-8',

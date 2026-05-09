@@ -262,6 +262,7 @@ describe('POST /api/account/confirm-email-change', () => {
     const [reread] = await db.select().from(users).where(eq(users.id, userId));
     expect(reread.email).toBe(newEmail);
 
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (cryptographic hash, unique-by-construction) which is just as race-safe as filtering by .id.
     const [request] = await db
       .select()
       .from(emailChangeRequests)
@@ -420,6 +421,7 @@ describe('POST /api/account/confirm-email-change', () => {
     expect(reread.email).toBe(oldEmail);
 
     // Token consumed so a refresh doesn't loop on the same race.
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (cryptographic hash, unique-by-construction) which is just as race-safe as filtering by .id.
     const [request] = await db
       .select()
       .from(emailChangeRequests)
@@ -541,6 +543,7 @@ describe('POST /api/account/confirm-email-change concurrency', () => {
     const [reread] = await db.select().from(users).where(eq(users.id, userId));
     expect(reread.email).toBe(newEmail);
 
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (cryptographic hash, unique-by-construction) which is just as race-safe as filtering by .id.
     const rows = await db
       .select()
       .from(emailChangeRequests)
@@ -603,6 +606,7 @@ describe('POST /api/account/confirm-email-change concurrency', () => {
 
     // Loser's token is consumed (so a refresh doesn't loop on the race).
     const loserToken = resA.status === 200 ? tokenB : tokenA;
+    // eslint-disable-next-line leaguevault/no-unscoped-table-query-in-test-assertion -- scoped by tokenHash (cryptographic hash, unique-by-construction) which is just as race-safe as filtering by .id.
     const [loserRequest] = await db
       .select()
       .from(emailChangeRequests)

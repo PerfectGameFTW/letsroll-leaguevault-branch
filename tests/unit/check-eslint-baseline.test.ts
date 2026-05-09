@@ -28,6 +28,7 @@ function runIn(
   cwd: string,
   args: string[] = [],
 ): { status: number; stdout: string; stderr: string } {
+  // eslint-disable-next-line leaguevault/no-spawn-tsx-in-test -- script-as-subprocess pattern; converting to in-process invocation tracked under task #684.
   const r = spawnSync('npx', ['tsx', SCRIPT, ...args], {
     cwd,
     encoding: 'utf8',
