@@ -92,6 +92,25 @@ export type { BowlerGuardian, InsertBowlerGuardian, UpdateBowlerGuardian, Guardi
 
 export { rateLimitBuckets } from "./rate-limit-buckets";
 
+export {
+  leagueRegistrationQuestions,
+  leagueRegistrations,
+  REGISTRATION_QUESTION_TYPES,
+  REGISTRATION_STATUSES,
+  insertRegistrationQuestionSchema,
+  updateRegistrationQuestionSchema,
+  insertLeagueRegistrationSchema,
+} from "./league-registrations";
+export type {
+  LeagueRegistrationQuestion,
+  InsertLeagueRegistrationQuestion,
+  UpdateLeagueRegistrationQuestion,
+  LeagueRegistration,
+  InsertLeagueRegistration,
+  RegistrationQuestionType,
+  RegistrationStatus,
+} from "./league-registrations";
+
 export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, bowlerGuardianRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
 export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse, BowlerWithAccount } from "./api-types";

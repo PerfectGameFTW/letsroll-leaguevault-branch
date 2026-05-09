@@ -1,7 +1,19 @@
 import { pgTable, text, serial, boolean, timestamp, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { nameSchema, emailSchema } from "./constants";
+
+// Hostname (no scheme/path). Lowercase letters, digits, dot, hyphen.
+// Used for the per-org embed-iframe allowlist (Task #681). Validated
+// here so both insert/update schemas reject obvious garbage before
+// it reaches the CSP middleware.
+const hostnameSchema = z
+  .string()
+  .min(1)
+  .max(253)
+  .regex(/^[a-z0-9.-]+$/, "Use a bare hostname (no scheme or path)")
+  .refine((h) => !h.startsWith(".") && !h.endsWith("."), "Hostname cannot start or end with a dot");
 
 export interface OrgIntegrations {
   bowlnow?: {
@@ -49,6 +61,13 @@ export const organizations = pgTable("organizations", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   integrations: jsonb("integrations").$type<OrgIntegrations>(),
+  // Task #681: parent-page domains allowed to embed this org's
+  // registration iframe. The /embed/register/:leagueId middleware
+  // sets `Content-Security-Policy: frame-ancestors 'self' <domains>`
+  // from this list so each org owns its own embed allowlist.
+  // Domains are stored as bare hostnames (no scheme); the middleware
+  // rewrites them into `https://<host>` directives.
+  allowedEmbedDomains: text("allowed_embed_domains").array().notNull().default(sql`'{}'`),
 }, (table) => ({
   slugIdx: uniqueIndex("organization_slug_idx").on(table.slug),
   subdomainIdx: uniqueIndex("organization_subdomain_idx").on(table.subdomain),
@@ -71,6 +90,7 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
   appIcon: z.string().optional(),
   active: z.boolean().default(true),
   integrations: orgIntegrationsSchema,
+  allowedEmbedDomains: z.array(hostnameSchema).max(50).default([]),
 }).omit({ id: true, createdAt: true });
 
 export const updateOrganizationSchema = z.object({
@@ -88,6 +108,7 @@ export const updateOrganizationSchema = z.object({
   appIcon: z.string().nullable(),
   active: z.boolean(),
   integrations: orgIntegrationsSchema,
+  allowedEmbedDomains: z.array(hostnameSchema).max(50),
 }).partial();
 
 export type Organization = typeof organizations.$inferSelect;

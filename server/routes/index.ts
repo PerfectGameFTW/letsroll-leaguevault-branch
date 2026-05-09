@@ -29,6 +29,8 @@ import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
 import bowlerLinksRouter from './bowler-links.js';
 import { bowlerGuardiansChildRouter, bowlerGuardiansRowRouter, bowlerGuardiansMyChildrenRouter } from './bowler-guardians.js';
+import leagueRegistrationQuestionsRouter from './league-registration-questions.js';
+import publicEmbedRegistrationRouter from './public-embed-registration.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotated } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -100,6 +102,11 @@ export function registerRoutes(app: Express): void {
   });
 
   app.use('/api/organizations', organizationsPublicRouter);
+  // Task #681: public, no-auth embed registration endpoints. Mounted
+  // BEFORE the requirePasswordRotated/requireAuth middleware below so
+  // anonymous parent-page traffic can read the form schema and post a
+  // registration without a session.
+  app.use('/api/public/embed', publicEmbedRegistrationRouter);
 
   // Task #455: server-side enforcement of the must-change-password
   // gate. Mounted here so the auth routes registered above (and the
@@ -147,6 +154,10 @@ export function registerRoutes(app: Express): void {
   app.use('/api/bowlers/:childId/guardians', requireAuth, bowlerGuardiansChildRouter);
   app.use('/api/bowler-guardians', requireAuth, bowlerGuardiansRowRouter);
   app.use('/api/my-children', requireAuth, bowlerGuardiansMyChildrenRouter);
+  // Task #681: admin endpoints for managing a league's embed
+  // registration questions. Auth is enforced inside the router via
+  // hasAccessToLeague + isOrgOrHigher.
+  app.use('/api/leagues/:leagueId/registration-questions', requireAuth, leagueRegistrationQuestionsRouter);
 
   log.info('API routes registered');
 }

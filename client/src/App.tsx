@@ -51,6 +51,7 @@ const ApplePayJobsPage = lazy(() => import("@/pages/apple-pay-jobs-page"));
 const DataIntegrityPage = lazy(() => import("@/pages/data-integrity-page"));
 const AdminEmailChangeAuditsPage = lazy(() => import("@/pages/admin-email-change-audits-page"));
 const MessagingPage = lazy(() => import("@/pages/messaging-page"));
+const EmbedRegisterPage = lazy(() => import("@/pages/embed-register-page"));
 
 function PageLoader() {
   return <PageLoadingState />;
@@ -140,6 +141,10 @@ function Router() {
         <Route path="/claim-bowler">{guard('auth', <ClaimBowlerPage />)}</Route>
         <Route path="/registration-complete">{guard('auth', <RegistrationCompletePage />)}</Route>
         <Route path="/not-found" component={NotFound} />
+        {/* Task #681: public, no-auth embed registration page intended
+            to be iframed into third-party parent pages. Renders without
+            the app shell so it sits cleanly inside an iframe. */}
+        <Route path="/embed/register/:leagueId" component={EmbedRegisterPage} />
 
         {/* Root route with redirect handler */}
         <Route path="/" component={RootRedirectHandler} />

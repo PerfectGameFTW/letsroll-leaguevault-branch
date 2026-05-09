@@ -70,21 +70,21 @@ describe('check-eslint-baseline CI guard', () => {
     // past the cap. The unrelated rule (`no-unused-vars`) is not in
     // RULE_CEILINGS, so this fixture isolates the total-ceiling
     // check from the per-rule check.
-    // Pinned-rule sum = 0 + 220 + 85 + 4 + 150 = 459; +100 unrelated
-    // = 559 total, which is over the 481 ceiling.
+    // Pinned-rule sum = 0 + 220 + 87 + 4 + 153 = 464; +100 unrelated
+    // = 564 total, which is over the 486 ceiling.
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/no-explicit-any': { count: 0 },
         '@typescript-eslint/no-non-null-assertion': { count: 220 },
-        '@typescript-eslint/no-unnecessary-type-assertion': { count: 85 },
+        '@typescript-eslint/no-unnecessary-type-assertion': { count: 87 },
         '@typescript-eslint/consistent-type-assertions': { count: 4 },
-        'no-restricted-syntax': { count: 150 },
+        'no-restricted-syntax': { count: 153 },
         '@typescript-eslint/no-unused-vars': { count: 100 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: total suppressions: 559/);
+    expect(r.stderr).toMatch(/FAIL: total suppressions: 564/);
   });
 
   it('exits 0 with a RATCHET hint when a per-rule count drops below the ceiling', () => {

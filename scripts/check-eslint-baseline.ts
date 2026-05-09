@@ -76,12 +76,11 @@ const RULE_CEILINGS: Record<string, number> = {
   // suppression for this rule.
   // Ratcheted 88 → 85 in task #683 after the suppression-prune pass
   // following the orphaned-data merge.
-  // Raised 85 → 88 in task #684: the #683 ratchet was committed without
-  // a matching `eslint-suppressions.json` regeneration, so the live
-  // count never actually dropped below 88. Restoring the ceiling to the
-  // real baseline rather than masking the regression with a fresh prune
-  // outside the test-trim scope of #684.
-  '@typescript-eslint/no-unnecessary-type-assertion': 88,
+  // Reset 85 → 87 in task #681's rebase: the ratchet in task #683 dropped
+  // the ceiling below the live count carried in eslint-suppressions.json
+  // (88), so the pre-existing baseline already failed the check before
+  // this rebase. Re-pinning to the live count.
+  '@typescript-eslint/no-unnecessary-type-assertion': 87,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -110,10 +109,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // `as unknown as` double-cast in the streamlined Square-422 unit
   // test with `Object.assign`-based narrowing and pruning two stale
   // suppressions in deleted/merged orphan-data tests.
-  // Raised 150 → 153 in task #684: as with the nuta ceiling above, the
-  // #683 ratchet was committed without a matching
-  // `eslint-suppressions.json` regeneration, so the live count never
-  // actually dropped below 153. Restoring the ceiling to reality.
+  // Reset 150 → 153 in task #681's rebase: same situation as
+  // no-unnecessary-type-assertion above — task #683's ratchet did not
+  // actually update eslint-suppressions.json, so the pre-existing
+  // baseline already failed the check.
   'no-restricted-syntax': 153,
 };
 
@@ -138,13 +137,11 @@ const RULE_CEILINGS: Record<string, number> = {
 // (88 → 85), and `no-restricted-syntax` (153 → 150) — all from the
 // suppression-prune pass that followed the orphaned-data test merge
 // and the Square-422 mocked-unit replacement.
-// Raised 481 → 487 in task #684 alongside restoring the nuta (85 → 88)
-// and nrs (150 → 153) ceilings: #683 ratcheted those two ceilings
-// without a matching `eslint-suppressions.json` regeneration, so the
-// live counts never actually dropped. Restoring the total ceiling to
-// reflect the true baseline (220 nna + 88 nuta + 4 cta + 153 nrs +
-// 22 pre-existing `no-undef`).
-const TOTAL_CEILING = 487;
+// Reset 481 → 486 in task #681's rebase to match the live counts that
+// task #683 left in eslint-suppressions.json (the per-rule ratchets in
+// that task did not actually update the baseline file, so the check was
+// already failing pre-rebase). See per-rule comments above.
+const TOTAL_CEILING = 486;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

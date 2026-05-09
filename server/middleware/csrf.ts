@@ -43,6 +43,11 @@ const EXEMPT_PATHS = [
   // session-auth middleware and is responsible for any signature
   // verification on the inbound event. See task #577.
   '/payments-provider/webhooks',
+  // Task #681: public, no-auth embed registration submit. The endpoint
+  // originates from third-party parent pages that have no session-bound
+  // CSRF token; abuse is bounded by the per-IP rate limiter wired in
+  // server/routes/public-embed-registration.ts.
+  '/public/embed',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

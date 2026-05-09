@@ -40,9 +40,6 @@
     }
   },
   "client/src/components/organization-form-dialog.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }

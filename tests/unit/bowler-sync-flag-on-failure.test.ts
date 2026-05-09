@@ -85,6 +85,7 @@ function fakeBowler(overrides: Partial<BowlerArg> = {}): BowlerArg {
     paymentSyncPendingAt: null,
     paymentSyncAttempts: 0,
     paymentSyncLastAttemptAt: null,
+    isMinor: false,
     bnSyncPendingAt: null,
     bnSyncAttempts: 0,
     bnSyncLastAttemptAt: null,

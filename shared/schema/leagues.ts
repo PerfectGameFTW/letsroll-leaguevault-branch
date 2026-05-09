@@ -122,6 +122,15 @@ export const leagues = pgTable("leagues", {
   // bowlers placed on a team in this league require at least one
   // guardian (see `bowler_guardians`). Adult leagues are unaffected.
   isYouth: boolean("is_youth").notNull().default(false),
+  // Task #681: optional cap on total registered bowlers for the
+  // embed registration flow. NULL means unlimited. Public embed
+  // submissions are rejected once the count of `bowler_leagues`
+  // rows for this league reaches the cap.
+  rosterCap: integer("roster_cap"),
+  // Task #681: optional fee (in cents) charged via Square at the time
+  // of public embed registration. NULL means free. Stored on the
+  // league so admins can change it without redeploying the embed.
+  embedRegistrationFee: integer("embed_registration_fee"),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
@@ -161,6 +170,8 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   cancelledDates: z.array(z.string()).default([]),
   doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed").default([]),
   isYouth: z.boolean().default(false),
+  rosterCap: z.number().int().positive().nullable().optional(),
+  embedRegistrationFee: z.number().int().min(0).nullable().optional(),
 }).omit({ id: true, finalTwoWeeksDueWeek: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -220,6 +231,8 @@ export const updateLeagueSchema = z.object({
   cancelledDates: z.array(z.string()),
   doublePayDates: z.array(z.string()).max(2, "At most 2 double-pay weeks allowed"),
   isYouth: z.boolean(),
+  rosterCap: z.number().int().positive().nullable(),
+  embedRegistrationFee: z.number().int().min(0).nullable(),
   organizationId: z.number().int().positive(),
 }).partial().refine(
   (data) => {

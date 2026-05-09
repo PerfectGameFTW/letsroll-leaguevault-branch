@@ -1546,7 +1546,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       const reassignRow = rows.find(
         (r) => r.resourceType === 'leagues' && r.resourceId === leagueForReassign && r.action === 'reassign',
       );
-      if (!reassignRow) throw new Error('expected a reassign audit row for the seeded league');
+      if (!reassignRow) throw new Error('reassign audit row not found');
       expect(reassignRow.adminUserId).toBe(admin.user.id);
       expect(reassignRow.adminUserEmail?.toLowerCase()).toBe(admin.user.email.toLowerCase());
       expect(reassignRow.organizationId).toBe(targetOrgId);

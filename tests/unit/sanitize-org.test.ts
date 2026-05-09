@@ -42,6 +42,7 @@ function makeFullyPopulatedOrg(): Organization {
         locationId: 'loc-1',
       },
     },
+    allowedEmbedDomains: [],
   };
 }
 

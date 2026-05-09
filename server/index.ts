@@ -180,6 +180,13 @@ app.get('/.well-known/apple-developer-merchantid-domain-association', async (_re
 
 app.use('/api', apiHeaders);
 
+// Task #681: per-org frame-ancestors override for the embed
+// registration page. Mounted before the Vite/static catch-all so the
+// CSP header on /embed/register/:leagueId is rewritten from the
+// owning org's `allowedEmbedDomains` allowlist.
+import { embedFrameAncestorsOverride } from './middleware/embed-csp';
+app.use(embedFrameAncestorsOverride);
+
 app.get('/api/csrf-token', csrfTokenEndpoint);
 app.use('/api', csrfProtection);
 
