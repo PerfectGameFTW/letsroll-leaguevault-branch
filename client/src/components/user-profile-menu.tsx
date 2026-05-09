@@ -1,4 +1,5 @@
-import { UserCircle, LogOut, Upload, User as UserIcon, Settings } from "lucide-react";
+import { UserCircle, LogOut, Upload, User as UserIcon, Settings, Users as UsersIcon } from "lucide-react";
+import { BowlerPaymentLinksSection } from "@/components/bowler-payment-links-section";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +24,11 @@ interface UserProfileMenuProps {
     email: string;
     role: string;
     avatar?: string | null;
+    // Task #678: surfaced on /api/user (SAFE_USER_FIELDS includes
+    // bowlerId). When set, the user is an adult bowler who can
+    // open the "Payment partners" dialog directly from the profile
+    // menu — even before they have any links.
+    bowlerId?: number | null;
   };
   showName?: boolean;
 }
@@ -33,6 +39,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
   const [isUploading, setIsUploading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isPartnersDialogOpen, setIsPartnersDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleLogout = async () => {
@@ -182,6 +189,21 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
               <span>{isUploading ? "Uploading..." : "Change Avatar"}</span>
             </div>
           </DropdownMenuItem>
+          {user.bowlerId ? (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="menu-payment-partners"
+              onClick={() => {
+                setIsMenuOpen(false);
+                setIsPartnersDialogOpen(true);
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <UsersIcon className="h-4 w-4" />
+                <span>Payment partners</span>
+              </div>
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer" onClick={handleLogout}>
             <div className="flex items-center gap-2 text-destructive">
@@ -200,6 +222,20 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
         accept="image/jpeg,image/png,image/gif,image/webp"
         onChange={handleFileChange}
       />
+
+      {/* Payment Partners Dialog (task #678) */}
+      {user.bowlerId ? (
+        <Dialog open={isPartnersDialogOpen} onOpenChange={setIsPartnersDialogOpen}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>Payment partners</DialogTitle>
+            </DialogHeader>
+            <div className="py-2">
+              <BowlerPaymentLinksSection currentBowlerId={user.bowlerId} alwaysShow />
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {/* Profile Dialog */}
       <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>

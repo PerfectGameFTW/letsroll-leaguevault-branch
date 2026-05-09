@@ -12,14 +12,19 @@ import { executeScheduledPayment, executeChargeForLocation, buildLineItems, comp
 import { checkPaidInFull } from "./payment-checks";
 import { getUserByBowlerId } from "../storage/users";
 
-// Task #678: never let the payer-user lookup break a payment write —
-// `paidByUserId` is purely an attribution field. Tests stub `db` minimally
-// and may not support the deeper `select().from().where().limit()` chain.
-async function safeGetPayerUserId(bowlerId: number): Promise<number | null> {
+/**
+ * Task #678: payer-user attribution is best-effort. If the lookup
+ * throws (e.g. transient DB hiccup, or a unit-test mock that doesn't
+ * stub the chained `.limit(1)`), we must not fail the autopay write
+ * — the row is far more important than its attribution column. Log
+ * and fall back to `null`.
+ */
+async function safeResolvePaidByUserId(bowlerId: number): Promise<number | null> {
   try {
     const u = await getUserByBowlerId(bowlerId);
     return u?.id ?? null;
-  } catch {
+  } catch (err) {
+    logger.warn(`[PaymentLifecycle] paidByUserId lookup failed for bowler ${bowlerId}: ${(err as Error).message}`);
     return null;
   }
 }
@@ -187,8 +192,7 @@ async function handleSuccessfulPayment(
     // Task #678: derive payer user once. The schedule's bowlerId is
     // the payer; combined-autopay rows for additional bowlers carry
     // the same paidByUserId.
-    const paidByUserId = await safeGetPayerUserId(scheduleRecord.bowlerId);
-    
+    const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
 
     await tx.insert(payments).values({
       bowlerId: scheduleRecord.bowlerId,
@@ -226,8 +230,7 @@ async function handleSuccessfulPayment(
   // so a since-removed link is not silently honored.
   const additional = scheduleRecord.additionalBowlerIds ?? [];
   if (additional.length > 0) {
-    const paidByUserId = await safeGetPayerUserId(scheduleRecord.bowlerId);
-    
+    const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
     const orgId = league?.organizationId ?? null;
     for (const partnerBowlerId of additional) {
       try {
@@ -351,7 +354,7 @@ async function handleFailedPayment(
     failureTime: new Date().toISOString()
   });
 
-  const paidByUserId = await safeGetPayerUserId(scheduleRecord.bowlerId);
+  const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
   await db.insert(payments).values({
     bowlerId: scheduleRecord.bowlerId,
     leagueId: scheduleRecord.leagueId,

@@ -5,7 +5,10 @@
  * for bowlers, leagues, teams, and organizations.
  */
 import { Router } from 'express';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { storage } from '../../storage';
+import { db } from '../../db.js';
+import { users, type Payment } from '@shared/schema';
 import {
   sendSuccess,
   sendError,
@@ -17,6 +20,53 @@ import {
 } from '../../utils/api.js';
 import { requireOrganizationAccess } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
+
+/**
+ * Task #678: build a Map<paidByUserId, displayName> for the rows in
+ * `payments`. Uses the user's `name` only — never the email — so a
+ * partner's address is never disclosed via paid-by attribution even
+ * if a row has somehow lost its name. Returns an empty map when no
+ * row carries a `paidByUserId` (autopay-attribution is sparse — most
+ * rows are one-off charges and have a null `paidByUserId`).
+ *
+ * The lookup is **org-scoped** when an `organizationId` is supplied
+ * (i.e. for non-sysadmin reads and for sysadmin reads that picked an
+ * org). System-admin "all-orgs" reads (`organizationId === null`) skip
+ * the org filter — those callers are already trusted to see every
+ * tenant's data. This guards against a stale or cross-org
+ * `paidByUserId` value leaking a foreign user's display name into an
+ * org-scoped report.
+ */
+async function buildPayerNameMap(
+  payments: Payment[],
+  organizationId: number | null,
+): Promise<Map<number, string>> {
+  const ids = Array.from(
+    new Set(payments.map((p) => p.paidByUserId).filter((id): id is number => !!id)),
+  );
+  if (ids.length === 0) return new Map();
+  // sysadmin all-orgs view: no extra constraint. Org-scoped view:
+  // restrict to users in that org OR users with a null organizationId
+  // (sysadmins who paid carry a null org and are by definition trusted
+  // to be attributable inside any org's report).
+  const finalWhere =
+    organizationId === null
+      ? inArray(users.id, ids)
+      : and(
+          inArray(users.id, ids),
+          or(eq(users.organizationId, organizationId), isNull(users.organizationId)),
+        );
+  const rows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(finalWhere);
+  return new Map(
+    rows
+      .map((r) => [r.id, r.name && r.name.trim()] as const)
+      .filter((entry): entry is readonly [number, string] => !!entry[1])
+      .map(([id, name]) => [id, name]),
+  );
+}
 
 const log = createLogger("Payments");
 
@@ -90,22 +140,26 @@ router.get("/", async (req, res) => {
     if (isSystemAdmin && effectiveOrgId === null) {
       if (paginationParams) {
         const result = await storage.getAllPaymentsPaginatedSystemAdmin(baseFilters, paginationParams.page, paginationParams.limit);
-        return sendPaginatedSuccess(res, sanitizePayments(result.items), result.pagination);
+        const nameMap = await buildPayerNameMap(result.items, null);
+        return sendPaginatedSuccess(res, sanitizePayments(result.items, nameMap), result.pagination);
       }
       const payments = await storage.getAllPaymentsSystemAdmin(baseFilters);
-      return sendSuccess(res, sanitizePayments(payments));
+      const nameMap = await buildPayerNameMap(payments, null);
+      return sendSuccess(res, sanitizePayments(payments, nameMap));
     }
 
     const filters = { ...baseFilters, organizationId: effectiveOrgId! };
 
     if (paginationParams) {
       const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);
-      return sendPaginatedSuccess(res, sanitizePayments(result.items), result.pagination);
+      const nameMap = await buildPayerNameMap(result.items, effectiveOrgId);
+      return sendPaginatedSuccess(res, sanitizePayments(result.items, nameMap), result.pagination);
     }
 
     const payments = await storage.getPayments(filters);
+    const nameMap = await buildPayerNameMap(payments, effectiveOrgId);
 
-    sendSuccess(res, sanitizePayments(payments));
+    sendSuccess(res, sanitizePayments(payments, nameMap));
   } catch (error) {
     log.error('Get error:', error);
     sendError(res, 'Failed to fetch payments');

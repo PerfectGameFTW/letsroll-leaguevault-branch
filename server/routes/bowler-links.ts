@@ -198,7 +198,31 @@ router.post("/:id/decline", async (req, res) => {
     if (user.bowlerId !== link.bowlerAId && user.bowlerId !== link.bowlerBId) {
       return sendError(res, "Not your invite", 403, "FORBIDDEN");
     }
+    // Pending invites can't have been used by a combined-autopay schedule
+    // yet (we check `accepted` at scheduler/insert time), but call the
+    // prune helper anyway — it's a no-op when there's nothing to remove
+    // and keeps the cleanup path uniform with DELETE.
+    const prunedSchedules = await links.pruneSchedulesForRemovedLink(link);
     await links.deleteLink(id);
+    // Task #678 / reviewer follow-up: mirror the DELETE route's audit
+    // trail so security review can reconstruct who declined which
+    // invite and (if it ever happens) which schedules were touched.
+    log.info("audit:bowler_link_decline", {
+      actorUserId: user.id,
+      organizationId: link.organizationId,
+      linkId: id,
+      bowlerAId: link.bowlerAId,
+      bowlerBId: link.bowlerBId,
+      prunedScheduleCount: prunedSchedules.length,
+    });
+    if (prunedSchedules.length > 0) {
+      log.info("bowler_link_decline:pruned_schedules", {
+        actorUserId: user.id,
+        organizationId: link.organizationId,
+        linkId: id,
+        prunedSchedules,
+      });
+    }
     return sendSuccess(res, { id });
   } catch (err) {
     log.error("decline error", err);
@@ -224,9 +248,16 @@ router.delete("/:id", async (req, res) => {
     if (!isAdmin && !isParty) {
       return sendError(res, "Not allowed", 403, "FORBIDDEN");
     }
+    // Task #678: scrub the now-removed partner from any combined-autopay
+    // schedule's additionalBowlerIds BEFORE deleting the link row, so
+    // an in-flight scheduler never sees a stale partner without an
+    // accepted link. (Lifecycle also re-validates at firing time —
+    // pruning here keeps the data tidy for reports/audit.)
+    const prunedSchedules = await links.pruneSchedulesForRemovedLink(link);
     await links.deleteLink(id);
-    // Task #678: audit trail. Admin removals are persisted via structured
-    // log so security review can reconstruct who unlinked which pair.
+    // Audit trail. Admin removals AND any pruned schedules are persisted
+    // via structured log so security review can reconstruct who unlinked
+    // which pair and which combined-autopay schedules were affected.
     if (isAdmin) {
       log.info("admin_audit:bowler_link_remove", {
         adminUserId: user.id,
@@ -234,6 +265,15 @@ router.delete("/:id", async (req, res) => {
         linkId: id,
         bowlerAId: link.bowlerAId,
         bowlerBId: link.bowlerBId,
+        prunedScheduleCount: prunedSchedules.length,
+      });
+    }
+    if (prunedSchedules.length > 0) {
+      log.info("bowler_link_remove:pruned_schedules", {
+        actorUserId: user.id,
+        organizationId: link.organizationId,
+        linkId: id,
+        prunedSchedules,
       });
     }
     return sendSuccess(res, { id });

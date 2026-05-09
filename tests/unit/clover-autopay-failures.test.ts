@@ -73,9 +73,18 @@ vi.mock('../../server/db', async () => {
       select: () => ({
         from: (table: unknown) => ({
           where: () => {
-            if (table === leagues) return Promise.resolve([dbState.league]);
-            if (table === bowlers) return Promise.resolve([dbState.bowler]);
-            return Promise.resolve([]);
+            // Task #678: see square-autopay-failures.test.ts for the
+            // rationale — `getUserByBowlerId` chains `.limit(1)` on the
+            // where result, so the mock must support both `await where`
+            // and `await where.limit(1)`.
+            const rows =
+              table === leagues
+                ? [dbState.league]
+                : table === bowlers
+                  ? [dbState.bowler]
+                  : [];
+            const p = Promise.resolve(rows);
+            return Object.assign(p, { limit: () => Promise.resolve(rows) });
           },
         }),
       }),

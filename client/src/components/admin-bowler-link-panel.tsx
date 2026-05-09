@@ -43,7 +43,7 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number }> = ({ bowlerId }) => 
 
   const link = useMutation({
     mutationFn: async (otherId: number) =>
-      apiRequest("POST", "/api/bowler-links/admin", { bowlerAId: bowlerId, bowlerBId: otherId }),
+      apiRequest("/api/bowler-links/admin", "POST", { bowlerAId: bowlerId, bowlerBId: otherId }),
     onSuccess: () => {
       setPartnerId("");
       invalidate();
@@ -54,7 +54,7 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number }> = ({ bowlerId }) => 
   });
 
   const unlink = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/bowler-links/${id}`),
+    mutationFn: async (id: number) => apiRequest(`/api/bowler-links/${id}`, "DELETE"),
     onSuccess: () => invalidate(),
     onError: (err: Error) =>
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),

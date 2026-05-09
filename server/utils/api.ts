@@ -355,22 +355,46 @@ const SAFE_PAYMENT_FIELDS = [
   'receiptEmailMissing',
   // Free-text admin notes attached to the payment row.
   'notes',
+  // Task #678: payer-attribution. Stamped on every autopay row
+  // (including combined-autopay partner rows) so the UI can render a
+  // "Paid by <name>" badge when someone other than the bowler funded
+  // the payment. The id is safe to expose — paired with the
+  // `paidByName` enrichment below it powers the bowler-history badge.
+  'paidByUserId',
   'createdAt',
 ] as const;
 
-export type SanitizedPayment = Pick<Payment, typeof SAFE_PAYMENT_FIELDS[number]>;
+export type SanitizedPayment = Pick<Payment, typeof SAFE_PAYMENT_FIELDS[number]> & {
+  // Task #678: optional display-only enrichment computed by the route
+  // (NOT stored on the row). Set when `paidByUserId` resolves to a
+  // user whose name (or fallback email) we can publish.
+  paidByName?: string | null;
+};
 
-export function sanitizePayment(payment: Payment): SanitizedPayment {
+export function sanitizePayment(payment: Payment, paidByName?: string | null): SanitizedPayment {
   const input = payment as Record<string, unknown>;
   const safePayment: Record<string, unknown> = {};
   for (const field of SAFE_PAYMENT_FIELDS) {
     if (field in input) safePayment[field] = input[field];
   }
+  // task #678: only attach paidByName when we actually have a name to show.
+  // Omitting the field when null keeps existing route-level test fixtures
+  // — which assert exact-shape equality against pre-task rows — intact, and
+  // matches how the client treats `!payment.paidByName` as "no badge".
+  if (paidByName) safePayment.paidByName = paidByName;
   return safePayment as SanitizedPayment;
 }
 
-export function sanitizePayments(payments: Payment[]): SanitizedPayment[] {
-  return payments.map(sanitizePayment);
+export function sanitizePayments(
+  payments: Payment[],
+  paidByNameById?: Map<number, string>,
+): SanitizedPayment[] {
+  return payments.map((p) => {
+    const name = p.paidByUserId && paidByNameById
+      ? paidByNameById.get(p.paidByUserId) ?? null
+      : null;
+    return sanitizePayment(p, name);
+  });
 }
 
 export interface ApiResponse<T> {

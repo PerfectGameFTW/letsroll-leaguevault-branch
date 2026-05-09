@@ -16,6 +16,12 @@ import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
 import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment } from "@shared/schema";
 
+// Task #678: server enriches list responses with `paidByName` when a
+// row's `paidByUserId` resolves to a real user (typed as optional on
+// SanitizedPayment in server/utils/api.ts). The base Payment type
+// doesn't carry it; widen our row reads with this view-only union.
+type PaymentRow = Payment & { paidByName?: string | null };
+
 interface BowlerInfo {
   id: number;
   name: string;
@@ -23,7 +29,7 @@ interface BowlerInfo {
 }
 
 interface PaymentHistoryTableProps {
-  payments: Payment[];
+  payments: PaymentRow[];
   bowlers: BowlerInfo[];
   bowlerTeamMap?: Map<number, string>;
   onStartEdit: (payment: Payment) => void;
@@ -90,6 +96,14 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                         {bowler.name}
                       </Link>
                     ) : 'Unknown Bowler'}
+                    {payment.paidByName && payment.paidByUserId !== undefined && (
+                      <div
+                        className="text-xs text-muted-foreground mt-0.5"
+                        data-testid={`text-paid-by-${payment.id}`}
+                      >
+                        Paid by {payment.paidByName}
+                      </div>
+                    )}
                   </TableCell>
                   {showTeamColumn && (
                     <TableCell className="hidden md:table-cell text-muted-foreground">{teamName || '—'}</TableCell>

@@ -142,6 +142,63 @@ export async function deleteLink(id: number): Promise<void> {
 }
 
 /**
+ * Task #678 — when a bowler-payment link is removed (decline OR unlink),
+ * scrub each bowler's id from the OTHER bowler's combined-autopay
+ * `additionalBowlerIds` arrays. We only touch schedules owned by the
+ * two bowlers in the pair (and only within the link's organization), so
+ * an admin removing a link can never accidentally rewrite schedules
+ * belonging to other orgs.
+ *
+ * Returns the affected schedule ids per direction, for audit logging.
+ */
+export async function pruneSchedulesForRemovedLink(
+  link: Pick<BowlerPaymentLink, "bowlerAId" | "bowlerBId" | "organizationId">,
+): Promise<{ id: number; bowlerId: number; removedPartnerId: number }[]> {
+  const { paymentSchedules, leagues } = await import("@shared/schema");
+  const affected: { id: number; bowlerId: number; removedPartnerId: number }[] = [];
+
+  // We can't scope payment_schedules to organizationId directly (no col
+  // on the table), so we constrain by `bowlerId IN (a, b)` and rely on
+  // the league's organizationId as a defense-in-depth check below.
+  const orgLeagues = await db
+    .select({ id: leagues.id })
+    .from(leagues)
+    .where(eq(leagues.organizationId, link.organizationId));
+  const orgLeagueIds = new Set(orgLeagues.map((l) => l.id));
+  if (orgLeagueIds.size === 0) return affected;
+
+  // For each direction (A→B and B→A) find schedules whose
+  // additionalBowlerIds contains the partner id, then array_remove it.
+  const directions: Array<[number, number]> = [
+    [link.bowlerAId, link.bowlerBId],
+    [link.bowlerBId, link.bowlerAId],
+  ];
+  for (const [ownerBowlerId, partnerBowlerId] of directions) {
+    const updated = await db
+      .update(paymentSchedules)
+      .set({
+        additionalBowlerIds: sql`array_remove(${paymentSchedules.additionalBowlerIds}, ${partnerBowlerId})`,
+      })
+      .where(
+        and(
+          eq(paymentSchedules.bowlerId, ownerBowlerId),
+          sql`${partnerBowlerId} = ANY(${paymentSchedules.additionalBowlerIds})`,
+        ),
+      )
+      .returning({ id: paymentSchedules.id, leagueId: paymentSchedules.leagueId });
+    for (const row of updated) {
+      // Defense in depth — only audit rows whose league belongs to the
+      // link's organization. Cross-org rows (shouldn't exist) are
+      // silently ignored.
+      if (orgLeagueIds.has(row.leagueId)) {
+        affected.push({ id: row.id, bowlerId: ownerBowlerId, removedPartnerId: partnerBowlerId });
+      }
+    }
+  }
+  return affected;
+}
+
+/**
  * True iff the two bowler ids are the same OR they have an accepted
  * payment link in the given org. Does NOT check user→bowler ownership;
  * callers (e.g. canUserPayForBowler) layer that on top.

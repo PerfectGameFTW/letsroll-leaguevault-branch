@@ -28,11 +28,15 @@ interface LinksResponse {
 /**
  * Task #678 — adult-bowler partner linking UI.
  *
- * Gate: section is hidden until `hasAny` is true. The first link must be
- * seeded by an org admin via the bowler-view admin panel; afterwards
- * the bowler can invite/accept/decline/unlink from this section.
+ * By default the section is hidden until `hasAny` is true (avoids cluttering
+ * the bowler dashboard for users who have never linked anyone). When mounted
+ * inside the user-profile-menu "Payment partners" dialog, pass
+ * `alwaysShow` so the invite form renders even with zero existing links.
  */
-export const BowlerPaymentLinksSection: FC<{ currentBowlerId: number }> = ({ currentBowlerId }) => {
+export const BowlerPaymentLinksSection: FC<{
+  currentBowlerId: number;
+  alwaysShow?: boolean;
+}> = ({ currentBowlerId, alwaysShow = false }) => {
   const { toast } = useToast();
   const [inviteEmail, setInviteEmail] = useState("");
 
@@ -47,7 +51,7 @@ export const BowlerPaymentLinksSection: FC<{ currentBowlerId: number }> = ({ cur
 
   const inviteMutation = useMutation({
     mutationFn: async (email: string) =>
-      apiRequest("POST", "/api/bowler-links/invite", { inviteeEmail: email }),
+      apiRequest("/api/bowler-links/invite", "POST", { inviteeEmail: email }),
     onSuccess: () => {
       setInviteEmail("");
       invalidate();
@@ -59,20 +63,21 @@ export const BowlerPaymentLinksSection: FC<{ currentBowlerId: number }> = ({ cur
 
   const respond = useMutation({
     mutationFn: async ({ id, action }: { id: number; action: "accept" | "decline" }) =>
-      apiRequest("POST", `/api/bowler-links/${id}/${action}`),
+      apiRequest(`/api/bowler-links/${id}/${action}`, "POST"),
     onSuccess: () => invalidate(),
     onError: (err: Error) =>
       toast({ title: "Action failed", description: err.message, variant: "destructive" }),
   });
 
   const unlink = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/bowler-links/${id}`),
+    mutationFn: async (id: number) => apiRequest(`/api/bowler-links/${id}`, "DELETE"),
     onSuccess: () => invalidate(),
     onError: (err: Error) =>
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),
   });
 
-  if (isLoading || !hasAny) return null;
+  if (isLoading) return null;
+  if (!hasAny && !alwaysShow) return null;
 
   const links = payload?.links ?? [];
   const accepted = links.filter((l) => l.status === "accepted");
