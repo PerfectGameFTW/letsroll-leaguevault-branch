@@ -270,6 +270,12 @@ describe('ensureDefinitions schema shape (task #680)', () => {
             );
             return { customAttributeDefinition: { key: 'k' } };
           },
+          // Test fake satisfies the structural minimum even though this
+          // test only exercises `create`. The real provider also calls
+          // `delete` from the repair path (deleteDefinition / repairDefinition).
+          async delete(_input) {
+            return { success: true };
+          },
         },
       },
     };
@@ -285,5 +291,162 @@ describe('ensureDefinitions schema shape (task #680)', () => {
         $ref: 'https://developer-production-s.squarecdn.com/schemas/v1/common.json#squareup.common.String',
       });
     }
+  });
+});
+
+describe('createDefinition name-collision recovery (architect review, 2026-05-09)', () => {
+  // These tests pin the recovery contract for the production wedge
+  // where Square's seller had a manually-created `square:<uuid>` def
+  // with name="League Name", causing our `league_name` create to 409
+  // with `specified \`name\` already exists`. The fallback retry MUST:
+  //   (a) use a fresh idempotency key (otherwise Square replays the
+  //       cached 409 and we never actually try the fallback name);
+  //   (b) treat a 409 in the fallback path as success ONLY when it's
+  //       a key collision — a *name* collision in the fallback must
+  //       surface as failure rather than silently re-wedging sync.
+
+  // Build the precise SquareError shape `isNameCollisionError` matches.
+  function makeNameCollisionError(field = 'name'): SquareError {
+    return new SquareError({
+      statusCode: 409,
+      body: {
+        errors: [
+          {
+            category: 'INVALID_REQUEST_ERROR',
+            code: 'CONFLICT',
+            field,
+            detail: `A custom attribute definition with the specified \`${field}\` already exists; ${field}=League Name`,
+          },
+        ],
+      },
+    });
+  }
+
+  // A non-name 409 — same status, but the detail does not match the
+  // name-collision regex. The fallback path should treat this as a
+  // benign key-already-exists.
+  function makeKeyCollisionError(): SquareError {
+    return new SquareError({
+      statusCode: 409,
+      body: {
+        errors: [
+          {
+            category: 'INVALID_REQUEST_ERROR',
+            code: 'CONFLICT',
+            field: 'key',
+            detail: 'A custom attribute definition with the specified `key` already exists.',
+          },
+        ],
+      },
+    });
+  }
+
+  it('uses a FRESH idempotency key on the fallback create (no replay of the original 409)', async () => {
+    type CreateInput = Parameters<
+      SquareCustomAttrDefinitionsClient['customers']['customAttributeDefinitions']['create']
+    >[0];
+    const captured: CreateInput[] = [];
+    let call = 0;
+    const fakeClient: SquareCustomAttrDefinitionsClient = {
+      customers: {
+        customAttributeDefinitions: {
+          async create(input) {
+            captured.push(input);
+            call++;
+            if (call === 1) {
+              // First create (original "League Name") → name collision.
+              throw makeNameCollisionError();
+            }
+            // Second create (prefixed "League Name (LeagueVault)") → success.
+            return { customAttributeDefinition: { key: 'league_name' } };
+          },
+          async delete(_input) {
+            return { success: true };
+          },
+        },
+      },
+    };
+
+    const ok = await ensureDefinitions(fakeClient);
+    expect(ok).toBe(true);
+
+    // 3 creates total: league_name (fails), league_name fallback (succeeds), league_season (succeeds)
+    expect(captured).toHaveLength(3);
+
+    const [first, second, third] = captured;
+    expect(first.customAttributeDefinition.key).toBe('league_name');
+    expect(first.customAttributeDefinition.name).toBe('League Name');
+    expect(first.idempotencyKey).toBe('leaguevault-league_name-def-v2');
+
+    expect(second.customAttributeDefinition.key).toBe('league_name');
+    expect(second.customAttributeDefinition.name).toBe('League Name (LeagueVault)');
+    // The whole point of this test: the fallback MUST NOT reuse the
+    // first create's idempotency key. Otherwise Square would just
+    // replay the cached name-collision response and we'd be back
+    // in the original wedge.
+    expect(second.idempotencyKey).toBeDefined();
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
+    // Sanity: stays under Square's 45-char idempotency-key cap.
+    expect((second.idempotencyKey ?? '').length).toBeLessThanOrEqual(45);
+
+    // The other definition is untouched.
+    expect(third.customAttributeDefinition.key).toBe('league_season');
+  });
+
+  it('returns failed when the fallback name ALSO collides (does not silently mark as exists)', async () => {
+    let call = 0;
+    const fakeClient: SquareCustomAttrDefinitionsClient = {
+      customers: {
+        customAttributeDefinitions: {
+          async create(input) {
+            call++;
+            // league_season succeeds; league_name first AND fallback both name-collide.
+            if (input.customAttributeDefinition.key === 'league_season') {
+              return { customAttributeDefinition: { key: 'league_season' } };
+            }
+            throw makeNameCollisionError();
+          },
+          async delete(_input) {
+            return { success: true };
+          },
+        },
+      },
+    };
+
+    const ok = await ensureDefinitions(fakeClient);
+    // Bootstrap MUST report failure: a double name-collision means
+    // even the prefixed name is unusable, so the upsert path will
+    // still hit `definition_missing` — we must NOT pretend success.
+    expect(ok).toBe(false);
+    // Exactly 3 creates: league_name (fails), league_name fallback (fails), league_season (ok).
+    expect(call).toBe(3);
+  });
+
+  it('returns exists when the fallback create surfaces a non-name 409 (true key collision)', async () => {
+    let call = 0;
+    const fakeClient: SquareCustomAttrDefinitionsClient = {
+      customers: {
+        customAttributeDefinitions: {
+          async create(input) {
+            call++;
+            if (input.customAttributeDefinition.key === 'league_season') {
+              return { customAttributeDefinition: { key: 'league_season' } };
+            }
+            // First league_name create → name collision; fallback → key collision (benign).
+            if (call === 1) throw makeNameCollisionError();
+            throw makeKeyCollisionError();
+          },
+          async delete(_input) {
+            return { success: true };
+          },
+        },
+      },
+    };
+
+    const ok = await ensureDefinitions(fakeClient);
+    // Both definitions are effectively present on the seller, so
+    // bootstrap is a success — the upsert path will work normally.
+    expect(ok).toBe(true);
+    expect(call).toBe(3);
   });
 });

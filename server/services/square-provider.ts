@@ -54,6 +54,8 @@ import {
 } from './payment-provider-factory';
 import {
   ensureDefinitions,
+  repairDefinition,
+  repairAllDefinitions,
   upsertCustomerStringAttribute,
   LEAGUE_NAME_KEY,
   LEAGUE_SEASON_KEY,
@@ -456,6 +458,18 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
   constructor(locationId: number) {
     this.locationId = locationId;
+  }
+
+  /**
+   * Diagnostic-only accessor: returns the underlying Square SDK
+   * client so one-off scripts (e.g. `scripts/list-square-attr-defs.ts`)
+   * can inspect seller state without laundering the private through
+   * a `as unknown as` double-cast (which the lint config bans).
+   * Production code paths must continue to use the typed methods on
+   * this provider.
+   */
+  async getSquareClientForDiagnostics(): Promise<SquareClient | null> {
+    return this.getSquareClient();
   }
 
   private async getSquareClient(): Promise<SquareClient | null> {
@@ -1213,7 +1227,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     // after that is in-memory cached.
     let bootstrapped = await this.ensureDefinitionsOnce(client);
 
-    const writeBoth = async (): Promise<{ ok: boolean; definitionMissing: boolean }> => {
+    const writeBoth = async (): Promise<{
+      ok: boolean;
+      definitionMissing: boolean;
+      missingKeys: string[];
+    }> => {
       const nameRes = await upsertCustomerStringAttribute(
         client!,
         customerId,
@@ -1229,10 +1247,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         bowlerId,
       );
       const ok = nameRes.ok && seasonRes.ok;
-      const definitionMissing =
-        (!nameRes.ok && nameRes.reason === 'definition_missing') ||
-        (!seasonRes.ok && seasonRes.reason === 'definition_missing');
-      return { ok, definitionMissing };
+      const missingKeys: string[] = [];
+      if (!nameRes.ok && nameRes.reason === 'definition_missing') missingKeys.push(LEAGUE_NAME_KEY);
+      if (!seasonRes.ok && seasonRes.reason === 'definition_missing') missingKeys.push(LEAGUE_SEASON_KEY);
+      return { ok, definitionMissing: missingKeys.length > 0, missingKeys };
     };
 
     let result = await writeBoth();
@@ -1262,6 +1280,40 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       }
     }
 
+    // Last-ditch self-heal: if the upsert STILL reports definition_missing
+    // after we successfully re-bootstrapped, the only consistent
+    // explanation is a stale/broken definition on the seller account
+    // (e.g. a definition created by a previous deploy with the now-
+    // rejected `developer.squareup.com/...` schema URI). Square keeps
+    // the orphan record by name, so `create` returns "already exists"
+    // and bootstrap reports success — but `upsert` against the broken
+    // record fails with "No matching definition found for value".
+    //
+    // We delete and recreate the offending key(s) by spec, then retry
+    // once. This is bounded (at most one repair pass per call) and
+    // gated on `definitionMissing` so a vanilla transient upsert
+    // failure doesn't trigger destructive seller-side writes.
+    if (!result.ok && result.definitionMissing) {
+      log.warn('Custom-attr sync: definition still missing after re-bootstrap; running repair', {
+        bowlerId,
+        customerId,
+        locationId: this.locationId,
+        keys: result.missingKeys,
+      });
+      let anyRepaired = false;
+      for (const key of result.missingKeys) {
+        const repaired = await repairDefinition(client, key);
+        anyRepaired = anyRepaired || repaired;
+      }
+      // Bust the per-process cache regardless — even on partial repair
+      // we want the next call to take the full ensureDefinitions path.
+      SquarePaymentProvider.definitionsBootstrapped.delete(this.locationId);
+      if (anyRepaired) {
+        SquarePaymentProvider.definitionsBootstrapped.set(this.locationId, true);
+        result = await writeBoth();
+      }
+    }
+
     if (!result.ok) {
       log.warn('Custom-attr sync: leaving bowler flagged for retry', {
         bowlerId,
@@ -1269,6 +1321,32 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         locationId: this.locationId,
       });
     }
+    return { ok: result.ok };
+  }
+
+  /**
+   * Operator-initiated repair: delete and recreate the seller-scoped
+   * customer custom-attribute definitions for this location's Square
+   * account. Used by `scripts/repair-square-customer-attr-definitions.ts`
+   * to unstick the "stale broken definition" state described in
+   * `syncCustomerLeagueAttributes`.
+   *
+   * Returns a per-key success map. Caller is responsible for any
+   * downstream bowler unsticking (resetting `payment_sync_attempts`
+   * so the retry sweep picks them up).
+   */
+  async repairCustomerAttributeDefinitions(): Promise<Record<string, boolean>> {
+    const client = await this.getSquareClient();
+    if (!client) {
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
+    }
+    const result = await repairAllDefinitions(client);
+    // Bust the per-process bootstrap cache so the next sync call
+    // re-runs ensureDefinitions against the freshly recreated state.
+    SquarePaymentProvider.definitionsBootstrapped.delete(this.locationId);
     return result;
   }
 

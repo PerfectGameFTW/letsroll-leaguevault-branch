@@ -100,6 +100,32 @@ const DEFINITIONS: DefinitionSpec[] = [
  *     mentioning a duplicate key — older surfaces
  * Both are SUCCESS for our idempotent bootstrap.
  */
+/**
+ * Returns true when Square's CONFLICT response specifically blames
+ * the `name` field — i.e. a *different* key on the seller already
+ * uses our requested display name. Distinct from a key collision
+ * (which is the desired idempotent outcome). Triggers our recovery:
+ * retry the create with a LeagueVault-prefixed name.
+ *
+ * Observed shape (2026-05-09, prod org 3 / location 1, Farmington):
+ *   statusCode=409, code=CONFLICT,
+ *   detail="A custom attribute definition with the specified `name`
+ *           already exists; name=League Name"
+ */
+export function isNameCollisionError(err: unknown): boolean {
+  if (!(err instanceof getSquareErrorCtor())) return false;
+  const errors = err.errors;
+  if (!errors?.length) return false;
+  return errors.some((e) => {
+    const code = (e.code ?? '').toUpperCase();
+    const detail = (e.detail ?? '').toLowerCase();
+    if (code !== 'CONFLICT' && code !== 'ALREADY_EXISTS') return false;
+    return /specified .?name.? already exists|name.*already (exists|in use|defined)/.test(
+      detail,
+    );
+  });
+}
+
 export function isAlreadyExistsError(err: unknown): boolean {
   if (!(err instanceof getSquareErrorCtor())) return false;
   if (err.statusCode === 409) return true;
@@ -143,6 +169,11 @@ export interface SquareCustomAttrDefinitionsClient {
         };
         idempotencyKey?: string;
       }): Promise<unknown>;
+      // Used by the repair path (task: stale-broken-definition recovery).
+      // Square only requires the key to delete; the SDK's exact response
+      // shape is irrelevant to us — the call either succeeds, throws
+      // NOT_FOUND (idempotent miss, treated as success), or throws hard.
+      delete(input: { key: string }): Promise<unknown>;
     };
   };
 }
@@ -150,29 +181,107 @@ export interface SquareCustomAttrDefinitionsClient {
 async function createDefinition(
   client: SquareCustomAttrDefinitionsClient,
   spec: DefinitionSpec,
+  idempotencyKeyOverride?: string,
+  nameOverride?: string,
 ): Promise<'created' | 'exists' | 'failed'> {
+  const effectiveName = nameOverride ?? spec.name;
   try {
     // v40+ flat-client SDK nests the customer custom attribute
     // definition resource under `customers.customAttributeDefinitions`.
     await client.customers.customAttributeDefinitions.create({
       customAttributeDefinition: {
         key: spec.key,
-        name: spec.name,
+        name: effectiveName,
         description: spec.description,
         visibility: 'VISIBILITY_READ_ONLY',
         schema: STRING_SCHEMA as unknown as Record<string, unknown>,
       },
-      // Idempotency-key shape preserved across the v40 SDK upgrade so
-      // a retry post-deploy still dedupes against any in-flight pre-
-      // upgrade definition-create on Square's side. Per-seller
-      // bootstrap is rare and re-running the create with the same key
+      // Idempotency-key shape: re-running the create with the same key
       // is exactly what the "already exists" branch was designed for.
-      idempotencyKey: `leaguevault-${spec.key}-def-v1`,
+      //
+      // Bumped v1 → v2 (2026-05-09) because Square's server-side
+      // idempotency cache for the v1 keys had gone stale — `create`
+      // calls were returning the original months-ago response (a mix
+      // of "created" and "ALREADY_EXISTS") without checking the actual
+      // seller state, so bootstrap always thought the definitions were
+      // there even when the seller had nothing. Subsequent upserts kept
+      // failing `definition_missing`. The v2 suffix forces Square to
+      // re-execute the create, which then either returns 'created' (if
+      // truly missing) or a real ALREADY_EXISTS (if truly present) —
+      // both of which the `'exists'` branch handles correctly.
+      //
+      // Repair callers MUST pass `idempotencyKeyOverride` — see
+      // `repairDefinition` for the rationale.
+      idempotencyKey: idempotencyKeyOverride ?? `leaguevault-${spec.key}-def-v2`,
     });
-    log.info('Created Square customer custom attribute definition', { key: spec.key });
+    log.info('Created Square customer custom attribute definition', {
+      key: spec.key,
+      name: effectiveName,
+    });
     return 'created';
   } catch (err) {
+    // Name-collision recovery: when a *different* key on the seller
+    // already owns our requested display name (e.g. an org's Square
+    // dashboard manually created a "League Name" attribute under a
+    // `square:<uuid>` key), Square rejects our create with HTTP 409
+    // CONFLICT blaming `name`. The key itself is still free, so retry
+    // once with a LeagueVault-prefixed name to escape the collision.
+    // Without this, the entire org's bowler payment-customer sync gets
+    // wedged on `definition_missing` upserts forever.
+    if (!nameOverride && isNameCollisionError(err)) {
+      const fallbackName = `${spec.name} (LeagueVault)`;
+      // CRITICAL: the fallback create MUST carry its own idempotency
+      // key. Reusing the original would let Square replay the 409
+      // name-collision response (the very failure mode that wedged
+      // bowlers in the first place) and we'd never actually attempt
+      // the fallback name. Length-bounded ≤45 chars per Square's
+      // idempotency-key spec.
+      const fallbackIdempotencyKey = `lv-${spec.key}-fb-${Date.now().toString(36)}`.slice(
+        0,
+        45,
+      );
+      log.info('createDefinition: name collision — retrying with prefixed name', {
+        key: spec.key,
+        attemptedName: effectiveName,
+        fallbackName,
+        fallbackIdempotencyKey,
+      });
+      return createDefinition(client, spec, fallbackIdempotencyKey, fallbackName);
+    }
+    if (nameOverride && isAlreadyExistsError(err)) {
+      // Fallback-name path: a 409 here is ONLY safe to treat as
+      // success when it's a *key* collision (= our key already exists
+      // on the seller, which is exactly the idempotent-success state
+      // we wanted). A *name* collision in the fallback path means
+      // even our prefixed name was somehow taken — surface as failure
+      // rather than silently returning 'exists' and re-wedging the
+      // sync queue (architect review, 2026-05-09).
+      if (isNameCollisionError(err)) {
+        log.warn('createDefinition: fallback name also collided — refusing to mark as exists', {
+          key: spec.key,
+          fallbackName: effectiveName,
+          error: err instanceof Error ? { name: err.name, message: err.message } : err,
+        });
+        return 'failed';
+      }
+      log.info('createDefinition: fallback create — Square reported key already exists', {
+        key: spec.key,
+        name: effectiveName,
+        error: err instanceof Error ? { name: err.name, message: err.message } : err,
+      });
+      return 'exists';
+    }
     if (isAlreadyExistsError(err)) {
+      // One-line diagnostic so the prod log captures Square's *actual*
+      // ALREADY_EXISTS shape — needed to disambiguate (a) cached
+      // idempotency response, (b) genuine pre-existing key, and
+      // (c) name-collision against a different key (e.g. seller
+      // already has `square:<uuid>` with our `name`).
+      log.info('createDefinition: Square reported already-exists', {
+        key: spec.key,
+        name: effectiveName,
+        error: err instanceof Error ? { name: err.name, message: err.message } : err,
+      });
       return 'exists';
     }
     log.warn('Failed to create Square custom attribute definition', {
@@ -201,6 +310,103 @@ export async function ensureDefinitions(
     if (status === 'failed') allOk = false;
   }
   return allOk;
+}
+
+/**
+ * Deletes a customer custom-attribute definition from the seller. Used
+ * by the repair path when the upsert keeps reporting `definition_missing`
+ * for a key that `createDefinition` claims already exists — the only
+ * consistent explanation is a stale/broken definition (e.g. one created
+ * with the now-rejected `developer.squareup.com/...` schema URI). Square
+ * silently keeps the orphan record by name, blocks recreate with
+ * "already exists", and rejects upserts against it. The fix is to
+ * delete-and-recreate.
+ *
+ * NOT_FOUND is treated as success so the helper is idempotent — a
+ * second caller in a race can still progress to recreate.
+ *
+ * Returns true on success (including idempotent NOT_FOUND), false on
+ * any other API failure. Callers should treat false as NON-FATAL.
+ */
+export async function deleteDefinition(
+  client: SquareCustomAttrDefinitionsClient,
+  key: string,
+): Promise<boolean> {
+  try {
+    await client.customers.customAttributeDefinitions.delete({ key });
+    log.info('Deleted Square customer custom attribute definition', { key });
+    return true;
+  } catch (err) {
+    if (err instanceof getSquareErrorCtor() && err.statusCode === 404) {
+      log.info('Square customer custom attribute definition already absent', { key });
+      return true;
+    }
+    log.warn('Failed to delete Square custom attribute definition', {
+      key,
+      error: err instanceof Error ? { name: err.name, message: err.message } : err,
+    });
+    return false;
+  }
+}
+
+/**
+ * Repair a single broken/stale customer custom-attribute definition
+ * by deleting and recreating it. Returns true when the definition is
+ * known-good after the repair (created fresh, or already-exists after
+ * the delete failed but Square's `create` still returned a usable
+ * record), false on hard failure.
+ *
+ * Used by:
+ *   - `scripts/repair-square-customer-attr-definitions.ts` (one-shot
+ *     operator cleanup),
+ *   - `SquarePaymentProvider.syncCustomerLeagueAttributes`'s last-
+ *     ditch self-heal when bust-cache + re-bootstrap still leaves the
+ *     upsert reporting `definition_missing`.
+ */
+export async function repairDefinition(
+  client: SquareCustomAttrDefinitionsClient,
+  key: string,
+): Promise<boolean> {
+  const spec = DEFINITIONS.find((d) => d.key === key);
+  if (!spec) {
+    log.warn('repairDefinition called with unknown key — refusing', { key });
+    return false;
+  }
+  // Delete is best-effort; if it fails for a non-404 reason we still
+  // try the create — Square may surface ALREADY_EXISTS, in which case
+  // the upsert still won't work and we surface false to the caller.
+  await deleteDefinition(client, key);
+  // Square's delete is async on the seller side — empirically the
+  // immediate next create against the same key returns ALREADY_EXISTS
+  // for ~1s after a successful delete. Sleep briefly so the recreate
+  // actually lands a fresh definition instead of bouncing.
+  await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+  // Use a fresh idempotency key so Square doesn't dedupe against the
+  // cached success of the original (now-deleted) v1 create. With the
+  // baked-in v1 key, Square returns the cached 200 without re-running
+  // the create against the empty seller — we logged "exists" but the
+  // definition stayed gone, and every subsequent upsert kept failing
+  // with `definition_missing`.
+  // Square caps idempotency_key at 45 chars, so use a compact form:
+  // `lv-<key>-r-<base36(now)>` — e.g. `lv-league_season-r-lzx8f9k` (~27).
+  const freshKey = `lv-${spec.key}-r-${Date.now().toString(36)}`;
+  const status = await createDefinition(client, spec, freshKey);
+  return status === 'created' || status === 'exists';
+}
+
+/**
+ * Repair both LEAGUE_* definitions (delete + recreate). Returns the
+ * per-key success map so operators (and the in-process self-heal) can
+ * tell which key the failure was on.
+ */
+export async function repairAllDefinitions(
+  client: SquareCustomAttrDefinitionsClient,
+): Promise<Record<string, boolean>> {
+  const result: Record<string, boolean> = {};
+  for (const spec of DEFINITIONS) {
+    result[spec.key] = await repairDefinition(client, spec.key);
+  }
+  return result;
 }
 
 /**
