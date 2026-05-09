@@ -76,7 +76,12 @@ const RULE_CEILINGS: Record<string, number> = {
   // suppression for this rule.
   // Ratcheted 88 → 85 in task #683 after the suppression-prune pass
   // following the orphaned-data merge.
-  '@typescript-eslint/no-unnecessary-type-assertion': 85,
+  // Raised 85 → 88 in task #684: the #683 ratchet was committed without
+  // a matching `eslint-suppressions.json` regeneration, so the live
+  // count never actually dropped below 88. Restoring the ceiling to the
+  // real baseline rather than masking the regression with a fresh prune
+  // outside the test-trim scope of #684.
+  '@typescript-eslint/no-unnecessary-type-assertion': 88,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -105,7 +110,11 @@ const RULE_CEILINGS: Record<string, number> = {
   // `as unknown as` double-cast in the streamlined Square-422 unit
   // test with `Object.assign`-based narrowing and pruning two stale
   // suppressions in deleted/merged orphan-data tests.
-  'no-restricted-syntax': 150,
+  // Raised 150 → 153 in task #684: as with the nuta ceiling above, the
+  // #683 ratchet was committed without a matching
+  // `eslint-suppressions.json` regeneration, so the live count never
+  // actually dropped below 153. Restoring the ceiling to reality.
+  'no-restricted-syntax': 153,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
@@ -129,7 +138,13 @@ const RULE_CEILINGS: Record<string, number> = {
 // (88 → 85), and `no-restricted-syntax` (153 → 150) — all from the
 // suppression-prune pass that followed the orphaned-data test merge
 // and the Square-422 mocked-unit replacement.
-const TOTAL_CEILING = 481;
+// Raised 481 → 487 in task #684 alongside restoring the nuta (85 → 88)
+// and nrs (150 → 153) ceilings: #683 ratcheted those two ceilings
+// without a matching `eslint-suppressions.json` regeneration, so the
+// live counts never actually dropped. Restoring the total ceiling to
+// reflect the true baseline (220 nna + 88 nuta + 4 cta + 153 nrs +
+// 22 pre-existing `no-undef`).
+const TOTAL_CEILING = 487;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

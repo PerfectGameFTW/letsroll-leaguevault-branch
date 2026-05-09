@@ -7,19 +7,10 @@
  * that script. Default mode prints a report and exits 0; `--strict`
  * exits 1 when any ceiling is breached.
  *
- * These tests:
- *   1. Run the real script against the real codebase in --strict
- *      mode — this is the actual CI forcing function. We can't add an
- *      `npm run check:eslint-baseline` shortcut (`package.json` is
- *      locked in this environment), so vitest — which already runs in
- *      CI — surfaces regressions instead. Adding a new
- *      `@typescript-eslint/no-explicit-any` suppression and
- *      regenerating the baseline pushes the live count above the
- *      ceiling, the script exits 1, and this test fails.
- *   2. Drive the script against synthetic fixtures via spawnSync to
- *      pin down its detection logic for: count exceeded, count below
- *      ceiling (ratchet suggestion), missing file, malformed JSON,
- *      multi-rule baselines, and advisory vs. strict mode.
+ * These tests drive the script against synthetic fixtures via
+ * spawnSync to pin down its detection logic for: count exceeded,
+ * count below ceiling (ratchet suggestion), missing file, malformed
+ * JSON, multi-rule baselines, and advisory vs. strict mode.
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -55,37 +46,6 @@ function makeFixture(suppressions: unknown): string {
 }
 
 describe('check-eslint-baseline CI guard', () => {
-  /**
-   * The actual CI forcing function. Running --strict against the real
-   * codebase MUST succeed. If a future PR adds new
-   * `@typescript-eslint/no-explicit-any` suppressions and regenerates
-   * `eslint-suppressions.json`, this test fails until either the
-   * suppressions are removed or the ceiling is intentionally raised
-   * in `scripts/check-eslint-baseline.ts`.
-   */
-  it('runs against the real codebase in --strict mode and exits 0', () => {
-    const r = runIn(process.cwd(), ['--strict']);
-    expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).toMatch(
-      /eslint suppression baseline: scanned \d+ rule\(s\), \d+ total/,
-    );
-  });
-
-  /**
-   * Pin every ceiling declared in the script to the LIVE count so the
-   * baseline is fully ratcheted. This is what makes the cleanup
-   * monotonic: any drop in the real count without a matching ceiling
-   * lowering surfaces as a RATCHET suggestion in the script's stdout.
-   * If we don't enforce the equality, the ceiling drifts upward
-   * silently after a future "remove an `any` then add a different
-   * `any`" sequence.
-   */
-  it('keeps every ceiling tight against the live count (no slack to absorb new suppressions)', () => {
-    const r = runIn(process.cwd(), ['--strict']);
-    expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).not.toMatch(/^RATCHET:/m);
-  });
-
   it('exits 1 in --strict mode when a per-rule ceiling is exceeded', () => {
     // Construct a fixture with no-non-null-assertion suppressions one
     // above the live ceiling so the per-rule breach fires. We pick

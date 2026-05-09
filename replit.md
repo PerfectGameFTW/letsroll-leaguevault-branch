@@ -81,6 +81,7 @@ A full-stack bowling league management application with multi-tenant support for
 - **`log.debug` in Production**: PII audit ensures no sensitive data is logged at `debug` level. Default `LOG_LEVEL` is `info` in production.
 - **Test-Fixture Leak Tripwire**: `tests/api/orphaned-data-audits.test.ts` has specific cleanup and checks to prevent test data from leaking. Use `SKIP_AUDIT_LEAK_CHECK=1` for local debugging only.
 - **Background Worker Kick Suppression in Tests**: New background workers must be suppressible via `x-test-suppress-<worker>-kick` headers to prevent race conditions in tests.
+- **Test Suite Baseline**: 193 test files / 1875 tests / ~270s. ESLint suppression baseline: 487 total (no-non-null-assertion 220, no-restricted-syntax 153, no-unnecessary-type-assertion 88, consistent-type-assertions 4, no-explicit-any 0; plus 22 pre-existing `no-undef` in `client/public/sw.js`).
 - **`BACKFILL_MISSING_PAYMENT_CUSTOMERS=true`**: One-shot env flag that, on boot, stamps `payment_sync_pending_at = NOW()` on every bowler with an email but no `payment_customer_id` (and a NULL pending flag) so the background retry sweep backfills missing Square customers. No-op without the flag. Unset after the sweep clears the queue. See `server/migrations/backfill-missing-payment-customers.ts`.
 
 ## Pointers

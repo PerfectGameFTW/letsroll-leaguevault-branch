@@ -75,22 +75,6 @@ export function sendError(
 ): void {}
 `;
 
-describe('check-not-found-code (real codebase)', () => {
-  it('passes against the real server/routes tree', () => {
-    const r = runIn(process.cwd());
-    // Composite assertion: exit 0 + the success banner.
-    // If this test fails, a 404 sendError site uses a
-    // non-allow-listed code — fix: use 'NOT_FOUND' or one of the
-    // allow-listed alternatives in scripts/check-not-found-code.ts.
-    expect(
-      { status: r.status, stdout: r.stdout, stderr: r.stderr },
-    ).toMatchObject({
-      status: 0,
-      stdout: expect.stringContaining('[check-not-found-code] OK'),
-    });
-  }, 30_000);
-});
-
 describe('check-not-found-code (synthetic fixtures)', () => {
   it("passes when every 404 site uses 'NOT_FOUND' or an allow-listed alternative", () => {
     const dir = makeFixture({

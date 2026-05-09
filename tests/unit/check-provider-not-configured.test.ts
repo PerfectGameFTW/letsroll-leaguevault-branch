@@ -13,14 +13,10 @@
  *       `'clover'` (must be derived from
  *       `usePaymentProvider(locationId)`).
  *
- * These tests:
- *   1. Run the real script against the real codebase. Primary
- *      forcing function: a future PR that lands a call site
- *      omitting `provider` (or hardcoding it) will fail this test.
- *   2. Drive the script against synthetic fixtures via spawnSync to
- *      pin its detection logic for each rule and to confirm the
- *      ignore-rules (`.test.*`, `.d.ts`, files outside client/src)
- *      hold.
+ * These tests drive the script against synthetic fixtures via
+ * spawnSync to pin its detection logic for each rule and to
+ * confirm the ignore-rules (`.test.*`, `.d.ts`, files outside
+ * client/src) hold.
  *
  * Mirrors the structure of `tests/unit/check-not-found-code.test.ts`.
  */
@@ -78,22 +74,6 @@ export function providerNotConfiguredToast(_o: ProviderNotConfiguredToastOptions
   return { title: 'x', description: 'y', variant: 'destructive' };
 }
 `;
-
-describe('check-provider-not-configured (real codebase)', () => {
-  it('passes against the real client/src tree', () => {
-    const r = runIn(process.cwd());
-    // Composite assertion: exit 0 + the success banner. If this
-    // test fails, a providerNotConfiguredToast(...) call site is
-    // missing `provider` or hardcoded a literal — see the script's
-    // FAIL output for the offending site and the canonical fix.
-    expect(
-      { status: r.status, stdout: r.stdout, stderr: r.stderr },
-    ).toMatchObject({
-      status: 0,
-      stdout: expect.stringContaining('[check-provider-not-configured] OK'),
-    });
-  }, 60_000);
-});
 
 describe('check-provider-not-configured (synthetic fixtures)', () => {
   it('passes when every call site passes a literal provider derived from the hook', () => {

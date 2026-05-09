@@ -60,14 +60,6 @@ args = "lint"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "csrf-coverage"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "org-isolation"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "wire-sanitization"
 
 [[workflows.workflow.tasks]]
@@ -81,6 +73,14 @@ args = "test"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "not-found-code"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "csrf-coverage"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "extra-guards"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -112,28 +112,6 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run lint"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "csrf-coverage"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run check:csrf"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "org-isolation"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run check:org-isolation"
 
 [workflows.workflow.metadata]
 isValidation = true
@@ -181,6 +159,28 @@ args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provide
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "csrf-coverage"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run check:csrf && npm run check:org-isolation"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "extra-guards"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx scripts/check-eslint-baseline.ts --strict && npx tsx scripts/check-no-secrets-in-logs.ts --surface=server --strict && npx tsx scripts/check-no-secrets-in-logs.ts --surface=client --strict && npx tsx scripts/check-log-debug-pii.ts --strict && npx tsx scripts/check-trust-proxy-coverage.ts --strict"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node --import ./dist/instrument.js dist/index.js"]

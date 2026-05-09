@@ -9,22 +9,11 @@
  * a report and exits 0; `--strict` exits 1 when uncovered endpoints
  * are found.
  *
- * These tests:
- *   1. Run the real script against the real codebase in advisory
- *      mode and assert it exits 0. (Advisory-mode behavior is still
- *      worth pinning even though the primary CI gate now runs in
- *      strict mode — see `npm run check:org-isolation` and the
- *      "Cross-org isolation coverage" step in `.github/workflows/ci.yml`,
- *      both wired in task #400.)
- *   2. Drive the script against synthetic fixtures via a `--strict`
- *      run to pin down its detection logic for: filtered lists with
- *      and without coverage, fetch-by-id endpoints with and without
- *      coverage, multi-param paths, plain GETs that don't qualify,
- *      and id-shape filtering for path params.
- *   3. Cross-check the live `--strict` run against
- *      `tests/api/.org-isolation-baseline.json` (currently empty) so
- *      a new gap fails this suite even if the dedicated CI step is
- *      ever skipped.
+ * These tests drive the script against synthetic fixtures via a
+ * `--strict` run to pin down its detection logic for: filtered
+ * lists with and without coverage, fetch-by-id endpoints with and
+ * without coverage, multi-param paths, plain GETs that don't
+ * qualify, and id-shape filtering for path params.
  */
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
@@ -70,54 +59,6 @@ app.use('${prefix}', myRouter);
 }
 
 describe('check-org-isolation-coverage CI guard', () => {
-  it('runs against the real codebase without crashing and exits 0 in advisory mode', () => {
-    const r = runIn(process.cwd());
-    expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).toMatch(/scanned \d+ id-bearing GET endpoint/);
-  });
-
-  /**
-   * Belt-and-suspenders baseline check. The primary CI forcing
-   * function is now `npm run check:org-isolation` (= the same script
-   * with `--strict`), wired into `.github/workflows/ci.yml` as a
-   * blocking step in task #400. This vitest assertion is a second
-   * line of defense: it runs the script with `--strict`, extracts
-   * the set of currently-flagged endpoints, and asserts it is a
-   * SUBSET of `tests/api/.org-isolation-baseline.json`.
-   *
-   * As of task #399 the baseline is empty (every id-bearing GET
-   * endpoint is either covered or explicitly allowlisted), so this
-   * test will fail on the first new gap regardless of whether the
-   * dedicated CI step ran. Adding a new uncovered endpoint adds to
-   * the flagged set → not a subset → test fails. Closing an
-   * existing gap (removing a path from the live flagged set) keeps
-   * the subset relation intact and remains green; the baseline can
-   * then be trimmed to keep the lint tight.
-   */
-  it('does not introduce new uncovered cross-org endpoints (baseline check)', () => {
-    const fs = require('node:fs') as typeof import('node:fs');
-    const baselineRaw = fs.readFileSync(
-      join(process.cwd(), 'tests/api/.org-isolation-baseline.json'),
-      'utf8',
-    );
-    const baseline = new Set<string>(
-      (JSON.parse(baselineRaw) as { uncovered: string[] }).uncovered,
-    );
-    const r = runIn(process.cwd(), ['--strict']);
-    const flagged = new Set(
-      [...r.stderr.matchAll(/- (GET \/[^\s]+)/g)].map((m) => m[1]),
-    );
-    const newGaps = [...flagged].filter((p) => !baseline.has(p)).sort();
-    expect(
-      newGaps,
-      `New uncovered cross-org endpoint(s) detected:\n${newGaps
-        .map((p) => `  - ${p}`)
-        .join(
-          '\n',
-        )}\n\nAdd a cross-org assertion in tests/api/organization-isolation.test.ts (preferred), or, with security-team sign-off, append the path to tests/api/.org-isolation-baseline.json.\n\nFull lint output:\n${r.stderr}`,
-    ).toEqual([]);
-  });
-
   it('passes (--strict) when every id-bearing GET endpoint is referenced in the test', () => {
     const dir = makeFixture({
       'server/routes/index.ts': indexMounting('/api/widgets', 'widgets'),

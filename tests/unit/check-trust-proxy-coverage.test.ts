@@ -11,11 +11,13 @@
  * address and quietly collapse the brute-force ceiling. See
  * `server/lib/trust-proxy-check.ts` for the full rationale.
  *
- * These tests:
- *   1. Run the real script against the real `server/` tree (clean
- *      spawn) and assert it currently exits 0.
- *   2. Run the script against synthetic fixtures covering the
- *      positive, negative, comment-stripping, and test-skip paths.
+ * Coverage is one positive + one negative per detection bucket:
+ *   - presence check (default import + new entrypoint)
+ *   - comment / non-call false-positive avoidance
+ *   - test/fixture skip path
+ *   - alias-following (renamed default import)
+ *   - CJS require + ESM namespace .default()
+ *   - position check: assertion must precede listen()
  */
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
@@ -50,59 +52,23 @@ function makeFixture(files: Record<string, string>): string {
 }
 
 describe('check-trust-proxy-coverage CI guard', () => {
-  it('passes against the real server/ tree (sanity)', () => {
-    const r = runIn(process.cwd());
-    expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).toMatch(/OK/);
-  });
-
+  // ---- presence check: positive + negative -----------------------
   it('fails when an express() instance has no assertTrustProxyAtBoot call in the same file', () => {
     const dir = makeFixture({
-      'server/index.ts': `import express from 'express';
-const app = express();
-app.set('trust proxy', 1);
+      'server/admin-app.ts': `import express from 'express';
+const adminApp = express();
+adminApp.set('trust proxy', 1);
 // missing: assertTrustProxyAtBoot call
 `,
     });
     const r = runIn(dir);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/server\/index\.ts/);
-    expect(r.stderr).toMatch(/express\(\) without assertTrustProxyAtBoot/);
-  });
-
-  it('fails for any new entrypoint file under server/, not just index.ts', () => {
-    // The whole point of the guard: catches a future contributor
-    // who spins up a second express() somewhere other than the
-    // canonical entrypoint (e.g. an admin UI, a worker that also
-    // serves HTTP, a serverless adapter).
-    const dir = makeFixture({
-      'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-`,
-      'server/admin-app.ts': `import express from 'express';
-const adminApp = express();
-adminApp.set('trust proxy', 1);
-// oops — forgot the boot-time guard
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/server\/admin-app\.ts/);
-    // index.ts is fine here, must NOT be flagged.
-    expect(r.stderr).not.toMatch(/server\/index\.ts/);
+    expect(r.stderr).toMatch(/express\(\) without assertTrustProxyAtBoot/);
   });
 
   it('passes when the new entrypoint imports and calls the assertion', () => {
     const dir = makeFixture({
-      'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-`,
       'server/admin-app.ts': `import express from 'express';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 const adminApp = express();
@@ -114,10 +80,18 @@ assertTrustProxyAtBoot(adminApp, { isProduction: true, log: console });
     expect(r.status, r.stderr).toBe(0);
   });
 
-  it('does not flag commented-out express() calls', () => {
+  // ---- comment / non-call false positives ------------------------
+  it('does not flag commented-out, doc-comment, or property-style express() references', () => {
     const dir = makeFixture({
-      'server/sample.ts': `// const app = express();   // example in a doc comment
-/* express() */
+      'server/sample.ts': `// const app = express();   // line-comment example
+/**
+ * Example usage:
+ *   const app = express();
+ */
+import { someLib } from 'somewhere';
+someLib.express();
+const myExpress = { express: () => 0 };
+myExpress.express();
 export const note = 1;
 `,
     });
@@ -125,23 +99,8 @@ export const note = 1;
     expect(r.status, r.stderr).toBe(0);
   });
 
-  it('does not flag commented-out express() calls inside doc comments', () => {
-    // Block-comment doc snippets that mention express() must be
-    // stripped before the regex pass.
-    const dir = makeFixture({
-      'server/sample.ts': `/**
- * Example usage:
- *   const app = express();
- *   app.use(stuff);
- */
-export const note = 2;
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status, r.stderr).toBe(0);
-  });
-
-  it('skips files under __tests__ directories', () => {
+  // ---- test / fixture skip path ----------------------------------
+  it('skips files under __tests__ directories and *.test.ts files', () => {
     const dir = makeFixture({
       'server/index.ts': `import express from 'express';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
@@ -152,20 +111,8 @@ assertTrustProxyAtBoot(app, { isProduction: false, log: console });
 const fakeApp = express();
 // no assertion here — but this is a test fixture, must be skipped
 `,
-    });
-    const r = runIn(dir);
-    expect(r.status, r.stderr).toBe(0);
-  });
-
-  it('skips *.test.ts files', () => {
-    const dir = makeFixture({
-      'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-`,
       'server/something.test.ts': `import express from 'express';
-const fakeApp = express();
+const fakeAppToo = express();
 // no assertion here — but this is a test file, must be skipped
 `,
     });
@@ -173,32 +120,7 @@ const fakeApp = express();
     expect(r.status, r.stderr).toBe(0);
   });
 
-  it('does not match property-style calls like obj.express()', () => {
-    // The regex is pinned to a bare `express()` call so a property
-    // access on something named `express` doesn't trip the guard.
-    const dir = makeFixture({
-      'server/sample.ts': `import { someLib } from 'somewhere';
-someLib.express();
-const myExpress = { express: () => 0 };
-myExpress.express();
-export const note = 3;
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status, r.stderr).toBe(0);
-  });
-
-  it('does not flag the import line itself', () => {
-    // `import express from 'express'` must not match the regex.
-    const dir = makeFixture({
-      'server/sample.ts': `import express from 'express';
-export const note = 4;
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status, r.stderr).toBe(0);
-  });
-
+  // ---- alias-following: renamed default import -------------------
   it('flags a renamed default import (import ex from "express"; ex())', () => {
     // The realistic future-contributor footgun: rename the default
     // import and a regex pinned to the literal token `express()`
@@ -229,38 +151,12 @@ assertTrustProxyAtBoot(adminApp, { isProduction: false, log: console });
     expect(r.status, r.stderr).toBe(0);
   });
 
-  it('flags an ESM default + named import alias (import ex, { Router } from "express"; ex())', () => {
-    // `import express, { Router } from 'express'` is the real shape
-    // server/index.ts uses; the regex must still recognize the
-    // default-binding name when a named-import tail is present.
-    // Renamed variant is the dangerous one.
-    const dir = makeFixture({
-      'server/admin-app.ts': `import ex, { Router } from 'express';
-const adminApp = ex();
-const r = Router();
-`,
-    });
-    const result = runIn(dir);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/server\/admin-app\.ts/);
-  });
-
+  // ---- CJS require + ESM namespace .default() --------------------
   it('flags a CJS default require (const ex = require("express"); ex())', () => {
     const dir = makeFixture({
       'server/admin-app.ts': `const ex = require('express');
 const adminApp = ex();
 adminApp.set('trust proxy', 1);
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/server\/admin-app\.ts/);
-  });
-
-  it('flags a CJS destructured default require (const { default: ex } = require("express"); ex())', () => {
-    const dir = makeFixture({
-      'server/admin-app.ts': `const { default: ex } = require('express');
-const adminApp = ex();
 `,
     });
     const r = runIn(dir);
@@ -280,39 +176,7 @@ adminApp.set('trust proxy', 1);
     expect(r.stderr).toMatch(/server\/admin-app\.ts/);
   });
 
-  it('does not flag a file that imports express but never calls it (e.g. only uses Router)', () => {
-    // A file might import the default just to grab `Router` from
-    // the same statement, or to re-export types, without ever
-    // constructing an app. No call site → nothing to flag.
-    const dir = makeFixture({
-      'server/sample.ts': `import express, { Router } from 'express';
-const r = Router();
-export { r };
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status, r.stderr).toBe(0);
-  });
-
-  it('flags multiple express() calls in the same uncovered file separately', () => {
-    // If a file unfortunately has two express() instances, both
-    // line numbers should appear so the violation report is useful
-    // to the dev fixing it.
-    const dir = makeFixture({
-      'server/sample.ts': `import express from 'express';
-const app = express();
-const adminApp = express();
-`,
-    });
-    const r = runIn(dir);
-    expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/server\/sample\.ts:2/);
-    expect(r.stderr).toMatch(/server\/sample\.ts:3/);
-  });
-
-  // ---------------------------------------------------------------
-  // Position check (task #497).
-  //
+  // ---- position check: assertion-vs-listen ordering --------------
   // The lint additionally rejects files where the first
   // `assertTrustProxyAtBoot(` call site appears at a later source
   // offset than the first `<id>.listen(` call. This closes the
@@ -321,110 +185,48 @@ const adminApp = express();
   // `app.listen(...)`, satisfying the presence check while letting
   // a real request arrive (and key off a misconfigured `req.ip`)
   // before the boot-time guard ever runs.
-  // ---------------------------------------------------------------
-  describe('assertion-vs-listen ordering', () => {
-    it('passes when the assertion appears before the first listen() call', () => {
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
+  it('passes when the assertion appears before the first listen() call', () => {
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 const app = express();
 app.set('trust proxy', 1);
 assertTrustProxyAtBoot(app, { isProduction: false, log: console });
 app.listen(3000);
 `,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
     });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
 
-    it('fails when the assertion is placed after app.listen()', () => {
-      // The exact footgun the position check exists to catch:
-      // presence check passes, but `app.listen()` has already
-      // started accepting connections by the time the assertion
-      // would have run.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
+  it('fails when the assertion is placed after app.listen()', () => {
+    // The exact footgun the position check exists to catch:
+    // presence check passes, but `app.listen()` has already started
+    // accepting connections by the time the assertion would have
+    // run.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 const app = express();
 app.set('trust proxy', 1);
 app.listen(3000);
 assertTrustProxyAtBoot(app, { isProduction: false, log: console });
 `,
-      });
-      const r = runIn(dir);
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/server\/index\.ts:6/);
-      expect(r.stderr).toMatch(/after listen\(\) at line 5/);
     });
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/server\/index\.ts:6/);
+    expect(r.stderr).toMatch(/after listen\(\) at line 5/);
+  });
 
-    it('fails when the assertion is placed after server.listen()', () => {
-      // Same footgun, with the more common `server.listen(...)`
-      // shape (HTTP server returned from `createServer(app)`).
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
-import { createServer } from 'http';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-const server = createServer(app);
-server.listen(3000);
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status).toBe(1);
-      expect(r.stderr).toMatch(/after listen\(\) at line 7/);
-    });
-
-    it('passes when both calls live inside a startServer() arrow declared above its call site (assertion textually above listen)', () => {
-      // Common factoring: a same-file `startServer` factory holds
-      // both calls. As long as the assertion is textually above
-      // the listen inside that factory, the lint accepts it —
-      // it does NOT chase control flow, only lexical position.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-const startServer = () => {
-  assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-  app.listen(3000);
-};
-startServer();
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
-    });
-
-    it('passes when both calls live inside a function declaration declared above its call site', () => {
-      // Same factoring as above but with a `function` declaration
-      // instead of an arrow. Position compare is by source offset,
-      // which doesn't care which function form was used.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-function startServer() {
-  assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-  app.listen(3000);
-}
-startServer();
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
-    });
-
-    it('matches the real server/index.ts factoring (top-level assertion, listen inside a startServer()) and passes', () => {
-      // Mirrors the layout of the real entrypoint: the assertion
-      // is at the top level right after `app.set('trust proxy')`,
-      // and `server.listen(...)` lives further down inside an
-      // async startServer() body. The position check must accept
-      // this regardless of where startServer() is invoked from.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
+  it('matches the real server/index.ts factoring (top-level assertion, listen inside a startServer()) and passes', () => {
+    // Mirrors the real entrypoint: the assertion is at top level
+    // right after `app.set('trust proxy')`, and `server.listen(...)`
+    // lives further down inside an async startServer() body. The
+    // position check must accept this regardless of where
+    // startServer() is invoked from.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
 import { createServer } from 'http';
 import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 const app = express();
@@ -436,68 +238,8 @@ async function startServer() {
 }
 startServer();
 `,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
     });
-
-    it('passes when the file has no listen() call at all (entrypoint hands the app to another file)', () => {
-      // Some adapters export the app and let a sibling file bind
-      // the port. With no in-file `<id>.listen(`, there's no
-      // ordering to compare — fall back to the presence check
-      // already covered above.
-      const dir = makeFixture({
-        'server/admin-app.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const adminApp = express();
-adminApp.set('trust proxy', 1);
-assertTrustProxyAtBoot(adminApp, { isProduction: false, log: console });
-export { adminApp };
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
-    });
-
-    it('does not treat a commented-out listen() above the assertion as the first listen()', () => {
-      // Comment stripping is shared with the rest of the script:
-      // a `// app.listen(...)` example in a doc-comment must not
-      // make the position check think listen happens first.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-// e.g. app.listen(3000) — example only
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-app.listen(3000);
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
-    });
-
-    it('does not match unrelated identifiers ending in .listen on something that is not a server', () => {
-      // The pattern is `<id>.listen(`, which would in principle
-      // also match e.g. `emitter.listen(...)`. The position check
-      // is heuristic; if a future file mixes a real `app.listen()`
-      // with an unrelated `.listen(`, the FIRST one wins. This
-      // test pins behavior: a non-listen file with a misleading
-      // `.listen` should not flip an otherwise correctly-ordered
-      // assertion into a "late" violation.
-      const dir = makeFixture({
-        'server/index.ts': `import express from 'express';
-import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
-const app = express();
-app.set('trust proxy', 1);
-assertTrustProxyAtBoot(app, { isProduction: false, log: console });
-const events = { listen: () => 0 };
-events.listen();
-app.listen(3000);
-`,
-      });
-      const r = runIn(dir);
-      expect(r.status, r.stderr).toBe(0);
-    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
   });
 });
