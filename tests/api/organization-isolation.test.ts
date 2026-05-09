@@ -964,17 +964,50 @@ describe('Organization Isolation', () => {
     // or a 200 with no leaking row/payload.
     // ----------------------------------------------------------------
     describe('task #399 — additional cross-org coverage (lint backfill)', () => {
-      it('org A GET /api/admin/email-templates/:id → 403 (admin-only endpoint denies org_admin)', async () => {
-        // The admin router is gated by requireOrgAdmin at mount and
-        // each handler additionally calls requireAdmin (system_admin
-        // only). An org_admin caller hits the 403 from requireAdmin
-        // before any id lookup happens, so a placeholder id is enough
-        // to exercise the gate without provisioning a template.
-        const placeholderTemplateId = 999999;
-        const { status, data } = await apiGet(
-          `/api/admin/email-templates/${placeholderTemplateId}`,
-          sessionA,
-        );
+      // Five GET handlers below all share the same shape: an org A
+      // caller targets an org B id (or a placeholder id for the
+      // admin-only template route, where the requireAdmin gate fires
+      // before any id lookup) and must receive a strict 403 with a
+      // `success: false` body. They were originally five near-identical
+      // `it(...)` blocks; collapsed into one `it.each` to make adding
+      // a new endpoint a one-line addition. The `pathTemplate` strings
+      // intentionally embed `${...}` segments so
+      // `scripts/check-org-isolation-coverage.ts` still recognises
+      // each `:param` segment as covered. Heterogeneous tests below
+      // (positive-control, listing-leak-checks, echo-equality, etc.)
+      // stay inline because their assertion shapes diverge.
+      it.each([
+        {
+          // Admin router is gated by requireOrgAdmin at mount and each
+          // handler additionally calls requireAdmin (system_admin only).
+          // An org_admin caller hits 403 from requireAdmin before any id
+          // lookup happens, so a placeholder id is enough.
+          name: 'GET /api/admin/email-templates/:id (admin-only)',
+          path: () => `/api/admin/email-templates/${999999}`,
+        },
+        {
+          name: 'GET /api/locations/:id (org B location)',
+          path: () => `/api/locations/${orgBLocationId}`,
+        },
+        {
+          name: 'GET /api/locations/:id/clover-config (org B location)',
+          path: () => `/api/locations/${orgBLocationId}/clover-config`,
+        },
+        {
+          name: 'GET /api/locations/:id/square-config (org B location)',
+          path: () => `/api/locations/${orgBLocationId}/square-config`,
+        },
+        {
+          // Both segments must be `${...}` references so the coverage
+          // lint's regex counts every `:param` of the effective path.
+          name: 'GET /api/scores/league/:leagueId/week/:weekNumber (org B league)',
+          path: () => {
+            const weekNumber = 1;
+            return `/api/scores/league/${orgBLeagueId}/week/${weekNumber}`;
+          },
+        },
+      ])('org A $name → 403', async ({ path }) => {
+        const { status, data } = await apiGet(path(), sessionA);
         expect(status).toBe(403);
         expect(data.success).toBe(false);
       });

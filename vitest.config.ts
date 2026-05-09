@@ -1,20 +1,23 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Test files that briefly hold ACCESS EXCLUSIVE locks on the
- * teams / bowler_leagues / payments / users tables (the orphan-data
- * fixtures temporarily DROP/ADD foreign-key constraints to stage
- * legacy parent-missing rows). To keep these from racing against the
- * other suites that write the same tables, all such files run in a
- * dedicated single-fork project. Everything else parallelises.
+ * Test files that perform FK-bypass DDL on shared tables — i.e. they
+ * call into `tests/helpers/orphan-staging.ts` to briefly DROP/ADD the
+ * `<table>_league_id_leagues_id_fk` constraint (or DISABLE/ENABLE the
+ * `users_role_org_required` trigger) so they can stage "legacy"
+ * parent-missing rows that the live schema would otherwise reject.
+ *
+ * The DDL window itself is transaction-scoped (~tens of ms of
+ * ACCESS EXCLUSIVE per insert) and the constraint is re-added as
+ * `NOT VALID` so existing orphans don't block — but two orphan suites
+ * running in parallel can still trip on each other's locks. We keep
+ * those (and ONLY those) in a single-fork project. Every other file
+ * that merely writes the same tables runs in the parallel project;
+ * any rare overlap with an active DDL window manifests as a brief
+ * lock wait, not a correctness issue.
  */
 const SHARED_TABLE_WRITERS = [
   'tests/api/orphaned-data.test.ts',
-  'tests/api/orphaned-data-audits.test.ts',
-  'tests/api/payments-by-org.test.ts',
-  'tests/api/organization-isolation.test.ts',
-  'tests/api/square-provider-not-configured-422.test.ts',
-  'tests/unit/account-deletion.test.ts',
 ];
 
 const sharedAlias = {

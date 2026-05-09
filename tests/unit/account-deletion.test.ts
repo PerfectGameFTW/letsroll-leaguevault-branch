@@ -545,15 +545,25 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
   });
 
   // --------------------------------------------------------------------
-  // Task #349: requester opt-out of the post-deletion confirmation email.
+  // Tasks #349 + #351: post-deletion confirmation email.
   //
-  // The previous round wired up a third `notifyOnCompletion` argument
-  // that defaults to true (so legacy 2-arg callers, including these
-  // tests, keep their behavior). The block below pins both the gate
-  // and the structured `summary.confirmationEmail` audit field that
-  // the admin history view consumes.
+  // #349 wired the third `notifyOnCompletion` argument (default true)
+  // and the `summary.confirmationEmail` audit field. #351 pinned the
+  // contract with `sendAccountDeletionConfirmation` (called once with a
+  // payload whose counts match the summary; SendGrid failures never
+  // roll back the GDPR scrub; thrown exceptions are caught and logged).
+  //
+  // Originally this lived in two describe blocks of 4 + 3 tests with
+  // overlapping happy / soft-fail / hard-fail coverage. Consolidated
+  // to four tests that, between them, cover every behavior:
+  //   - happy + payload  : default notify path, helper called once with
+  //                         counts that match the summary (sent=true)
+  //   - suppressed       : notifyOnCompletion=false skips SendGrid
+  //   - returns false    : soft failure → recorded, scrub completes
+  //   - throws + logged  : hard failure → caught, recorded, logged at
+  //                         ERROR level, scrub completes
   // --------------------------------------------------------------------
-  describe('confirmation email gate (#349)', () => {
+  describe('confirmation email (#349, #351)', () => {
     let sendSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -564,123 +574,15 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       sendSpy.mockRestore();
     });
 
-    it('skips the SendGrid call and marks suppressedByUser when notifyOnCompletion=false', async () => {
+    it('default notify path: calls sendAccountDeletionConfirmation once with a payload whose counts match the summary', async () => {
       const orgId = await makeOrg();
       const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('opt-out');
-      await makeUser(targetEmail, orgId);
-      await makeBowler(targetEmail, orgId);
-
-      // Stub sendgrid so even if the gate were wrong, no real email
-      // would leave the test environment.
-      sendSpy.mockResolvedValue(true);
-
-      const summary = await executeAccountDeletion(targetEmail, adminId, false);
-
-      expect(sendSpy).not.toHaveBeenCalled();
-      expect(summary.confirmationEmail).toEqual({
-        sent: false,
-        suppressedByUser: true,
-      });
-      // The deletion itself must still happen — opting out of the
-      // confirmation email is unrelated to the actual scrub.
-      expect(summary.user.deleted).toBe(true);
-      expect(summary.bowlers[0].anonymized).toBe(true);
-    });
-
-    it('records sent=true when SendGrid succeeds (default notifyOnCompletion)', async () => {
-      const orgId = await makeOrg();
-      const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('notify-default');
-      await makeUser(targetEmail, orgId);
-      await makeBowler(targetEmail, orgId);
-
-      sendSpy.mockResolvedValue(true);
-
-      const summary = await executeAccountDeletion(targetEmail, adminId);
-
-      expect(sendSpy).toHaveBeenCalledTimes(1);
-      expect(summary.confirmationEmail).toEqual({
-        sent: true,
-        suppressedByUser: false,
-      });
-    });
-
-    it('records suppressedByUser=false and error when SendGrid throws', async () => {
-      const orgId = await makeOrg();
-      const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('notify-throws');
-      await makeUser(targetEmail, orgId);
-      await makeBowler(targetEmail, orgId);
-
-      sendSpy.mockRejectedValue(new Error('SendGrid 502 Bad Gateway'));
-
-      const summary = await executeAccountDeletion(targetEmail, adminId, true);
-
-      expect(sendSpy).toHaveBeenCalledTimes(1);
-      expect(summary.confirmationEmail?.sent).toBe(false);
-      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
-      expect(summary.confirmationEmail?.error).toMatch(/502 Bad Gateway/);
-      // The deletion must complete even when the post-deletion email
-      // fails — per task #314 the email is best-effort.
-      expect(summary.user.deleted).toBe(true);
-    });
-
-    it('records suppressedByUser=false and error when SendGrid returns false', async () => {
-      const orgId = await makeOrg();
-      const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('notify-returns-false');
-      await makeUser(targetEmail, orgId);
-      await makeBowler(targetEmail, orgId);
-
-      sendSpy.mockResolvedValue(false);
-
-      const summary = await executeAccountDeletion(targetEmail, adminId, true);
-
-      expect(sendSpy).toHaveBeenCalledTimes(1);
-      expect(summary.confirmationEmail?.sent).toBe(false);
-      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
-      // Distinct, non-empty error string so the admin UI shows
-      // something useful in the "failed to send" pill.
-      expect(summary.confirmationEmail?.error).toMatch(/SendGrid send returned false/);
-    });
-  });
-
-  // --------------------------------------------------------------------
-  // Task #351: pin the contract between executeAccountDeletion and
-  // sendAccountDeletionConfirmation.
-  //
-  // The #349 block above proves the *outcome* is recorded on the
-  // summary (sent / suppressed / error). This block proves the
-  // *contract* with the SendGrid helper:
-  //   1. the helper is called once with a payload whose counts match
-  //      the rest of the summary (so the email body can't drift away
-  //      from what was actually deleted),
-  //   2. a SendGrid soft failure (return false) does NOT roll back any
-  //      part of the deletion — the GDPR scrub still completes,
-  //   3. a SendGrid hard failure (thrown exception) is swallowed and
-  //      logged at error level — the caller never sees the throw.
-  // --------------------------------------------------------------------
-  describe('confirmation email contract (#351)', () => {
-    let sendSpy: ReturnType<typeof vi.spyOn>;
-
-    beforeEach(() => {
-      sendSpy = vi.spyOn(emailService, 'sendAccountDeletionConfirmation');
-    });
-
-    afterEach(() => {
-      sendSpy.mockRestore();
-    });
-
-    it('calls sendAccountDeletionConfirmation once with counts that match the summary', async () => {
-      const orgId = await makeOrg();
-      const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('contract-happy');
+      const targetEmail = uniqueEmail('happy-payload');
       await makeUser(targetEmail, orgId);
 
-      // Two bowlers + one payment-provider customer-id so the
-      // payload counts are non-trivial (catches a regression where
-      // the call site hard-codes 1 or forgets a count).
+      // Two bowlers + one payment-provider customer-id so the payload
+      // counts are non-trivial (catches a regression where the call
+      // site hard-codes 1 or forgets a count).
       const locA = await makeLocation(orgId);
       const leagueA = await makeLeague(orgId, locA);
       const teamA = await makeTeam(leagueA);
@@ -718,12 +620,37 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       });
       expect(bowlersAnonymized).toBeGreaterThanOrEqual(2);
       expect(providerDeletes).toBe(1);
+      expect(summary.confirmationEmail).toEqual({ sent: true, suppressedByUser: false });
     });
 
-    it('still resolves with a complete summary (and user.deleted=true) when SendGrid returns false', async () => {
+    it('skips the SendGrid call and marks suppressedByUser when notifyOnCompletion=false', async () => {
       const orgId = await makeOrg();
       const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('contract-soft-fail');
+      const targetEmail = uniqueEmail('opt-out');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      // Stub sendgrid so even if the gate were wrong, no real email
+      // would leave the test environment.
+      sendSpy.mockResolvedValue(true);
+
+      const summary = await executeAccountDeletion(targetEmail, adminId, false);
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(summary.confirmationEmail).toEqual({
+        sent: false,
+        suppressedByUser: true,
+      });
+      // The deletion itself must still happen — opting out of the
+      // confirmation email is unrelated to the actual scrub.
+      expect(summary.user.deleted).toBe(true);
+      expect(summary.bowlers[0].anonymized).toBe(true);
+    });
+
+    it('soft failure: SendGrid returns false → records error, scrub still completes (no rollback)', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('notify-returns-false');
       await makeUser(targetEmail, orgId);
       await makeBowler(targetEmail, orgId);
 
@@ -731,9 +658,14 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
 
       // Critically: this call must not throw. A SendGrid outage is
       // not allowed to roll back the GDPR scrub.
-      const summary = await executeAccountDeletion(targetEmail, adminId);
+      const summary = await executeAccountDeletion(targetEmail, adminId, true);
 
       expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(summary.confirmationEmail?.sent).toBe(false);
+      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
+      // Distinct, non-empty error string so the admin UI shows
+      // something useful in the "failed to send" pill.
+      expect(summary.confirmationEmail?.error).toMatch(/SendGrid send returned false/);
       // Every load-bearing field on the summary is still populated.
       expect(summary.executedAt).toEqual(expect.any(String));
       expect(summary.executedBy).toBe(adminId);
@@ -743,21 +675,19 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
     });
 
-    it('still resolves (no throw) and logs the error when sendAccountDeletionConfirmation throws', async () => {
+    it('hard failure: SendGrid throws → caught, recorded, logged at ERROR, scrub still completes', async () => {
       const orgId = await makeOrg();
       const adminId = await makeUser(uniqueEmail('admin'), orgId);
-      const targetEmail = uniqueEmail('contract-hard-fail');
+      const targetEmail = uniqueEmail('notify-throws');
       await makeUser(targetEmail, orgId);
       await makeBowler(targetEmail, orgId);
 
-      const boom = new Error('SendGrid hard failure: connection reset');
-      sendSpy.mockRejectedValue(boom);
+      sendSpy.mockRejectedValue(new Error('SendGrid hard failure: connection reset'));
 
       // The project's logger writes formatted lines through
       // `process.stdout.write` (see server/logger.ts). Spying there
-      // is the most direct way to pin the "logged at error level"
-      // half of the contract without coupling the test to the
-      // logger's internal API.
+      // pins the "logged at error level" half of the contract
+      // without coupling the test to the logger's internal API.
       const stdoutSpy = vi
         .spyOn(process.stdout, 'write')
         .mockImplementation(() => true);
@@ -766,7 +696,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       // so a flaky email provider can't masquerade as a failed
       // deletion. If a future refactor lets the rejection bubble out,
       // this `await` will throw and the test will fail loudly.
-      const summary = await executeAccountDeletion(targetEmail, adminId);
+      const summary = await executeAccountDeletion(targetEmail, adminId, true);
 
       expect(sendSpy).toHaveBeenCalledTimes(1);
       // GDPR scrub still completed end-to-end despite the email blowup.
@@ -776,6 +706,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       // The thrown message lands on the audit summary so admins (and
       // the #350 UI) can see WHY the email didn't go.
       expect(summary.confirmationEmail?.sent).toBe(false);
+      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
       expect(summary.confirmationEmail?.error).toMatch(/connection reset/);
 
       // And the same throw was logged at ERROR level with both the

@@ -340,26 +340,15 @@
       "count": 6
     }
   },
-  "tests/api/orphaned-data-audits.test.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    },
-    "no-restricted-syntax": {
-      "count": 3
-    }
-  },
   "tests/api/orphaned-data.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 19
+      "count": 23
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
+      "count": 5
     },
     "no-restricted-syntax": {
-      "count": 2
+      "count": 5
     }
   },
   "tests/api/payment-sync-state-transitions.test.ts": {
