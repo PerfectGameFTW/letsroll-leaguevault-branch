@@ -78,53 +78,91 @@ export function workerDbNameForPool(poolId: number | string): string {
   return `test_worker_${runId}_pool_${poolId}`;
 }
 
+/**
+ * Inner clone routine that operates on a caller-supplied admin client
+ * with the advisory lock already held. Extracted from `cloneTemplate`
+ * so it can be reused by both per-fork (`cloneTemplate`) and serial
+ * preclone (`precloneAllWorkerDbs`) callers without duplicating the
+ * existence-probe + retry-loop logic. Each caller is responsible for
+ * the connect/lock/release ceremony around this function — an earlier
+ * "shared client across all N iterations" experiment regressed
+ * preclone wall-clock 43s → 180s and was reverted (see Task #722
+ * follow-up notes).
+ */
+async function cloneTemplateOnClient(
+  client: pg.PoolClient,
+  targetDb: string,
+  perfPrefix: { tStart: number; tConnect: number; tLock: number },
+): Promise<void> {
+  let tProbe = 0;
+  let existed = false;
+  let attempts = 0;
+  try {
+    if (await databaseExists(client, targetDb)) {
+      existed = true;
+      tProbe = Date.now();
+      return;
+    }
+    tProbe = Date.now();
+    // Bumped from 12 → 24 after a Neon flake on pool_3 exhausted the
+    // smaller budget at ~100s with code 55006 ("source database is
+    // being accessed by other users"). Each retry's CREATE costs ~5s,
+    // so 24 attempts is a ~2-minute safety net for Neon control-plane
+    // hiccups; on the happy path attempts=1 and this loop is a no-op.
+    const maxAttempts = 24;
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      attempts = attempt;
+      try {
+        if (attempt > 1) {
+          try {
+            await client.query(
+              `SELECT pg_terminate_backend(pid)
+                 FROM pg_stat_activity
+                WHERE datname = $1
+                  AND pid <> pg_backend_pid()`,
+              [TEMPLATE_DB_NAME],
+            );
+          } catch {
+            /* role lacks privilege; rely on backoff */
+          }
+        }
+        await client.query(
+          `CREATE DATABASE "${targetDb}" TEMPLATE "${TEMPLATE_DB_NAME}"`,
+        );
+        return;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  } finally {
+    const tEnd = Date.now();
+    console.log(
+      `[lv-perf] cloneTemplate pool=${process.env.VITEST_POOL_ID ?? 'gs'}` +
+        ` pid=${process.pid} db=${targetDb}` +
+        ` existed=${existed} attempts=${attempts}` +
+        ` connect=${perfPrefix.tConnect - perfPrefix.tStart}ms` +
+        ` lock=${perfPrefix.tLock ? perfPrefix.tLock - perfPrefix.tConnect : 0}ms` +
+        ` probe=${tProbe ? tProbe - (perfPrefix.tLock || perfPrefix.tConnect) : 0}ms` +
+        ` create=${existed || !tProbe ? 0 : tEnd - tProbe}ms` +
+        ` total=${tEnd - perfPrefix.tStart}ms`,
+    );
+  }
+}
+
 export async function cloneTemplate(targetDb: string): Promise<void> {
   const tStart = Date.now();
   const adminPool = new pg.Pool({ connectionString: adminUrl(), max: 2 });
   const client = await adminPool.connect();
   const tConnect = Date.now();
   let tLock = 0;
-  let tProbe = 0;
-  let existed = false;
-  let attempts = 0;
   try {
     await client.query('SELECT pg_advisory_lock($1)', [CLONE_ADVISORY_LOCK_KEY]);
     tLock = Date.now();
     try {
-      if (await databaseExists(client, targetDb)) {
-        existed = true;
-        tProbe = Date.now();
-        return;
-      }
-      tProbe = Date.now();
-      const maxAttempts = 12;
-      let lastErr: unknown = null;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        attempts = attempt;
-        try {
-          if (attempt > 1) {
-            try {
-              await client.query(
-                `SELECT pg_terminate_backend(pid)
-                   FROM pg_stat_activity
-                  WHERE datname = $1
-                    AND pid <> pg_backend_pid()`,
-                [TEMPLATE_DB_NAME],
-              );
-            } catch {
-              /* role lacks privilege; rely on backoff */
-            }
-          }
-          await client.query(
-            `CREATE DATABASE "${targetDb}" TEMPLATE "${TEMPLATE_DB_NAME}"`,
-          );
-          return;
-        } catch (err) {
-          lastErr = err;
-          await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
-        }
-      }
-      throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+      await cloneTemplateOnClient(client, targetDb, { tStart, tConnect, tLock });
     } finally {
       try {
         await client.query('SELECT pg_advisory_unlock($1)', [CLONE_ADVISORY_LOCK_KEY]);
@@ -133,16 +171,6 @@ export async function cloneTemplate(targetDb: string): Promise<void> {
   } finally {
     client.release();
     await adminPool.end();
-    const tEnd = Date.now();
-    console.log(
-      `[lv-perf] cloneTemplate pool=${process.env.VITEST_POOL_ID ?? 'gs'}` +
-        ` pid=${process.pid} db=${targetDb}` +
-        ` existed=${existed} attempts=${attempts}` +
-        ` connect=${tConnect - tStart}ms lock=${tLock ? tLock - tConnect : 0}ms` +
-        ` probe=${tProbe ? tProbe - (tLock || tConnect) : 0}ms` +
-        ` create=${existed || !tProbe ? 0 : tEnd - tProbe}ms` +
-        ` total=${tEnd - tStart}ms`,
-    );
   }
 }
 
@@ -206,7 +234,24 @@ export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string 
 
 export async function precloneAllWorkerDbs(maxPoolId: number): Promise<void> {
   const tStart = Date.now();
+  // IMPORTANT: each iteration gets its OWN admin pool + client +
+  // advisory lock + tear-down. An earlier "shared client across all
+  // iterations" version (Task #722 follow-up attempt) regressed the
+  // total from 43s to 180s on Neon — every pool then hit 4-9 retries
+  // instead of 1-2. The per-iteration tear-down apparently lets the
+  // managed Postgres backend release some source-template resource
+  // that a long-held admin session keeps pinned. Do not "optimise"
+  // by sharing the client without re-running with the profiler.
   for (let poolId = 1; poolId <= maxPoolId; poolId++) {
+    if (poolId > 1) {
+      // Brief pause to let Neon's control plane release the source
+      // template before the next CREATE DATABASE … TEMPLATE …
+      // attempt. Without this, pool_N+1 occasionally trips
+      // 55006 "source database … is being accessed by other users"
+      // because CREATE DATABASE itself opens a transient session
+      // against the template that Neon takes a beat to tear down.
+      await new Promise((r) => setTimeout(r, 1500));
+    }
     await cloneTemplate(workerDbNameForPool(poolId));
   }
   console.log(

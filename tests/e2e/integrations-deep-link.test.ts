@@ -22,6 +22,8 @@
  * skipped instead of failing, mirroring the opt-in pattern used by
  * `scripts/test-race.sh`.
  */
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import {
@@ -38,6 +40,14 @@ import {
 } from '../helpers';
 
 const CHROMIUM_PATH = process.env.REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+// The per-worker test app serves the prebuilt React bundle from
+// `dist/public/` (server/app.ts → `serveStaticFrontend`). If
+// `npm run build` hasn't run, the bundle is missing and Playwright
+// would just time out waiting for the React-rendered <h1> — skip
+// instead of producing a misleading red.
+const HAS_FRONTEND_BUILD = existsSync(
+  path.join(process.cwd(), 'dist', 'public', 'index.html'),
+);
 // express-session's default cookie name. Confirmed in `server/auth.ts` —
 // no `name:` override is set on the session middleware.
 const SESSION_COOKIE_NAME = 'connect.sid';
@@ -125,7 +135,7 @@ async function newPageWithSession(session: AuthSession): Promise<BrowserContext>
   return ctx;
 }
 
-describe.skipIf(!CHROMIUM_PATH)(
+describe.skipIf(!CHROMIUM_PATH || !HAS_FRONTEND_BUILD)(
   'Integrations deep link — real browser e2e (#586)',
   () => {
     beforeAll(async () => {

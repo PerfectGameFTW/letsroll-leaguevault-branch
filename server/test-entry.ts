@@ -12,6 +12,11 @@ import { createApp } from './app';
 const created = await createApp({
   port: 0,
   suppressBackgroundWorkers: true,
+  // Serve the prebuilt React bundle so e2e Playwright tests
+  // (tests/e2e/*.test.ts) can drive a real browser through the
+  // SPA. Cheap: just `express.static` + an SPA fallback. Requires
+  // `npm run build` to have produced `dist/public/`.
+  serveStaticFrontend: true,
 });
 
 // Single, easy-to-grep stdout line for the parent to scrape.

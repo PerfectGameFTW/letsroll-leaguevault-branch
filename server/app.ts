@@ -21,6 +21,7 @@ import express, { type Express, type Request, Response, NextFunction } from "exp
 import compression from "compression";
 import { createServer, type Server as HttpServer } from 'http';
 import path from 'path';
+import fs from 'fs';
 import type { AddressInfo } from 'net';
 import { env, isDev, isBetaEnv } from "./config";
 import { commitSha } from './utils/build-info';
@@ -115,6 +116,17 @@ export interface CreateAppOptions {
    * middleware. Designed for the per-worker test harness.
    */
   suppressBackgroundWorkers?: boolean;
+  /**
+   * When true: mount `express.static('dist/public')` + an SPA
+   * catch-all that serves `dist/public/index.html` for non-`/api/*`
+   * routes. Used by the per-worker test harness's e2e Playwright
+   * tests, which need the prebuilt React bundle but must NOT incur
+   * the cost of `setupVite()`. Independent of
+   * `suppressBackgroundWorkers` so the test harness can skip the
+   * heavy boot-time work AND still serve the frontend.
+   * Requires `npm run build` to have produced `dist/public/`.
+   */
+  serveStaticFrontend?: boolean;
 }
 
 export interface CreatedApp {
@@ -322,8 +334,40 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<CreatedApp
   }
 
   // Vite middleware (dev) or static catch-all (prod). Skipped for
-  // the per-worker test harness — tests only hit /api routes.
-  if (!suppress) {
+  // the per-worker test harness — tests only hit /api routes,
+  // unless `serveStaticFrontend` is set (e2e Playwright tests).
+  if (opts.serveStaticFrontend === true) {
+    // Test-harness path: serve the prebuilt React bundle directly
+    // from disk. No Vite, no transform pipeline — just a static
+    // middleware + SPA fallback. Adds ~0ms to boot. Gated on the
+    // build artifact actually existing so callers that opt in
+    // without a prior `npm run build` get API-only behaviour
+    // instead of runtime ENOENT on every non-API GET.
+    const distDir = path.join(process.cwd(), 'dist/public');
+    const indexHtml = path.join(distDir, 'index.html');
+    if (fs.existsSync(indexHtml)) {
+      app.use(express.static(distDir, {
+        maxAge: '1y',
+        immutable: true,
+        setHeaders(res, filePath) {
+          if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-store');
+          }
+        }
+      }));
+      app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'API endpoint not found' });
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        res.sendFile(indexHtml);
+      });
+    } else {
+      log.warn(
+        'serveStaticFrontend requested but dist/public/index.html is missing — skipping static mount. Run `npm run build` first.',
+      );
+    }
+  } else if (!suppress) {
     if (isDev) {
       try {
         await setupVite(app, server);
