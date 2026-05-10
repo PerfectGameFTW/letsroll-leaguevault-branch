@@ -33,6 +33,15 @@ export interface SpawnTestAppOptions {
 export async function spawnTestApp(opts: SpawnTestAppOptions): Promise<SpawnedTestApp> {
   const readyTimeoutMs = opts.readyTimeoutMs ?? 30_000;
 
+  // Quieter-by-opt-in: setting LV_TEST_QUIET_APP=1 lowers the spawned
+  // app's LOG_LEVEL to `warn` and stops mirroring its stdout to the
+  // parent. Default-off because an earlier always-on attempt produced
+  // sporadic 30s spawn timeouts in the `parallel` project with empty
+  // stdout/stderr — root cause not yet pinned down. The reporter-side
+  // truncation fix (JSON reporter + summary-reporter.ts) handles the
+  // user-visible problem on its own; this flag is here for the day
+  // someone wants to wring more bytes out of the workflow log buffer.
+  const quietApp = process.env.LV_TEST_QUIET_APP === '1';
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     DATABASE_URL: opts.databaseUrl,
@@ -48,6 +57,7 @@ export async function spawnTestApp(opts: SpawnTestAppOptions): Promise<SpawnedTe
     // tests. We deliberately leave APP_ENV unset so config defaults to
     // 'dev' (the schema does not accept 'test').
     NODE_ENV: process.env.NODE_ENV ?? 'development',
+    ...(quietApp ? { LOG_LEVEL: process.env.LOG_LEVEL ?? 'warn' } : {}),
     ...(opts.envOverrides ?? {}),
   };
 
@@ -93,8 +103,17 @@ export async function spawnTestApp(opts: SpawnTestAppOptions): Promise<SpawnedTe
     childStdout.setEncoding('utf8');
     childStdout.on('data', (chunk: string) => {
       stdoutBuf += chunk;
-      // Mirror to parent stdout for debuggability without holding it.
-      process.stdout.write(chunk);
+      // Cap pre-ready buffer; we only need the [ready] sentinel + a
+      // tail for failure diagnostics if we time out.
+      if (stdoutBuf.length > 64_000) stdoutBuf = stdoutBuf.slice(-32_000);
+      // Mirror child stdout to parent unless the user opts into the
+      // quieter mode via LV_TEST_QUIET_APP=1 (paired with the
+      // LOG_LEVEL=warn override above). Default-on preserves the
+      // original behaviour and avoids the spawn-timeout regression
+      // we observed when both knobs were flipped at once.
+      if (!quietApp) {
+        process.stdout.write(chunk);
+      }
       const m = stdoutBuf.match(/\[ready\] port=(\d+)/);
       if (m && !settled) {
         settled = true;

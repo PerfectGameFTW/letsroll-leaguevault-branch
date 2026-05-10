@@ -149,6 +149,26 @@ export default defineConfig({
     hookTimeout: 30000,
     globalSetup: ['./tests/setup/global-setup.ts'],
     alias: sharedAlias,
+    // Defence against the workflow-log truncation problem (~73s of
+    // vitest's tail output was being lost when the per-worker app
+    // spammed [INFO] lines past Replit's log buffer cap):
+    //   1. `default` keeps the live progress / failure output.
+    //   2. Custom `summary-reporter.ts` prints a single
+    //      `[lv-test-summary] …` line at the very end of the run.
+    //      That line is the last thing written, so it survives any
+    //      buffer cap and gives downstream scripts a stable record
+    //      of pass/fail/skip counts + wall-clock.
+    // The vitest built-in `json` reporter was tried alongside these
+    // two but consistently produced 30s spawnTestApp timeouts on 4
+    // files in the `parallel` project (empty stdout/stderr), almost
+    // certainly because it accumulates per-task buffers in memory
+    // and starves the parent's I/O loop during the parallel
+    // per-worker-app boot. Dropped — the summary line is sufficient.
+    reporters: [
+      'default',
+      './tests/setup/summary-reporter.ts',
+    ],
+
     projects: [
       {
         test: {
