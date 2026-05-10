@@ -141,7 +141,7 @@ export function PastDueBowlersSection() {
       </div>
       {pastDueBowlers.length > 5 && (
         <div className="text-right">
-          <Link href="/past-due" className="text-sm text-primary hover:underline">
+          <Link href="/reports/past-due" className="text-sm text-primary hover:underline">
             View all past due balances →
           </Link>
         </div>
