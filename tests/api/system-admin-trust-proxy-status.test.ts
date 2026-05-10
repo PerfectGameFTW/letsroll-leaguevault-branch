@@ -26,7 +26,7 @@
  * (`scripts/verify-trust-proxy-deploy.ts`) when run against a real
  * deployment.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   login,
   apiGet,
@@ -64,11 +64,14 @@ interface StatusBody {
 }
 
 describe('GET /api/system-admin/trust-proxy-status', () => {
-  let admin: AuthSession;
-
-  beforeAll(async () => {
-    admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
-  });
+  // Login is performed inside each `it` that needs it, NOT in
+  // `beforeAll`. Under the `parallel` vitest project (isolate:false,
+  // 4 forks) sibling tests share the same DB and can rotate / expire
+  // sessions out from under a `beforeAll`-shared cookie, producing
+  // 401s on tests that should be 200. Per-test login uses helpers.ts's
+  // in-process `loginCache` so cost is amortized across the file.
+  // See task #703 (the flake we are fixing here) and the file header
+  // for the broader cross-fork-contention rationale.
 
   it('rejects unauthenticated callers with 401', async () => {
     const { status } = await apiGet('/api/system-admin/trust-proxy-status');
@@ -81,15 +84,21 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
     expect(status).toBe(403);
   });
 
-  // Cross-worker DB/session contention under the `parallel` vitest project
-  // (isolate:false, 4 forks) can occasionally invalidate the shared admin
-  // session set up in beforeAll. Passes 7/7 in isolation; retries cover the
-  // rare interleaving. See task #703.
-  it('returns the live + config + synthetic shape for a system_admin', { retry: 2 }, async () => {
-    const { status, data } = await apiGet<StatusBody>(
+  it('returns the live + config + synthetic shape for a system_admin', async () => {
+    // Fresh per-test login; one retry on 401 covers the narrow window
+    // where a sibling test (same DB under the `parallel` project) just
+    // rotated this admin's session before our request landed. See the
+    // describe-block comment above for the cross-fork rationale.
+    let { status, data } = await apiGet<StatusBody>(
       '/api/system-admin/trust-proxy-status',
-      admin,
+      await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD),
     );
+    if (status === 401) {
+      ({ status, data } = await apiGet<StatusBody>(
+        '/api/system-admin/trust-proxy-status',
+        await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD),
+      ));
+    }
     expect(status).toBe(200);
     expect(data.success).toBe(true);
     const body = data.data;
@@ -191,6 +200,7 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
       // through to session auth. Otherwise an attacker probing for a
       // valid token while holding a stolen cookie would never see a
       // failure signal.
+      const admin: AuthSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
       const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
         headers: {
           Accept: 'application/json',
