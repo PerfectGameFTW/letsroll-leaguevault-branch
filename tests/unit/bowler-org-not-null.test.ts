@@ -9,7 +9,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 
 describe('bowlers.organization_id NOT NULL constraint (task #407)', () => {
   it('rejects an INSERT that omits organization_id', async () => {

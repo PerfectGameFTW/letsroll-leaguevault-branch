@@ -1,12 +1,12 @@
-// Note: do not fall back to process.env.BASE_URL — the runtime sets it to "/"
-// (Vite app-base-path convention), which produces invalid fetch URLs in tests.
-//
-// Default base URL prefers the Replit-served HTTPS domain when available,
-// because the dev server sets `Secure` session cookies that are dropped
-// over plain http://localhost. Outside of Replit the localhost fallback
-// is used. Override explicitly with TEST_BASE_URL if needed.
+// `BASE_URL` resolves to the per-worker test app URL set by
+// `tests/setup/per-worker-setup.ts` (Task #700). Each vitest worker
+// spawns its own Express via `server/test-entry.ts` on a kernel-
+// assigned loopback port, then exports
+// `process.env.TEST_BASE_URL=http://127.0.0.1:<port>`. Falls back to
+// the Replit-served HTTPS domain only for direct invocations outside
+// the test harness (e.g. `npx tsx tests/helpers.ts` smoke checks).
 import { eq, inArray } from 'drizzle-orm';
-import { db } from '../server/db';
+import { getTestDb } from './setup/test-db';
 import {
   organizations,
   users,
@@ -24,6 +24,12 @@ import {
 
 const REPLIT_HOST = process.env.REPLIT_DEV_DOMAIN || (process.env.REPLIT_DOMAINS?.split(',')[0]);
 const BASE_URL = process.env.TEST_BASE_URL || (REPLIT_HOST ? `https://${REPLIT_HOST}` : 'http://localhost:5000');
+
+// We do NOT cache the Drizzle client at module-load time. helpers.ts
+// is imported transitively before `tests/setup/per-worker-setup.ts`
+// has rewritten `TEST_DATABASE_URL`, so binding the pool early would
+// bind to the wrong DB. Each call site calls `getTestDb()` lazily and
+// pg-pool memoises internally on `TEST_DATABASE_URL`.
 
 const TEST_ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@example.com';
 const TEST_ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'admin-local-dev';
@@ -294,7 +300,7 @@ export async function apiDelete<T = unknown>(
  * not run, which is a setup error, not a runtime quirk to swallow.
  */
 async function getBaselineOrgIds(): Promise<{ orgAId: number; orgBId: number }> {
-  const rows = await db
+  const rows = await getTestDb()
     .select({ id: organizations.id, slug: organizations.slug })
     .from(organizations)
     .where(inArray(organizations.slug, [TEST_ORG_A_SLUG, TEST_ORG_B_SLUG]));
@@ -344,7 +350,7 @@ async function acquireFixtureOrg(slug: string, name: string): Promise<number> {
     throw new Error(`acquireFixtureOrg refuses to overwrite baseline slug "${slug}"`);
   }
   await releaseFixtureOrg(slug);
-  const [row] = await db
+  const [row] = await getTestDb()
     .insert(organizations)
     .values({ name, slug, active: true })
     .returning({ id: organizations.id });
@@ -366,25 +372,25 @@ async function releaseFixtureOrg(slug: string): Promise<void> {
   if (slug === TEST_ORG_A_SLUG || slug === TEST_ORG_B_SLUG) {
     throw new Error(`releaseFixtureOrg refuses to delete baseline slug "${slug}"`);
   }
-  const [existing] = await db
+  const [existing] = await getTestDb()
     .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.slug, slug));
   if (!existing) return;
 
   const orgId = existing.id;
-  const userRows = await db
+  const userRows = await getTestDb()
     .select({ id: users.id })
     .from(users)
     .where(eq(users.organizationId, orgId));
   const userIds = userRows.map((r) => r.id);
-  const bowlerRows = await db
+  const bowlerRows = await getTestDb()
     .select({ id: bowlers.id })
     .from(bowlers)
     .where(eq(bowlers.organizationId, orgId));
   const bowlerIds = bowlerRows.map((r) => r.id);
 
-  await db.transaction(async (tx) => {
+  await getTestDb().transaction(async (tx) => {
     if (userIds.length > 0) {
       // RESTRICT audit tables that point at users.id — delete by
       // both target and actor.

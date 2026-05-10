@@ -8,7 +8,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { and } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import { payments } from '@shared/schema';
 import { buildPaymentConditions } from '../../server/storage/payments';
 

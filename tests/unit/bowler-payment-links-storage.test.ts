@@ -8,7 +8,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import { bowlers, bowlerPaymentLinks, organizations } from '@shared/schema';
 import * as links from '../../server/storage/bowler-payment-links';
 

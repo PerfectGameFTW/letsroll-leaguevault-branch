@@ -12,7 +12,8 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import {
   users,
   applePayJobs,

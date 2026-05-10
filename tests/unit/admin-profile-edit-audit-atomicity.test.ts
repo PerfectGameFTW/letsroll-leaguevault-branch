@@ -58,7 +58,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import {
   adminProfileEditAudits,
   users,

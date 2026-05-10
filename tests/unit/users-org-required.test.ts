@@ -9,7 +9,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import { users } from '@shared/schema';
 import {
   createUser,

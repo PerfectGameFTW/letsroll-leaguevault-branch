@@ -50,7 +50,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../../server/db';
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import { emailChangeRequests, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { applyConfirmEmailChangeTxn } from '../../server/routes/account';

@@ -39,6 +39,28 @@ const SHARED_TABLE_WRITERS = [
  * fail or hang when included in the `isolate: false` project. See
  * `.local/tasks/isolate-false-audit-notes.md` (task #689) for context.
  */
+/**
+ * Test files that need a fully isolated worker (its own DB + its own
+ * spawned Express) per test file. They make HTTP calls (so they need
+ * the spawned app from the full per-worker setup) but break under
+ * `isolate: false` because they accumulate in-process state on the
+ * spawned server side that bleeds into sibling files in the same
+ * worker — e.g. login/account rate-limit counters keyed by IP rather
+ * than userId, or in-memory caches that hold rows the next file
+ * deletes. We scope them out into their own project so each file gets
+ * a fresh DB clone + a fresh spawned Express, at the cost of an extra
+ * ~3-5s of provisioning per file.
+ *
+ * Membership is empirical: every file listed below was observed to
+ * fail under `isolate: false` in the parallel project but passes when
+ * isolated. See `.local/tasks/per-worker-isolation-notes.md` (#700).
+ */
+const PARALLEL_ISOLATED_WITH_APP = [
+  'tests/api/change-password.test.ts',
+  'tests/unit/account-deletion.test.ts',
+  'tests/e2e/integrations-deep-link.test.ts',
+];
+
 const PARALLEL_ISOLATED = [
   'server/routes/__tests__/leagues-square-missing-alerts.test.ts',
   'server/services/__tests__/apple-pay-worker.test.ts',
@@ -47,7 +69,10 @@ const PARALLEL_ISOLATED = [
   'server/services/__tests__/square-version-runtime-guard.test.ts',
   'server/services/__tests__/third-party-pins.test.ts',
   'server/services/__tests__/third-party-pin-verifier.test.ts',
-  'tests/api/admin-unclaimed-users.test.ts',
+  // 'tests/api/admin-unclaimed-users.test.ts' — moved to parallel
+  // project (#700): it needs HTTP against the spawned per-worker app
+  // and does not actually use vi.mock factory closures, so it is safe
+  // to share its worker DB with sibling files in `parallel`.
   'tests/api/create-square-customers-cross-org.test.ts',
   'tests/api/payment-sync-retry-race.test.ts',
   'tests/api/payment-sync-state-transitions.test.ts',
@@ -134,7 +159,17 @@ export default defineConfig({
           hookTimeout: 30000,
           alias: sharedAlias,
           include: SHARED_TABLE_WRITERS,
+          setupFiles: ['./tests/setup/per-worker-setup.ts'],
           fileParallelism: false,
+          // Vitest 4 requires unique sequence.groupOrder when sibling
+          // projects use different `maxWorkers`; assign monotonic ranks
+          // so the runner can schedule each project's specs separately.
+          sequence: { groupOrder: 0 },
+          // Run inside a forked process so per-worker env injection (DATABASE_URL,
+          // TEST_BASE_URL) is isolated from the main vitest process and other
+          // projects. See parallel-isolated comment for the threads vs forks
+          // rationale (Task #700).
+          pool: 'forks',
         },
       },
       {
@@ -146,7 +181,8 @@ export default defineConfig({
           hookTimeout: 30000,
           alias: sharedAlias,
           include: ['tests/**/*.test.ts', 'server/**/__tests__/**/*.test.ts'],
-          exclude: [...SHARED_TABLE_WRITERS, ...PARALLEL_ISOLATED],
+          exclude: [...SHARED_TABLE_WRITERS, ...PARALLEL_ISOLATED, ...PARALLEL_ISOLATED_WITH_APP],
+          setupFiles: ['./tests/setup/per-worker-setup.ts'],
           // Skip per-file module re-evaluation; reuse module contexts across
           // files within the same worker. The files that depended on
           // per-file module isolation are split out into the
@@ -162,30 +198,66 @@ export default defineConfig({
           // mid-run warm-up cost. See docs in
           // .local/tasks/pool-options-tuning-results.md (task #691).
           pool: 'forks',
-          poolOptions: { forks: { maxForks: 4, minForks: 4 } },
+          // Vitest 4 deprecated `poolOptions`; per-pool options are now
+          // top-level. (#700)
+          maxWorkers: 4,
+          minWorkers: 4,
+          sequence: { groupOrder: 1 },
         },
       },
       {
         test: {
           name: 'parallel-isolated',
+          sequence: { groupOrder: 2 },
           globals: true,
           environment: 'node',
           testTimeout: 30000,
           hookTimeout: 30000,
           alias: sharedAlias,
           include: PARALLEL_ISOLATED,
+          setupFiles: ['./tests/setup/per-worker-db-only.ts'],
           // Default `isolate: true` — these files have vi.mock factories
           // whose closures leak across files when the module registry is
           // shared. Keep them isolated until they're refactored to use
           // `vi.hoisted()` or factory-internal state.
           //
-          // Use the `threads` pool here while the `parallel` project stays
-          // on the default `forks` pool. Vitest groups workers by pool, so
-          // pinning each project to a different pool guarantees that an
-          // isolated file's mocked module registry can never be reused by
-          // a non-isolated `parallel` file (which would re-introduce the
-          // very leak class we are trying to contain).
-          pool: 'threads',
+          // Task #700: switched off `pool: 'threads'` to `pool: 'forks'`
+          // because threads share `process.env` across workers in the
+          // same process, which breaks the per-worker `DATABASE_URL` /
+          // `TEST_BASE_URL` injection that gives each worker its own
+          // isolated DB and Express instance. Module-isolation is still
+          // achieved by `isolate: true` above, even though we are now on
+          // forks (each fork still owns its own module registry).
+          pool: 'forks',
+        },
+      },
+      {
+        test: {
+          name: 'parallel-isolated-with-app',
+          sequence: { groupOrder: 4 },
+          globals: true,
+          environment: 'node',
+          testTimeout: 60000,
+          hookTimeout: 60000,
+          alias: sharedAlias,
+          include: PARALLEL_ISOLATED_WITH_APP,
+          // Full per-worker setup: clones DB AND spawns Express. With
+          // `isolate: true` the module registry resets per file, which
+          // resets the memoized `dbPromise`/`appPromise` in
+          // `per-worker-setup.ts` and provisions a fresh DB + spawned
+          // Express per file. Slow but necessary for files that
+          // accumulate cross-file in-process state on the spawned
+          // server side.
+          setupFiles: ['./tests/setup/per-worker-setup.ts'],
+          pool: 'forks',
+          // Serialize the files in this project: each file provisions a
+          // fresh DB clone + spawned Express, and parallel clones of
+          // the template race for the "source database is being
+          // accessed by other users" Postgres rail despite the advisory
+          // lock (each worker holds its own pg session). With only 3
+          // files in this project the serial cost is ~15s, well under
+          // the budget.
+          fileParallelism: false,
         },
       },
       {
@@ -201,6 +273,7 @@ export default defineConfig({
         esbuild: { jsx: 'automatic' },
         test: {
           name: 'client-components',
+          sequence: { groupOrder: 3 },
           globals: true,
           environment: 'jsdom',
           testTimeout: 60000,

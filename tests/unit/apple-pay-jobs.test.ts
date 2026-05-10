@@ -16,7 +16,8 @@
  */
 import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
 import { inArray, eq, and, sql } from "drizzle-orm";
-import { db } from "../../server/db";
+import { getTestDb } from '../setup/test-db';
+const db = getTestDb();
 import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS, type ApplePayJobStatus } from "@shared/schema";
 import {
   APPLE_PAY_EMPTY_JOB_GRACE_MS,
