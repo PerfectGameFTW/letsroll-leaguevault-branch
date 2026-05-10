@@ -352,6 +352,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             isInitialized={isInitialized}
             selectedSavedCardId={selectedSavedCardId}
             fullSeasonAmount={financials.fullSeasonAmount}
+            additionalBowlerCount={additionalBowlerIds.length}
             onSubmit={onSubmit}
             onCancel={onCancel}
           />

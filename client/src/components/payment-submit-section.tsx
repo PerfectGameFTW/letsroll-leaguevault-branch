@@ -14,6 +14,7 @@ interface PaymentSubmitSectionProps {
   isInitialized: boolean;
   selectedSavedCardId: string;
   fullSeasonAmount: number;
+  additionalBowlerCount?: number;
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -29,16 +30,18 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
   isInitialized,
   selectedSavedCardId,
   fullSeasonAmount,
+  additionalBowlerCount = 0,
   onSubmit,
   onCancel,
 }) => {
+  const multiplier = 1 + additionalBowlerCount;
   return (
     <>
       {league.paymentMode !== 'upfront' && (
         <div className="pt-4 border-t">
           <div className="flex justify-between items-center">
             <span className="text-lg font-medium">Total Amount</span>
-            <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount())}</span>
+            <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount() * multiplier)}</span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             {selectedSchedule === 'weekly' && 'Charged weekly'}
@@ -75,7 +78,7 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
               Processing...
             </>
           ) : league.paymentMode === 'upfront' ? (
-            `Pay ${formatCurrency(fullSeasonAmount)}`
+            `Pay ${formatCurrency(fullSeasonAmount * multiplier)}`
           ) : (
             <>{selectedSchedule === 'custom' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</>
           )}
