@@ -1,9 +1,19 @@
-import { useMemo, FC } from "react";
+import { useMemo, useState, FC } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, Mail, X, Check } from "lucide-react";
+import { Users, Mail, X, Check, Trash2, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ApiResponse } from "@shared/schema";
@@ -68,11 +78,14 @@ export const BowlerPaymentLinksSection: FC<{
       toast({ title: "Action failed", description: err.message, variant: "destructive" }),
   });
 
+  const [partnerToRemove, setPartnerToRemove] = useState<LinkRow | null>(null);
+
   const unlink = useMutation({
     mutationFn: async (id: number) => apiRequest(`/api/bowler-links/${id}`, "DELETE"),
     onSuccess: () => invalidate(),
     onError: (err: Error) =>
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),
+    onSettled: () => setPartnerToRemove(null),
   });
 
   const links = useMemo(() => payload?.links ?? [], [payload?.links]);
@@ -110,15 +123,28 @@ export const BowlerPaymentLinksSection: FC<{
                   <span>{l.partnerName}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">Linked</Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    <span
                       data-testid={`button-unlink-${l.id}`}
-                      onClick={() => unlink.mutate(l.id)}
-                      disabled={unlink.isPending}
+                      onClick={() => {
+                        if (!(unlink.isPending && partnerToRemove?.id === l.id)) {
+                          setPartnerToRemove(l);
+                        }
+                      }}
+                      role="presentation"
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setPartnerToRemove(l)}
+                        disabled={unlink.isPending && partnerToRemove?.id === l.id}
+                        data-testid={`button-remove-partner-${l.id}`}
+                        aria-label={`Remove payment partner ${l.partnerName}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </span>
                   </div>
                 </div>
               );
@@ -193,6 +219,41 @@ export const BowlerPaymentLinksSection: FC<{
             testIdPrefix="invite-bowler"
           />
         </div>
+
+        <AlertDialog
+          open={partnerToRemove !== null}
+          onOpenChange={(open) => {
+            if (!open && !unlink.isPending) setPartnerToRemove(null);
+          }}
+        >
+          <AlertDialogContent data-testid="dialog-remove-partner">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove payment partner?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove your payment partner from your account. You can always add a new payment partner in the future.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                data-testid="button-cancel-remove-partner"
+                disabled={unlink.isPending}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="button-confirm-remove-partner"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (partnerToRemove) unlink.mutate(partnerToRemove.id);
+                }}
+                disabled={unlink.isPending}
+              >
+                {unlink.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remove Partner"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );
