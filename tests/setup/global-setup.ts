@@ -22,6 +22,7 @@
  *
  * Skipped automatically when `SKIP_TEST_SEED=1`.
  */
+import { randomBytes } from 'node:crypto';
 import { cleanupTestDbs } from '../../scripts/cleanup-test-dbs';
 import { ensureTestTemplate } from '../../scripts/ensure-test-template';
 import { cleanup as closeDbPool } from '../../server/db';
@@ -34,10 +35,20 @@ import { cleanup as closeDbPool } from '../../server/db';
 // guard via process.env so the marker survives across this file's
 // re-imports under each project.
 const SETUP_DONE_MARKER = '__LV_GLOBAL_SETUP_DONE__';
+const RUN_ID_ENV = 'LV_TEST_RUN_ID';
 
 export default async function setup() {
   if (process.env.SKIP_TEST_SEED !== '1' && !process.env[SETUP_DONE_MARKER]) {
     process.env[SETUP_DONE_MARKER] = '1';
+    // Stable per-run identifier inherited by every spawned vitest fork
+    // (including forks recycled by `isolate: true` mid-run). Per-worker
+    // setup uses this to build a deterministic per-pool DB name so that
+    // a recycled fork in the same pool reuses its sibling's clone
+    // instead of cloning a fresh DB every file. See per-worker-setup.ts
+    // (Task #722).
+    if (!process.env[RUN_ID_ENV]) {
+      process.env[RUN_ID_ENV] = randomBytes(4).toString('hex');
+    }
     await cleanupTestDbs();
     await ensureTestTemplate();
   }

@@ -60,12 +60,33 @@ function workerDbUrl(dbName: string): string {
 }
 
 function workerDbName(): string {
-  // VITEST_POOL_ID is the integer string vitest assigns to each fork
-  // (1-indexed). PID + a 4-byte random tail keep the name unique even
-  // across re-runs that race the dropper.
+  // Deterministic per-pool name (Task #722). VITEST_POOL_ID is the
+  // integer string vitest assigns to each fork (1-indexed). LV_TEST_RUN_ID
+  // is set once by globalSetup and inherited by every spawned fork —
+  // including forks vitest recycles between files under `isolate: true`.
+  // Combining the two means a recycled fork in the same pool computes
+  // the SAME DB name its predecessor used and connects to the existing
+  // clone instead of provisioning a fresh one. The `parallel-isolated`
+  // project's clone count is therefore bounded by maxForks, not by the
+  // number of test files in the project.
   const poolId = process.env.VITEST_POOL_ID ?? '0';
+  const runId = process.env.LV_TEST_RUN_ID;
+  if (runId && /^[0-9a-f]+$/.test(runId)) {
+    return `test_worker_${runId}_pool_${poolId}`;
+  }
+  // Fallback for paths that bypass globalSetup (e.g. SKIP_TEST_SEED=1):
+  // unique-per-spawn name keeps backwards compat at the cost of losing
+  // the cross-recycle reuse. Should not hit in normal `npm test`.
   const rand = randomBytes(4).toString('hex');
   return `test_worker_${poolId}_${process.pid}_${rand}`;
+}
+
+async function databaseExists(client: pg.PoolClient, dbName: string): Promise<boolean> {
+  const { rows } = await client.query<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1) AS exists`,
+    [dbName],
+  );
+  return rows[0]?.exists ?? false;
 }
 
 // Stable advisory-lock key derived from the template DB name. All
@@ -74,7 +95,7 @@ function workerDbName(): string {
 // any other connection (including idle clones) on the source DB
 // during a clone, so unsynchronised parallel attempts deadlock with
 // "source database … is being accessed by other users".
-const CLONE_ADVISORY_LOCK_KEY = (() => {
+export const CLONE_ADVISORY_LOCK_KEY = (() => {
   let h = 0;
   for (const c of TEMPLATE_DB_NAME) h = ((h << 5) - h + c.charCodeAt(0)) | 0;
   return h;
@@ -87,6 +108,14 @@ async function cloneTemplate(targetDb: string): Promise<void> {
     // Block until any concurrent clone in another worker releases.
     await client.query('SELECT pg_advisory_lock($1)', [CLONE_ADVISORY_LOCK_KEY]);
     try {
+      // Task #722: with deterministic per-pool DB names, a vitest fork
+      // recycle for the same pool ID will compute the same target name
+      // its predecessor already cloned. Probe under the advisory lock
+      // (so we don't race a sibling pool's CREATE) and short-circuit if
+      // the DB already exists. This is the cross-recycle hot path.
+      if (await databaseExists(client, targetDb)) {
+        return;
+      }
       // Drop any leftover/stale connections to the template (build
       // script normally closes its pool, but a previous worker's
       // clone-time admin connection can still be in TIME_WAIT).
@@ -147,6 +176,11 @@ async function initDbOnce(): Promise<{ dbName: string; url: string }> {
   process.env.TEST_DATABASE_URL = url;
   process.env[ENV_DB_NAME] = dbName;
   process.env[ENV_DB_URL] = url;
+  if (process.env.LV_DEBUG_PERWORKER === '1') {
+    const cold = Number(process.env.__LV_DB_COLD_HITS__ ?? '0') + 1;
+    process.env.__LV_DB_COLD_HITS__ = String(cold);
+    console.log(`[perworker] db COLD pid=${process.pid} pool=${process.env.VITEST_POOL_ID} db=${dbName} cold=${cold}`);
+  }
   return { dbName, url };
 }
 
@@ -168,6 +202,11 @@ export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string 
     process.env.TEST_DATABASE_URL === stashedUrl
   ) {
     process.env.DATABASE_URL = stashedUrl;
+    if (process.env.LV_DEBUG_PERWORKER === '1') {
+      const hot = Number(process.env.__LV_DB_HOT_HITS__ ?? '0') + 1;
+      process.env.__LV_DB_HOT_HITS__ = String(hot);
+      console.log(`[perworker] db HOT  pid=${process.pid} pool=${process.env.VITEST_POOL_ID} db=${stashedName} hot=${hot}`);
+    }
     return Promise.resolve({ dbName: stashedName, url: stashedUrl });
   }
   if (dbPromise === null) {
@@ -181,6 +220,11 @@ async function initAppOnce(): Promise<{ app: SpawnedTestApp; dbName: string }> {
   const app = await spawnTestApp({ databaseUrl: url });
   process.env.TEST_BASE_URL = `http://127.0.0.1:${app.port}`;
   process.env[ENV_APP_PORT] = String(app.port);
+  if (process.env.LV_DEBUG_PERWORKER === '1') {
+    const cold = Number(process.env.__LV_APP_COLD_HITS__ ?? '0') + 1;
+    process.env.__LV_APP_COLD_HITS__ = String(cold);
+    console.log(`[perworker] app COLD pid=${process.pid} pool=${process.env.VITEST_POOL_ID} appPort=${app.port} cold=${cold}`);
+  }
 
   // Hard backstop: kill the child when the worker exits, even on
   // uncaught exceptions / signal-driven termination. Sync-only API.
@@ -220,6 +264,11 @@ export function ensurePerWorkerApp(): Promise<{ app: SpawnedTestApp; dbName: str
       kill: () => { /* noop — real killer registered on cold path */ },
     };
     process.env.DATABASE_URL = stashedUrl;
+    if (process.env.LV_DEBUG_PERWORKER === '1') {
+      const hot = Number(process.env.__LV_APP_HOT_HITS__ ?? '0') + 1;
+      process.env.__LV_APP_HOT_HITS__ = String(hot);
+      console.log(`[perworker] app HOT  pid=${process.pid} pool=${process.env.VITEST_POOL_ID} appPort=${stashedPort} hot=${hot}`);
+    }
     return Promise.resolve({ app: stub, dbName: stashedDbName });
   }
   if (appPromise === null) {
