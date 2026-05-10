@@ -33,8 +33,9 @@
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { spawnTestApp, type SpawnedTestApp } from './spawn-test-app';
+import { CLONE_ADVISORY_LOCK_KEY, TEMPLATE_DB_NAME } from './per-worker-lock';
 
-const TEMPLATE_DB_NAME = process.env.TEST_TEMPLATE_DB_NAME ?? 'leaguevault_test_template';
+export { CLONE_ADVISORY_LOCK_KEY };
 
 function originalDatabaseUrl(): string {
   // Prefer the operator's configured dev DB URL; setupFiles run before
@@ -89,18 +90,6 @@ async function databaseExists(client: pg.PoolClient, dbName: string): Promise<bo
   return rows[0]?.exists ?? false;
 }
 
-// Stable advisory-lock key derived from the template DB name. All
-// per-worker clones serialise on this lock so two workers never try
-// to `CREATE DATABASE … TEMPLATE` concurrently — Postgres forbids
-// any other connection (including idle clones) on the source DB
-// during a clone, so unsynchronised parallel attempts deadlock with
-// "source database … is being accessed by other users".
-export const CLONE_ADVISORY_LOCK_KEY = (() => {
-  let h = 0;
-  for (const c of TEMPLATE_DB_NAME) h = ((h << 5) - h + c.charCodeAt(0)) | 0;
-  return h;
-})();
-
 async function cloneTemplate(targetDb: string): Promise<void> {
   const adminPool = new pg.Pool({ connectionString: adminUrl(), max: 2 });
   const client = await adminPool.connect();
@@ -119,16 +108,28 @@ async function cloneTemplate(targetDb: string): Promise<void> {
       // Drop any leftover/stale connections to the template (build
       // script normally closes its pool, but a previous worker's
       // clone-time admin connection can still be in TIME_WAIT).
-      const maxAttempts = 5;
+      const maxAttempts = 12;
       let lastErr: unknown = null;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          // NB: we deliberately do NOT call pg_terminate_backend here
-          // — Neon's default role lacks the privilege ("permission
-          // denied to terminate process"). The advisory lock above
-          // serialises clones, so the only sessions that should be on
-          // the template are previous clones' admin connections that
-          // are about to drop. Retry with backoff if we still race.
+          // Best-effort terminate: dev/local Postgres allows this;
+          // managed Neon doesn't and will throw, which we swallow —
+          // the advisory lock above is the primary serialisation, this
+          // is just defence against admin connections from a previous
+          // ensure-template / cleanup pass that haven't fully drained.
+          if (attempt > 1) {
+            try {
+              await client.query(
+                `SELECT pg_terminate_backend(pid)
+                   FROM pg_stat_activity
+                  WHERE datname = $1
+                    AND pid <> pg_backend_pid()`,
+                [TEMPLATE_DB_NAME],
+              );
+            } catch {
+              /* role lacks privilege; rely on backoff */
+            }
+          }
           await client.query(
             `CREATE DATABASE "${targetDb}" TEMPLATE "${TEMPLATE_DB_NAME}"`,
           );
@@ -137,7 +138,8 @@ async function cloneTemplate(targetDb: string): Promise<void> {
           lastErr = err;
           // "source database is being accessed by other users" — wait
           // briefly for the offending session to drain, then retry.
-          await new Promise((r) => setTimeout(r, 500 * attempt));
+          // Backoff: 500ms, 1s, 1.5s, ... up to ~6s per attempt.
+          await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
         }
       }
       throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

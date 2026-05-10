@@ -12,7 +12,7 @@
  */
 import pg from 'pg';
 import { assertSafeDatabaseHost } from '../server/utils/db-safety';
-import { CLONE_ADVISORY_LOCK_KEY } from '../tests/setup/per-worker-setup';
+import { CLONE_ADVISORY_LOCK_KEY } from '../tests/setup/per-worker-lock';
 
 function adminDatabaseUrl(): string {
   const raw = process.env.DATABASE_URL;

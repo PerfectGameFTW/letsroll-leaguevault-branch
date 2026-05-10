@@ -27,6 +27,18 @@ import { db as defaultDb } from './db';
 export type AnyDb = NodePgDatabase<typeof schema>;
 
 export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> {
+  // Serialise concurrent boots against the SAME DB. Task #722's
+  // deterministic per-pool test-DB naming means a recycled fork (or a
+  // sibling test-app spawn under `parallel-isolated`) can boot a fresh
+  // app process against a DB that another boot is mid-install on. The
+  // DROP TRIGGER IF EXISTS / CREATE TRIGGER pair below isn't atomic by
+  // itself, so two concurrent installers can race past the DROP and
+  // both attempt CREATE — yielding `trigger ... already exists`. A
+  // session-scoped advisory lock (released by the implicit unlock at
+  // session end) costs ~nothing and makes the install atomic per-DB.
+  // Lock key derived from the function name; arbitrary but stable.
+  await db.execute(sql`SELECT pg_advisory_lock(7220001)`);
+  try {
   // Retire the legacy CHECK constraint of the same name if it still
   // exists from older schema versions.
   await db.execute(
@@ -87,4 +99,11 @@ export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> 
     CREATE INDEX IF NOT EXISTS rate_limit_buckets_reset_at_idx
       ON rate_limit_buckets (reset_at);
   `);
+  } finally {
+    try {
+      await db.execute(sql`SELECT pg_advisory_unlock(7220001)`);
+    } catch {
+      /* lock auto-releases at session end; non-fatal */
+    }
+  }
 }
