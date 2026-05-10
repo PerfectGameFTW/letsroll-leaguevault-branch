@@ -59,8 +59,79 @@ interface CreateBranchResponse {
 export const TEMPLATE_BRANCH_NAME =
   process.env.LV_TEST_TEMPLATE_BRANCH_NAME ?? 'LeagueVault_Test_Template';
 
-export const PRODUCTION_BRANCH_NAME =
-  process.env.LV_PRODUCTION_BRANCH_NAME ?? 'production';
+/**
+ * Name of the Neon branch the test template is parented to.
+ *
+ * Defaults to `main` (Neon's modern default) instead of `production`
+ * so that a fresh checkout never silently clones production data into
+ * test branches (a foot-gun: production data → template branch → all
+ * worker branches → test logs / fixtures, with the corresponding PII
+ * exposure surface). Override via `LV_TEST_TEMPLATE_PARENT_BRANCH` for
+ * projects whose default branch is named differently.
+ *
+ * `LV_PRODUCTION_BRANCH_NAME` is kept as a deprecated fallback so
+ * existing `.env` files don't break; setting it logs a one-time
+ * deprecation warning at first read (see `getResolvedTemplateParent`).
+ * Direct readers of this constant get the resolved value.
+ */
+export const TEMPLATE_PARENT_BRANCH_NAME =
+  process.env.LV_TEST_TEMPLATE_PARENT_BRANCH
+  ?? process.env.LV_PRODUCTION_BRANCH_NAME
+  ?? 'main';
+
+/** @deprecated Use TEMPLATE_PARENT_BRANCH_NAME. Kept for backward compat. */
+export const PRODUCTION_BRANCH_NAME = TEMPLATE_PARENT_BRANCH_NAME;
+
+let _deprecationLogged = false;
+/**
+ * Resolve the template parent branch with a "main → production" fallback
+ * for projects where neither env var is set and the Neon project still
+ * uses the legacy `production` default-branch name. Returns the branch
+ * we should parent the template off, or throws with a clear message if
+ * neither candidate exists.
+ *
+ * Callers that just want the configured name (without API probing)
+ * should read `TEMPLATE_PARENT_BRANCH_NAME` directly.
+ */
+export async function resolveTemplateParentBranch(
+  cfg: NeonConfig,
+): Promise<NeonBranch> {
+  const explicit = process.env.LV_TEST_TEMPLATE_PARENT_BRANCH
+    ?? process.env.LV_PRODUCTION_BRANCH_NAME;
+  if (process.env.LV_PRODUCTION_BRANCH_NAME && !_deprecationLogged) {
+    _deprecationLogged = true;
+    console.warn(
+      '[neon-branches] LV_PRODUCTION_BRANCH_NAME is deprecated; ' +
+        'rename to LV_TEST_TEMPLATE_PARENT_BRANCH for clearer intent.',
+    );
+  }
+  if (explicit) {
+    const b = await findBranchByName(cfg, explicit);
+    if (!b) {
+      throw new Error(
+        `[neon-branches] configured template parent branch "${explicit}" not found in Neon project.`,
+      );
+    }
+    return b;
+  }
+  // No explicit env var. Try `main` first (modern Neon default), then
+  // fall back to `production` (legacy default) with a warning so the
+  // user knows to set the env var explicitly.
+  const main = await findBranchByName(cfg, 'main');
+  if (main) return main;
+  const prod = await findBranchByName(cfg, 'production');
+  if (prod) {
+    console.warn(
+      '[neon-branches] no `main` branch; falling back to `production` as template parent. ' +
+        'Set LV_TEST_TEMPLATE_PARENT_BRANCH=production to silence this warning.',
+    );
+    return prod;
+  }
+  throw new Error(
+    '[neon-branches] could not find a template parent branch (tried `main`, `production`). ' +
+      'Set LV_TEST_TEMPLATE_PARENT_BRANCH to the correct branch name.',
+  );
+}
 
 export const WORKER_BRANCH_PREFIX = 'test_worker_';
 
@@ -236,8 +307,8 @@ export async function getTemplateBranch(cfg: NeonConfig): Promise<NeonBranch> {
   if (!branch) {
     throw new Error(
       `Neon template branch "${TEMPLATE_BRANCH_NAME}" not found in project. ` +
-        `Create it from "${PRODUCTION_BRANCH_NAME}" in the Neon console (or ` +
-        `set LV_TEST_TEMPLATE_BRANCH_NAME).`,
+        `Run \`tsx scripts/build-test-template.ts\` to create it (or ` +
+        `set LV_TEST_TEMPLATE_BRANCH_NAME if it has a different name).`,
     );
   }
   cachedTemplateBranchId = branch.id;

@@ -41,7 +41,7 @@ import {
   findBranchByName,
   getNeonConfig,
   listBranches,
-  PRODUCTION_BRANCH_NAME,
+  resolveTemplateParentBranch,
   resolveBranchUrl,
   TEMPLATE_BRANCH_NAME,
   type NeonConfig,
@@ -92,13 +92,11 @@ async function recreateLegacyTemplateDb(): Promise<void> {
 
 async function recreateNeonTemplateBranch(cfg: NeonConfig): Promise<string> {
   const tStart = Date.now();
-  // 1) Find production parent.
-  const prod = await findBranchByName(cfg, PRODUCTION_BRANCH_NAME);
-  if (!prod) {
-    throw new Error(
-      `[build-test-template] production branch "${PRODUCTION_BRANCH_NAME}" not found in Neon project.`,
-    );
-  }
+  // 1) Resolve template parent branch (defaults to `main`; falls back
+  //    to `production` with a deprecation warning if `main` doesn't
+  //    exist and no env override is set). See `resolveTemplateParentBranch`
+  //    in `tests/setup/neon-branches.ts` for full resolution rules.
+  const prod = await resolveTemplateParentBranch(cfg);
 
   // 2) If a template branch already exists, delete its children
   //    first (`test_worker_*` branches from a crashed prior run that
@@ -131,7 +129,7 @@ async function recreateNeonTemplateBranch(cfg: NeonConfig): Promise<string> {
   // 3) Create a fresh template branch from production with a
   //    read_write endpoint so we can connect to apply schema/seed.
   console.log(
-    `[build-test-template] creating template branch "${TEMPLATE_BRANCH_NAME}" from "${PRODUCTION_BRANCH_NAME}"`,
+    `[build-test-template] creating template branch "${TEMPLATE_BRANCH_NAME}" from parent "${prod.name}" (${prod.id})`,
   );
   const created = await createBranchWithEndpoint(cfg, prod.id, TEMPLATE_BRANCH_NAME);
 

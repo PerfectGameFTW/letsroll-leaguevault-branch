@@ -27,7 +27,6 @@ import { cleanupTestDbs } from '../../scripts/cleanup-test-dbs';
 import { ensureTestTemplate } from '../../scripts/ensure-test-template';
 import { cleanup as closeDbPool } from '../../server/db';
 import { precloneAllWorkerDbs } from './clone-template';
-import { getNeonConfig } from './neon-branches';
 
 // Maximum VITEST_POOL_ID across every forks-pool project in vitest.config.ts.
 // `parallel`, `parallel-isolated` and `parallel-isolated-with-app` all top
@@ -83,48 +82,33 @@ export default async function setup() {
     );
   }
 
+  // Suppress the unused-var lint when teardown body doesn't reference it.
+  void didSetupHere;
+
   return async function teardown() {
-    // End-of-run cleanup (Task #723). Two safety rails:
+    // NO branch/DB cleanup here — even with the `didSetupHere` and
+    // `LV_TEST_RUN_ID` prefix gates, vitest fires the per-project
+    // globalSetup teardown when *that* project finishes its files,
+    // not when the whole run ends. With our multi-project config
+    // (`parallel`, `parallel-isolated`, `parallel-isolated-with-app`,
+    // `serial-fk-bypass`) the first project to finish would yank the
+    // shared per-pool branches out from under sibling projects'
+    // workers (same RUN_ID prefix), causing mid-run DB-disappearance
+    // failures.
     //
-    // 1. Only the project invocation that DID the setup runs the
-    //    cleanup. Vitest invokes `globalSetup` once per project and
-    //    each invocation's returned teardown fires independently;
-    //    without this gate, project B's teardown would run while
-    //    project C's workers are still finishing.
-    //
-    // 2. In Neon-branches mode the cleanup is scoped to the current
-    //    `LV_TEST_RUN_ID` prefix, not all `test_worker_*` branches.
-    //    This means even if a sibling vitest *process* (different
-    //    RUN_ID) is concurrently running against the same Neon
-    //    project, we never touch its branches.
-    //
-    // Legacy CREATE-DATABASE-TEMPLATE mode still skips end-of-run
-    // cleanup entirely: DROP DATABASE force-terminates connections,
-    // and per-project teardown timing can yank DBs out from under
-    // sibling projects' workers. The next run's startup
-    // `cleanupTestDbs()` sweeps any stragglers.
-    let teardownErr: unknown;
-    if (didSetupHere && getNeonConfig() && process.env.SKIP_TEST_SEED !== '1') {
-      const runId = process.env[RUN_ID_ENV];
-      const prefix = runId ? `test_worker_${runId}_` : undefined;
-      try {
-        await cleanupTestDbs({ branchNamePrefix: prefix });
-      } catch (err) {
-        // Don't fail the whole test run if Neon API is briefly
-        // unreachable at teardown — startup cleanup will sweep.
-        console.warn(
-          '[global-teardown] cleanupTestDbs failed (will retry on next run):',
-          err instanceof Error ? err.message : String(err),
-        );
-      }
-    }
+    // Cleanup is split into two reliable hooks instead:
+    //   1. **Per-fork exit hook** (`tests/setup/per-worker-setup.ts`
+    //      and `tests/setup/per-worker-db-only.ts`) — when each
+    //      individual worker fork exits, it deletes its own branch
+    //      via the Neon API. This is per-fork-scoped, so it cannot
+    //      race with sibling projects.
+    //   2. **Startup sweep** (`cleanupTestDbs()` at the top of this
+    //      function) — sweeps any leftovers from crashed runs whose
+    //      per-fork hooks didn't fire.
     try {
       await closeDbPool();
     } catch (err) {
-      teardownErr = err;
-    }
-    if (teardownErr) {
-      throw teardownErr instanceof Error ? teardownErr : new Error(String(teardownErr));
+      throw err instanceof Error ? err : new Error(String(err));
     }
   };
 }
