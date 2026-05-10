@@ -11,6 +11,6 @@
  * used only by the `parallel` project (the bulk of HTTP-driven
  * tests/api/** suites).
  */
-import { cloneTemplateForWorker } from './per-worker-setup';
+import { cloneTemplateForWorker } from './clone-template';
 
 await cloneTemplateForWorker();

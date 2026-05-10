@@ -30,198 +30,44 @@
  * (directly or transitively) above the `setEnv()` call, or the
  * singleton pool would bind to the dev DB instead of the worker DB.
  */
-import { randomBytes } from 'node:crypto';
-import pg from 'pg';
 import { spawnTestApp, type SpawnedTestApp } from './spawn-test-app';
-import { CLONE_ADVISORY_LOCK_KEY, TEMPLATE_DB_NAME } from './per-worker-lock';
+import { CLONE_ADVISORY_LOCK_KEY } from './per-worker-lock';
+import {
+  cloneTemplateForWorker,
+  ENV_DB_NAME,
+  ENV_DB_URL,
+} from './clone-template';
 
-export { CLONE_ADVISORY_LOCK_KEY };
+export { CLONE_ADVISORY_LOCK_KEY, cloneTemplateForWorker };
 
-function originalDatabaseUrl(): string {
-  // Prefer the operator's configured dev DB URL; setupFiles run before
-  // we have rewritten DATABASE_URL so process.env.DATABASE_URL still
-  // points at the dev DB at this moment.
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error('per-worker-setup: DATABASE_URL must be set to provision a worker DB.');
-  }
-  return url;
-}
+// `cloneTemplate`, `workerDbName`, `workerDbNameForPool`,
+// `cloneTemplateForWorker`, `precloneAllWorkerDbs` and the
+// ENV_DB_NAME/ENV_DB_URL stash keys all live in `./clone-template.ts`
+// (side-effect-free). That module is imported directly from
+// `per-worker-db-only.ts` and `tests/setup/global-setup.ts` so neither
+// of those code paths drag in the top-level `await ensurePerWorkerApp()`
+// at the bottom of this file (which would spawn an Express in DB-only
+// or globalSetup contexts).
 
-function adminUrl(): string {
-  const u = new URL(originalDatabaseUrl());
-  u.pathname = '/postgres';
-  return u.toString();
-}
-
-function workerDbUrl(dbName: string): string {
-  const u = new URL(originalDatabaseUrl());
-  u.pathname = `/${dbName}`;
-  return u.toString();
-}
-
-function workerDbName(): string {
-  // Deterministic per-pool name (Task #722). VITEST_POOL_ID is the
-  // integer string vitest assigns to each fork (1-indexed). LV_TEST_RUN_ID
-  // is set once by globalSetup and inherited by every spawned fork —
-  // including forks vitest recycles between files under `isolate: true`.
-  // Combining the two means a recycled fork in the same pool computes
-  // the SAME DB name its predecessor used and connects to the existing
-  // clone instead of provisioning a fresh one. The `parallel-isolated`
-  // project's clone count is therefore bounded by maxForks, not by the
-  // number of test files in the project.
-  const poolId = process.env.VITEST_POOL_ID ?? '0';
-  const runId = process.env.LV_TEST_RUN_ID;
-  if (runId && /^[0-9a-f]+$/.test(runId)) {
-    return `test_worker_${runId}_pool_${poolId}`;
-  }
-  // Fallback for paths that bypass globalSetup (e.g. SKIP_TEST_SEED=1):
-  // unique-per-spawn name keeps backwards compat at the cost of losing
-  // the cross-recycle reuse. Should not hit in normal `npm test`.
-  const rand = randomBytes(4).toString('hex');
-  return `test_worker_${poolId}_${process.pid}_${rand}`;
-}
-
-async function databaseExists(client: pg.PoolClient, dbName: string): Promise<boolean> {
-  const { rows } = await client.query<{ exists: boolean }>(
-    `SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1) AS exists`,
-    [dbName],
-  );
-  return rows[0]?.exists ?? false;
-}
-
-async function cloneTemplate(targetDb: string): Promise<void> {
-  const adminPool = new pg.Pool({ connectionString: adminUrl(), max: 2 });
-  const client = await adminPool.connect();
-  try {
-    // Block until any concurrent clone in another worker releases.
-    await client.query('SELECT pg_advisory_lock($1)', [CLONE_ADVISORY_LOCK_KEY]);
-    try {
-      // Task #722: with deterministic per-pool DB names, a vitest fork
-      // recycle for the same pool ID will compute the same target name
-      // its predecessor already cloned. Probe under the advisory lock
-      // (so we don't race a sibling pool's CREATE) and short-circuit if
-      // the DB already exists. This is the cross-recycle hot path.
-      if (await databaseExists(client, targetDb)) {
-        return;
-      }
-      // Drop any leftover/stale connections to the template (build
-      // script normally closes its pool, but a previous worker's
-      // clone-time admin connection can still be in TIME_WAIT).
-      const maxAttempts = 12;
-      let lastErr: unknown = null;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          // Best-effort terminate: dev/local Postgres allows this;
-          // managed Neon doesn't and will throw, which we swallow —
-          // the advisory lock above is the primary serialisation, this
-          // is just defence against admin connections from a previous
-          // ensure-template / cleanup pass that haven't fully drained.
-          if (attempt > 1) {
-            try {
-              await client.query(
-                `SELECT pg_terminate_backend(pid)
-                   FROM pg_stat_activity
-                  WHERE datname = $1
-                    AND pid <> pg_backend_pid()`,
-                [TEMPLATE_DB_NAME],
-              );
-            } catch {
-              /* role lacks privilege; rely on backoff */
-            }
-          }
-          await client.query(
-            `CREATE DATABASE "${targetDb}" TEMPLATE "${TEMPLATE_DB_NAME}"`,
-          );
-          return;
-        } catch (err) {
-          lastErr = err;
-          // "source database is being accessed by other users" — wait
-          // briefly for the offending session to drain, then retry.
-          // Backoff: 500ms, 1s, 1.5s, ... up to ~6s per attempt.
-          await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
-        }
-      }
-      throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-    } finally {
-      try {
-        await client.query('SELECT pg_advisory_unlock($1)', [CLONE_ADVISORY_LOCK_KEY]);
-      } catch { /* noop */ }
-    }
-  } finally {
-    client.release();
-    await adminPool.end();
-  }
-}
-
-// Reserved env keys that survive vitest's per-file module-registry reset
-// (which `isolate: true` performs) but are still scoped to this fork
-// process under `pool: 'forks'`. See Task #719: with `isolate: true` +
-// `pool: 'forks'`, a module-level memo is wiped between files within a
-// fork, so every file would re-clone the template DB. Stashing the
-// resolved DB name / URL / app port in `process.env` keeps the memo
-// alive across files within the fork while still being isolated from
-// other forks. DON'T move this back to module scope without first
-// refactoring `parallel-isolated` files to `vi.hoisted()`.
-const ENV_DB_NAME = '__LV_WORKER_DB_NAME__';
-const ENV_DB_URL = '__LV_WORKER_DB_URL__';
+// App-port stash key is owned by this module since only the
+// app-spawning hot path needs it.
 const ENV_APP_PORT = '__LV_WORKER_APP_PORT__';
 
-let dbPromise: Promise<{ dbName: string; url: string }> | null = null;
 let appPromise: Promise<{ app: SpawnedTestApp; dbName: string }> | null = null;
 
-async function initDbOnce(): Promise<{ dbName: string; url: string }> {
-  const dbName = workerDbName();
-  await cloneTemplate(dbName);
-  const url = workerDbUrl(dbName);
-  process.env.DATABASE_URL = url;
-  process.env.TEST_DATABASE_URL = url;
-  process.env[ENV_DB_NAME] = dbName;
-  process.env[ENV_DB_URL] = url;
-  if (process.env.LV_DEBUG_PERWORKER === '1') {
-    const cold = Number(process.env.__LV_DB_COLD_HITS__ ?? '0') + 1;
-    process.env.__LV_DB_COLD_HITS__ = String(cold);
-    console.log(`[perworker] db COLD pid=${process.pid} pool=${process.env.VITEST_POOL_ID} db=${dbName} cold=${cold}`);
-  }
-  return { dbName, url };
-}
-
-/**
- * Clone the per-worker DB only (no Express spawn). Used by the DB-only
- * setup file for projects that do not make HTTP calls against the
- * spawned app.
- */
-export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string }> {
-  // Fast path: this fork already cloned a DB on a previous file load.
-  // The module-registry reset wiped `dbPromise`, but `process.env`
-  // survives. Defence-in-depth equality check guards against a test
-  // mutating TEST_DATABASE_URL out from under us.
-  const stashedUrl = process.env[ENV_DB_URL];
-  const stashedName = process.env[ENV_DB_NAME];
-  if (
-    stashedUrl &&
-    stashedName &&
-    process.env.TEST_DATABASE_URL === stashedUrl
-  ) {
-    process.env.DATABASE_URL = stashedUrl;
-    if (process.env.LV_DEBUG_PERWORKER === '1') {
-      const hot = Number(process.env.__LV_DB_HOT_HITS__ ?? '0') + 1;
-      process.env.__LV_DB_HOT_HITS__ = String(hot);
-      console.log(`[perworker] db HOT  pid=${process.pid} pool=${process.env.VITEST_POOL_ID} db=${stashedName} hot=${hot}`);
-    }
-    return Promise.resolve({ dbName: stashedName, url: stashedUrl });
-  }
-  if (dbPromise === null) {
-    dbPromise = initDbOnce();
-  }
-  return dbPromise;
-}
-
 async function initAppOnce(): Promise<{ app: SpawnedTestApp; dbName: string }> {
+  const tStart = Date.now();
   const { dbName, url } = await cloneTemplateForWorker();
+  const tDb = Date.now();
   const app = await spawnTestApp({ databaseUrl: url });
+  const tApp = Date.now();
   process.env.TEST_BASE_URL = `http://127.0.0.1:${app.port}`;
   process.env[ENV_APP_PORT] = String(app.port);
+  console.log(
+    `[lv-perf] initAppOnce pool=${process.env.VITEST_POOL_ID ?? '?'}` +
+      ` pid=${process.pid} db=${dbName} port=${app.port}` +
+      ` cloneOrHot=${tDb - tStart}ms spawn=${tApp - tDb}ms total=${tApp - tStart}ms`,
+  );
   if (process.env.LV_DEBUG_PERWORKER === '1') {
     const cold = Number(process.env.__LV_APP_COLD_HITS__ ?? '0') + 1;
     process.env.__LV_APP_COLD_HITS__ = String(cold);

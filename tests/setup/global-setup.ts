@@ -26,6 +26,13 @@ import { randomBytes } from 'node:crypto';
 import { cleanupTestDbs } from '../../scripts/cleanup-test-dbs';
 import { ensureTestTemplate } from '../../scripts/ensure-test-template';
 import { cleanup as closeDbPool } from '../../server/db';
+import { precloneAllWorkerDbs } from './clone-template';
+
+// Maximum VITEST_POOL_ID across every forks-pool project in vitest.config.ts.
+// `parallel`, `parallel-isolated` and `parallel-isolated-with-app` all top
+// out at 4 forks; `serial-fk-bypass` uses 1 fork (still pool_1). Keep this
+// in sync if any project's `maxWorkers` is raised.
+const MAX_POOL_ID = 4;
 
 // Vitest invokes `globalSetup` once per project (we have ≥3 node
 // projects). Without memoisation the second project's `cleanupTestDbs()`
@@ -49,8 +56,28 @@ export default async function setup() {
     if (!process.env[RUN_ID_ENV]) {
       process.env[RUN_ID_ENV] = randomBytes(4).toString('hex');
     }
+    const t0 = Date.now();
     await cleanupTestDbs();
+    const t1 = Date.now();
     await ensureTestTemplate();
+    const t2 = Date.now();
+    // Pre-clone all per-pool worker DBs serially under the same advisory
+    // lock cloneTemplate uses, so the per-fork hot path hits the
+    // `existed=true` short-circuit instead of N forks racing CREATE
+    // DATABASE TEMPLATE concurrently. On managed Postgres (Neon) the
+    // race is unrecoverable in practice — even with the in-process
+    // advisory lock, sibling forks' admin pools open their own pg
+    // sessions and the 55006 "source database is being accessed by
+    // other users" error has been observed to exhaust the 12-attempt
+    // retry budget (~100s of wasted clone time). Pre-cloning serially
+    // converts that into a bounded ~N×CREATE_DATABASE one-time cost
+    // here in globalSetup. (Task #722 follow-up.)
+    await precloneAllWorkerDbs(MAX_POOL_ID);
+    const t3 = Date.now();
+    console.log(
+      `[lv-perf] global-setup cleanup=${t1 - t0}ms ensureTemplate=${t2 - t1}ms` +
+        ` preclone=${t3 - t2}ms total=${t3 - t0}ms`,
+    );
   }
 
   return async function teardown() {
