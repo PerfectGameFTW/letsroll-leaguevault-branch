@@ -120,8 +120,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           {!applePayTokenizeOnly && applePayRef && (
             <div
               ref={applePayRef}
-              onClick={applePayAvailable ? onApplePayClick : undefined}
-              className={applePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
+              className={applePayAvailable ? 'min-h-[48px] overflow-hidden rounded-md bg-black' : undefined}
               style={applePayAvailable ? undefined : { display: 'none' }}
             />
           )}
@@ -169,8 +168,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           {!googlePayTokenizeOnly && googlePayRef && (
             <div
               ref={googlePayRef}
-              onClick={googlePayAvailable ? onGooglePayClick : undefined}
-              className={googlePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
+              className={googlePayAvailable ? 'min-h-[48px] overflow-hidden rounded-md bg-black' : undefined}
               style={googlePayAvailable ? undefined : { display: 'none' }}
             />
           )}
