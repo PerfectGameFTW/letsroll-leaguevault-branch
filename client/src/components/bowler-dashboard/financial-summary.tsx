@@ -65,9 +65,11 @@ const FinancialSummary = ({ bowler, league, payments, teamName, leagueName }: Fi
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Amount Due to Date</CardTitle>
             <CardDescription>
-              {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
-                (league?.weeklyFee || 0) / 100
-              ).toFixed(2)}/week
+              {league?.paymentMode === "upfront"
+                ? "Full season due in week 1"
+                : `${weeksDue} week${weeksDue === 1 ? "" : "s"} at $${(
+                    (league?.weeklyFee || 0) / 100
+                  ).toFixed(2)}/week`}
             </CardDescription>
           </CardHeader>
           <CardContent>

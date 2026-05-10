@@ -131,7 +131,10 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const isUpfront = league.paymentMode === 'upfront';
 
   if (isUpfront) {
-    const amountPastDue = Math.max(0, fullSeasonAmount - totalPaid);
+    // Past-due only kicks in once the first bowling week has passed.
+    // Before the season starts, the full season is "due" (shown on the
+    // card) but nothing is past-due yet.
+    const amountPastDue = weeksPassed >= 1 ? Math.max(0, fullSeasonAmount - totalPaid) : 0;
     return {
       weeksPassed,
       totalWeeksInSeason,
