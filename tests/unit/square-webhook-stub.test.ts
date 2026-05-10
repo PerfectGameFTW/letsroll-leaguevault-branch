@@ -35,16 +35,16 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
-const mockStorage = {
-  getPaymentByCloverChargeId: vi.fn(),
-  refundPayment: vi.fn(),
-  openDispute: vi.fn(),
-  updatePayment: vi.fn(),
-};
+const { mockStorage, fakeLogger } = vi.hoisted(() => ({
+  mockStorage: {
+    getPaymentByCloverChargeId: vi.fn(),
+    refundPayment: vi.fn(),
+    openDispute: vi.fn(),
+    updatePayment: vi.fn(),
+  },
+  fakeLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
-
-// eslint-disable-next-line local/factory-must-use-schema -- mocked logger, not a schema row
-const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 vi.mock('../../server/logger', () => ({ logger: fakeLogger, createLogger: () => fakeLogger }));
 
 const webhooksRouter = (await import('../../server/routes/payments-provider/webhooks')).default;

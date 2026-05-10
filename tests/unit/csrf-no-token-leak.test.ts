@@ -18,17 +18,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
 import {
   assertNoTokenLeak as sharedAssertNoTokenLeak,
-  type CapturedLogLine,
 } from '../helpers/no-token-leak';
 
-const captured: CapturedLogLine[] = [];
-
-function record(level: string) {
-  return (message: string, ...args: unknown[]) => {
-    const tail = args.length > 0 ? ' ' + JSON.stringify(args) : '';
-    captured.push({ level, line: `${message}${tail}` });
-  };
-}
+const { captured, record } = vi.hoisted(() => {
+  const cap: Array<{ level: string; line: string }> = [];
+  function rec(level: string) {
+    return (message: string, ...args: unknown[]) => {
+      const tail = args.length > 0 ? ' ' + JSON.stringify(args) : '';
+      cap.push({ level, line: `${message}${tail}` });
+    };
+  }
+  return { captured: cap, record: rec };
+});
 
 vi.mock('../../server/logger', () => ({
   createLogger: () => ({

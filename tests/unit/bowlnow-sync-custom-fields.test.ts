@@ -22,12 +22,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrgIntegrations } from '@shared/schema';
 
-const getBowler = vi.fn();
-const getBowlerLeagues = vi.fn();
-const getLeague = vi.fn();
-const getTeam = vi.fn();
-const getOrganization = vi.fn();
-const updateBowlerBnContactId = vi.fn();
+const { getBowler, getBowlerLeagues, getLeague, getTeam, getOrganization, updateBowlerBnContactId } = vi.hoisted(() => ({
+  getBowler: vi.fn(),
+  getBowlerLeagues: vi.fn(),
+  getLeague: vi.fn(),
+  getTeam: vi.fn(),
+  getOrganization: vi.fn(),
+  updateBowlerBnContactId: vi.fn(),
+}));
 
 vi.mock('../../server/storage', () => ({
   storage: {

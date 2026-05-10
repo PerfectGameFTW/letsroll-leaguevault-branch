@@ -44,16 +44,20 @@ import type { OrgIntegrations } from '@shared/schema';
 // GET sequence the real client would issue actually reads its own
 // writes. Reset in beforeEach so each test gets a clean slate.
 // ---------------------------------------------------------------------------
-const orgStore = new Map<number, OrgIntegrations | undefined>();
-
-const mockStorage = {
-  getOrgIntegrations: vi.fn(async (orgId: number) => orgStore.get(orgId)),
-  updateOrgIntegrations: vi.fn(
-    async (orgId: number, payload: OrgIntegrations) => {
-      orgStore.set(orgId, payload);
+const { orgStore, mockStorage } = vi.hoisted(() => {
+  const store = new Map<number, import('@shared/schema').OrgIntegrations | undefined>();
+  return {
+    orgStore: store,
+    mockStorage: {
+      getOrgIntegrations: vi.fn(async (orgId: number) => store.get(orgId)),
+      updateOrgIntegrations: vi.fn(
+        async (orgId: number, payload: import('@shared/schema').OrgIntegrations) => {
+          store.set(orgId, payload);
+        },
+      ),
     },
-  ),
-};
+  };
+});
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
 // ---------------------------------------------------------------------------

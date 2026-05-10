@@ -10,9 +10,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Request } from 'express';
 
-const mockGetBowlerLeaguesByBowlerIds = vi.fn();
-const mockGetLeaguesByIds = vi.fn();
-const mockGetBowlersByIds = vi.fn();
+const { mockGetBowlerLeaguesByBowlerIds, mockGetLeaguesByIds, mockGetBowlersByIds } = vi.hoisted(() => ({
+  mockGetBowlerLeaguesByBowlerIds: vi.fn(),
+  mockGetLeaguesByIds: vi.fn(),
+  mockGetBowlersByIds: vi.fn(),
+}));
 
 vi.mock('../../server/storage', () => ({
   storage: {
