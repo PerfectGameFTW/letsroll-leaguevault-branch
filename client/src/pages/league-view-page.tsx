@@ -25,7 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Users, CircleDollarSign, Mail, RefreshCw, History, Code, ExternalLink, Copy } from "lucide-react";
+import { Loader2, Users, CircleDollarSign, Mail, RefreshCw, History, Code, ExternalLink, Copy, ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 
@@ -366,6 +367,7 @@ function EmbedAdminPanel({ league }: { league: League }) {
   const { toast } = useToast();
   const [domainsText, setDomainsText] = useState<string | null>(null);
   const [questionsJson, setQuestionsJson] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   const orgId = league.organizationId;
 
@@ -436,21 +438,37 @@ function EmbedAdminPanel({ league }: { league: League }) {
 
   return (
     <Card data-testid="embed-admin-panel">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Code className="h-5 w-5" />
-          <CardTitle className="text-lg">Embeddable registration form</CardTitle>
-        </div>
-        <CardDescription>
-          Share a public registration page or paste an iframe snippet onto your own site.
-          {enabled ? (
-            <Badge variant="default" className="ml-2">Public</Badge>
-          ) : (
-            <Badge variant="secondary" className="ml-2">Disabled</Badge>
-          )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls="embed-admin-panel-content"
+            data-testid="embed-admin-panel-toggle"
+            className="w-full text-left rounded-t-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                <CardTitle className="text-lg flex-1">Embeddable registration form</CardTitle>
+                <ChevronDown
+                  className={`h-5 w-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+              </div>
+              <CardDescription>
+                Share a public registration page or paste an iframe snippet onto your own site.
+                {enabled ? (
+                  <Badge variant="default" className="ml-2">Public</Badge>
+                ) : (
+                  <Badge variant="secondary" className="ml-2">Disabled</Badge>
+                )}
+              </CardDescription>
+            </CardHeader>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent forceMount id="embed-admin-panel-content" className="data-[state=closed]:hidden">
+          <CardContent className="space-y-6">
         {!enabled && (
           <div className="text-sm text-muted-foreground border rounded-md p-3 bg-muted/40">
             The public embed currently requires both <strong>Allow public signup</strong> and <strong>Youth league</strong> to be enabled on this league.
@@ -594,7 +612,9 @@ function EmbedAdminPanel({ league }: { league: League }) {
             </div>
           )}
         </div>
-      </CardContent>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }
