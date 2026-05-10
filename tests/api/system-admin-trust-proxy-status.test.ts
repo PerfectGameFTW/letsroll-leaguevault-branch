@@ -29,6 +29,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   login,
+  purgeSessionCache,
   apiGet,
   type AuthSession,
   TEST_ADMIN_EMAIL,
@@ -89,11 +90,17 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
     // where a sibling test (same DB under the `parallel` project) just
     // rotated this admin's session before our request landed. See the
     // describe-block comment above for the cross-fork rationale.
+    //
+    // IMPORTANT: `login()` in `tests/helpers.ts` memoises by email
+    // (`loginCache`), so a second `await login(...)` after a 401 would
+    // return the same stale `AuthSession`. We must `purgeSessionCache`
+    // first to force a brand-new login flow on retry.
     let { status, data } = await apiGet<StatusBody>(
       '/api/system-admin/trust-proxy-status',
       await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD),
     );
     if (status === 401) {
+      purgeSessionCache(TEST_ADMIN_EMAIL);
       ({ status, data } = await apiGet<StatusBody>(
         '/api/system-admin/trust-proxy-status',
         await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD),

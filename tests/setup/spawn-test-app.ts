@@ -65,7 +65,11 @@ export async function spawnTestApp(opts: SpawnTestAppOptions): Promise<SpawnedTe
     // tests. We deliberately leave APP_ENV unset so config defaults to
     // 'dev' (the schema does not accept 'test').
     NODE_ENV: process.env.NODE_ENV ?? 'development',
-    ...(quietApp ? { LOG_LEVEL: process.env.LOG_LEVEL ?? 'warn' } : {}),
+    // Quiet-mode contract is "be quiet regardless of parent env".
+    // Using `process.env.LOG_LEVEL ?? 'warn'` would let an inherited
+    // `LOG_LEVEL=info` defeat the quiet flag. Hard-set to `warn` here;
+    // explicit `opts.envOverrides.LOG_LEVEL` (merged below) still wins.
+    ...(quietApp ? { LOG_LEVEL: 'warn' } : {}),
     ...(opts.envOverrides ?? {}),
   };
 
