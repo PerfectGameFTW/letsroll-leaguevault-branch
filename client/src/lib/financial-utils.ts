@@ -218,13 +218,27 @@ export function calculateBowlerViewFinancials(
     const doublePayDates = (league.doublePayDates ?? [])
       .map(d => d.slice(0, 10))
       .filter(Boolean);
-    const today = startOfToday();
-    const todayStr = toIsoDateStr(today);
-    const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
     const totalExtra = doublePayDates.length * league.weeklyFee;
-    totalSeasonDues = league.weeklyFee * weeksDue + pastExtra;
     fullSeasonAmount = league.weeklyFee * totalWeeksInSeason + totalExtra;
-    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+
+    if (league.paymentMode === "upfront") {
+      // Upfront leagues: full season is due immediately. "Amount due to date"
+      // is the entire season amount and "past due" is the unpaid remainder.
+      // Mirrors calculateFinancials + the shared calculateBowlerPastDue
+      // helper exactly (neither gates on season-start; pre-season gating
+      // would need to land in all three helpers together).
+      totalSeasonDues = fullSeasonAmount;
+      amountPastDue = Math.max(0, fullSeasonAmount - totalPaidAmount);
+    } else {
+      const today = startOfToday();
+      const todayStr = toIsoDateStr(today);
+      const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
+      totalSeasonDues = Math.min(
+        league.weeklyFee * weeksDue + pastExtra,
+        fullSeasonAmount,
+      );
+      amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+    }
   }
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;

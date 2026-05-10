@@ -19,12 +19,20 @@ export function BowlerFinancialSummary({ league, financials }: Props) {
     totalPaidAmount,
   } = financials;
 
+  const isUpfront = league?.paymentMode === "upfront";
+  const dueToDateDescription = isUpfront
+    ? "Full season due in week 1"
+    : `${weeksDue} week${weeksDue === 1 ? "" : "s"} at $${weeklyFee.toFixed(2)}`;
+  const pastDueDescription = isUpfront
+    ? "Unpaid full-season balance"
+    : "Unpaid fees for weeks passed";
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <SummaryCard title="Weekly Fee" description="Regular payment amount" value={`$${weeklyFee.toFixed(2)}`} />
       <SummaryCard
         title="Amount Due to Date"
-        description={`${weeksDue} week${weeksDue === 1 ? "" : "s"} at $${weeklyFee.toFixed(2)}`}
+        description={dueToDateDescription}
         value={`$${(totalSeasonDues / 100).toFixed(2)}`}
       />
       <SummaryCard
@@ -34,7 +42,7 @@ export function BowlerFinancialSummary({ league, financials }: Props) {
       />
       <SummaryCard
         title="Amount Past Due to Date"
-        description="Unpaid fees for weeks passed"
+        description={pastDueDescription}
         value={`$${(amountPastDue / 100).toFixed(2)}`}
         valueClass="text-destructive"
       />

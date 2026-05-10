@@ -10,7 +10,7 @@ import {
 import { CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
 import type { League, Team, Bowler, Payment, BowlerLeague, BowlerWithAccount } from "@shared/schema";
-import { startOfToday } from "date-fns";
+import { calculateBowlerPastDue } from "@/lib/financial-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -67,21 +67,21 @@ export function PastDueBowlersSection() {
         );
 
         const totalPaid = leaguePayments.reduce((sum, p) => sum + p.amount, 0);
-        const today = startOfToday();
-        const seasonStart = new Date(league.seasonStart);
-        const weeksPassed = Math.max(0, Math.floor(
-          (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-        ));
-
-        const dueToDate = league.weeklyFee * weeksPassed;
-        const pastDueAmount = Math.max(0, dueToDate - totalPaid);
-        const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
+        // Use the shared upfront-aware past-due helper so this table matches
+        // the per-bowler view, the dashboard stat, and the past-due reports.
+        const pastDueAmount = calculateBowlerPastDue(league, totalPaid);
+        const isUpfront = league.paymentMode === "upfront";
+        const weeksPastDueDisplay: string = isUpfront
+          ? "Full season"
+          : league.weeklyFee > 0
+            ? String(Math.floor(pastDueAmount / league.weeklyFee))
+            : "0";
 
         return pastDueAmount > 0 ? {
           bowler,
           team,
           league,
-          weeksPastDue,
+          weeksPastDueDisplay,
           pastDueAmount,
         } : null;
       });
@@ -129,7 +129,7 @@ export function PastDueBowlersSection() {
                   </TableCell>
                   <TableCell>{item.league.name}</TableCell>
                   <TableCell className={cn("hidden md:table-cell")}>{item.team.name}</TableCell>
-                  <TableCell className={cn("hidden md:table-cell")}>{item.weeksPastDue}</TableCell>
+                  <TableCell className={cn("hidden md:table-cell")}>{item.weeksPastDueDisplay}</TableCell>
                   <TableCell className="text-destructive">
                     ${(item.pastDueAmount / 100).toFixed(2)}
                   </TableCell>

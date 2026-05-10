@@ -3,7 +3,7 @@ import { Layout } from "@/components/layout";
 import { Trophy, Users, Activity, ArrowUpRight, DollarSign } from "lucide-react";
 import { Link } from "wouter";
 import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
-import { getPaymentSummary } from "@/lib/financial-utils";
+import { getPaymentSummary, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -116,22 +116,21 @@ export default function HomePage() {
   const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.lineageAmount ?? 0), 0);
   const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
+  // Past-due is computed via the shared `calculateBowlerPastDue` helper so
+  // every surface (this stat, the League Health cards, the Past Due
+  // Balances table, the per-league past-due page) agrees. The helper is
+  // upfront-aware: for `paymentMode === 'upfront'` leagues the entire
+  // season amount counts as past-due once the season has started.
   const pastDueBowlerIds = new Set<number>();
   activeBowlerIds.forEach(bowlerId => {
     const associations = bowlerLeaguesData.filter((bl: BowlerLeague) => bl.bowlerId === bowlerId && bl.active);
     for (const assoc of associations) {
       const league = activeLeagues.find(l => l.id === assoc.leagueId);
       if (!league || !league.seasonStart) continue;
-      const seasonStart = new Date(league.seasonStart);
-      const weeksPassed = Math.max(0, Math.floor((today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-      const dueToDate = league.weeklyFee * weeksPassed;
       const bowlerPaid = payments
         .filter(p => p.bowlerId === bowlerId && p.leagueId === league.id && p.status === 'paid')
         .reduce((s, p) => s + p.amount, 0);
-      if (dueToDate - bowlerPaid > 0) {
+      if (calculateBowlerPastDue(league, bowlerPaid) > 0) {
         pastDueBowlerIds.add(bowlerId);
         break;
       }
@@ -147,14 +146,11 @@ export default function HomePage() {
 
     let pastDueCount = 0;
     if (league.seasonStart) {
-      const seasonStart = new Date(league.seasonStart);
-      const weeksPassed = Math.max(0, Math.floor((today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-      const dueToDate = league.weeklyFee * weeksPassed;
       leagueBowlerIds.forEach(bowlerId => {
         const bowlerPaid = payments
           .filter(p => p.bowlerId === bowlerId && p.leagueId === league.id && p.status === 'paid')
           .reduce((s, p) => s + p.amount, 0);
-        if (dueToDate - bowlerPaid > 0) pastDueCount++;
+        if (calculateBowlerPastDue(league, bowlerPaid) > 0) pastDueCount++;
       });
     }
 

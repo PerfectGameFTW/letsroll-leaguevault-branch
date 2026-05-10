@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { League, Payment } from '@shared/schema';
-import { calculateFinancials } from '@/lib/financial-utils';
+import {
+  calculateFinancials,
+  calculateBowlerViewFinancials,
+  calculateBowlerPastDue,
+} from '@/lib/financial-utils';
 
 function isoDate(year: number, month1: number, day: number): string {
   const m = String(month1).padStart(2, '0');
@@ -131,5 +135,107 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
 
     expect(result.totalDueToDate).toBe(96000);
     expect(result.totalDueToDate).toBeLessThanOrEqual(result.fullSeasonAmount);
+  });
+});
+
+describe('upfront-mode parity across helpers (Task #726)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // 12 weeks × $12.00 = $144.00 (in cents: 1200 × 12 = 14400) — matches the
+  // 12x12 Summer League upfront fixture in production.
+  function upfrontLeague(overrides: Partial<League> = {}): League {
+    return makeLeague({
+      weeklyFee: 1200,
+      seasonStart: isoDate(2026, 5, 1),
+      seasonEnd: isoDate(2026, 7, 24),
+      weekDay: 'Friday',
+      totalBowlingWeeks: 12,
+      paymentMode: 'upfront',
+      ...overrides,
+    });
+  }
+
+  it('upfront league before week 1: full season is the amount-due-to-date and helpers agree', () => {
+    const league = upfrontLeague();
+    setToday(2026, 4, 25); // 6 days before season start
+
+    const cf = calculateFinancials(league, []);
+    const bv = calculateBowlerViewFinancials(league, []);
+    const past = calculateBowlerPastDue(league, 0);
+
+    expect(cf.fullSeasonAmount).toBe(14400);
+    expect(bv.fullSeasonAmount).toBe(14400);
+    // All three helpers treat the full season as immediately due/past-due
+    // for upfront leagues. Pinning the parity here so they cannot drift —
+    // a future "don't show past-due before season start" change would need
+    // to land in all three call sites together.
+    expect(cf.totalDueToDate).toBe(14400);
+    expect(bv.totalSeasonDues).toBe(14400);
+    expect(cf.amountPastDue).toBe(14400);
+    expect(bv.amountPastDue).toBe(14400);
+    expect(past).toBe(14400);
+  });
+
+  it('upfront league after week 1 unpaid: full season is past due across all helpers', () => {
+    const league = upfrontLeague();
+    setToday(2026, 5, 8); // 1 week into season
+
+    const cf = calculateFinancials(league, []);
+    const bv = calculateBowlerViewFinancials(league, []);
+    const past = calculateBowlerPastDue(league, 0);
+
+    expect(cf.totalDueToDate).toBe(14400);
+    expect(bv.totalSeasonDues).toBe(14400);
+    expect(cf.amountPastDue).toBe(14400);
+    expect(bv.amountPastDue).toBe(14400);
+    expect(past).toBe(14400);
+  });
+
+  it('upfront league after partial payment: remaining balance is past due', () => {
+    const league = upfrontLeague();
+    setToday(2026, 5, 8);
+
+    const cf = calculateFinancials(league, [paid(5000)]);
+    const bv = calculateBowlerViewFinancials(league, [paid(5000)]);
+    const past = calculateBowlerPastDue(league, 5000);
+
+    expect(cf.amountPastDue).toBe(14400 - 5000);
+    expect(bv.amountPastDue).toBe(14400 - 5000);
+    expect(past).toBe(14400 - 5000);
+    expect(cf.remainingBalance).toBe(14400 - 5000);
+    expect(bv.remainingBalance).toBe(14400 - 5000);
+  });
+
+  it('upfront league fully paid: zero past due', () => {
+    const league = upfrontLeague();
+    setToday(2026, 5, 8);
+
+    const cf = calculateFinancials(league, [paid(14400)]);
+    const bv = calculateBowlerViewFinancials(league, [paid(14400)]);
+    const past = calculateBowlerPastDue(league, 14400);
+
+    expect(cf.amountPastDue).toBe(0);
+    expect(bv.amountPastDue).toBe(0);
+    expect(past).toBe(0);
+    expect(cf.remainingBalance).toBe(0);
+    expect(bv.remainingBalance).toBe(0);
+  });
+
+  it('weekly league mid-season (no regression): bowler-view helper matches calculateFinancials', () => {
+    const league = makeLeague(); // weekly mode, 32 weeks at $30
+    setToday(2025, 10, 22);
+
+    const cf = calculateFinancials(league, []);
+    const bv = calculateBowlerViewFinancials(league, []);
+
+    expect(bv.totalSeasonDues).toBe(cf.totalDueToDate);
+    expect(bv.amountPastDue).toBe(cf.amountPastDue);
+    expect(bv.fullSeasonAmount).toBe(cf.fullSeasonAmount);
+    expect(bv.remainingBalance).toBe(cf.remainingBalance);
   });
 });
