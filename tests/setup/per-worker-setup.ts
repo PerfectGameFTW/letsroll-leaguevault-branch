@@ -108,11 +108,7 @@ async function cloneTemplate(targetDb: string): Promise<void> {
       // Drop any leftover/stale connections to the template (build
       // script normally closes its pool, but a previous worker's
       // clone-time admin connection can still be in TIME_WAIT).
-      // Generous total retry budget: under concurrent test invocations
-      // (e.g. validation `npm test` racing the workflow's `npm test`
-      // against the same template DB), the source-busy window can
-      // exceed 30s. Budget here is ~60s wall-clock at the worst case.
-      const maxAttempts = 30;
+      const maxAttempts = 12;
       let lastErr: unknown = null;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -121,21 +117,18 @@ async function cloneTemplate(targetDb: string): Promise<void> {
           // the advisory lock above is the primary serialisation, this
           // is just defence against admin connections from a previous
           // ensure-template / cleanup pass that haven't fully drained.
-          // Run the terminate on every attempt (including the first):
-          // an admin connection from `build-test-template` or a sibling
-          // `installDbInvariants` against the template can be alive
-          // when we land here even though our advisory lock is held,
-          // because those don't take this lock.
-          try {
-            await client.query(
-              `SELECT pg_terminate_backend(pid)
-                 FROM pg_stat_activity
-                WHERE datname = $1
-                  AND pid <> pg_backend_pid()`,
-              [TEMPLATE_DB_NAME],
-            );
-          } catch {
-            /* role lacks privilege; rely on backoff */
+          if (attempt > 1) {
+            try {
+              await client.query(
+                `SELECT pg_terminate_backend(pid)
+                   FROM pg_stat_activity
+                  WHERE datname = $1
+                    AND pid <> pg_backend_pid()`,
+                [TEMPLATE_DB_NAME],
+              );
+            } catch {
+              /* role lacks privilege; rely on backoff */
+            }
           }
           await client.query(
             `CREATE DATABASE "${targetDb}" TEMPLATE "${TEMPLATE_DB_NAME}"`,
@@ -144,12 +137,9 @@ async function cloneTemplate(targetDb: string): Promise<void> {
         } catch (err) {
           lastErr = err;
           // "source database is being accessed by other users" — wait
-          // for the offending session to drain, then retry. Backoff:
-          // 500ms, 1s, 1.5s, ..., capped at 3s per attempt → up to
-          // ~75s of retry wall-clock across the 30 attempts.
-          await new Promise((r) =>
-            setTimeout(r, 500 * Math.min(attempt, 6)),
-          );
+          // briefly for the offending session to drain, then retry.
+          // Backoff: 500ms, 1s, 1.5s, ... up to ~6s per attempt.
+          await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
         }
       }
       throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

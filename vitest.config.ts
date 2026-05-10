@@ -88,7 +88,7 @@ const PARALLEL_ISOLATED = [
   'tests/unit/bowler-payment-authz.test.ts',
   'tests/unit/bowler-phone-sync.test.ts',
   'tests/unit/bowler-sync-flag-on-failure.test.ts',
-  // 'tests/unit/bowlnow-sync-custom-fields.test.ts' — converted to vi.hoisted (Task #720), now in parallel
+  'tests/unit/bowlnow-sync-custom-fields.test.ts', // Task #720 hoist insufficient — fetch mock pollution under isolate:false breaks sibling tests (#722). Reverted.
   'tests/unit/bowlnow-sync-retry.test.ts',
   'tests/unit/cards-disable-ownership-mismatch.test.ts',
   'tests/unit/change-password-notification.test.ts',
@@ -100,15 +100,15 @@ const PARALLEL_ISOLATED = [
   'tests/unit/clover-saved-card.test.ts',
   'tests/unit/clover-webhooks.test.ts',
   'tests/unit/confirm-email-change-no-token-leak.test.ts',
-  // 'tests/unit/csrf-no-token-leak.test.ts' — converted to vi.hoisted (Task #720), now in parallel
+  'tests/unit/csrf-no-token-leak.test.ts', // Task #720 hoist preserved as precaution after sibling regressions (#722). Reverted.
   'tests/unit/customers-route-pnce-422.test.ts',
   'tests/unit/email-block-domains.test.ts',
-  // 'tests/unit/has-access-to-bowler.test.ts' — converted to vi.hoisted (Task #720), now in parallel
-  // 'tests/unit/has-access-to-bowlers.test.ts' — converted to vi.hoisted (Task #720), now in parallel
-  // 'tests/unit/integrations-bowlnow-fields-roundtrip.test.ts' — converted to vi.hoisted (Task #720), now in parallel
+  'tests/unit/has-access-to-bowler.test.ts', // Task #720 hoist insufficient — vi.mock(server/storage) pollutes shared registry under isolate:false (#722). Reverted.
+  'tests/unit/has-access-to-bowlers.test.ts', // Task #720 hoist insufficient — same storage-mock pollution as has-access-to-bowler (#722). Reverted.
+  'tests/unit/integrations-bowlnow-fields-roundtrip.test.ts', // Task #720 hoist preserved as precaution after sibling regressions (#722). Reverted.
   'tests/unit/league-mutation-resync.test.ts',
   'tests/unit/list-routes-filter-validation.test.ts',
-  // 'tests/unit/locked-sweep.test.ts' — factory had no file-scope closure; safe under isolate:false (Task #720), now in parallel
+  'tests/unit/locked-sweep.test.ts', // Task #720 moved to parallel as factory-safe; reverted defensively after sibling regressions (#722).
   'tests/unit/password-changed-i18n.test.ts',
   'tests/unit/payment-customer-sync.test.ts',
   'tests/unit/payment-execution-double-pay.test.ts',
@@ -119,7 +119,7 @@ const PARALLEL_ISOLATED = [
   'tests/unit/payment-refunds-receipt-dependency.test.ts',
   'tests/unit/payment-scheduler.test.ts',
   'tests/unit/payment-sync-retry.test.ts',
-  // 'tests/unit/payments-by-org.test.ts' — converted to vi.hoisted (Task #720), now in parallel
+  'tests/unit/payments-by-org.test.ts', // Task #720 moved this to `parallel` but its vi.mock of server/storage poisons the shared module registry under isolate:false, breaking sibling api tests (#722). Reverted to parallel-isolated.
   'tests/unit/payments-receipt-endpoints.test.ts',
   'tests/unit/payments-reports-routes.test.ts',
   'tests/unit/payments-routes.test.ts',
@@ -131,7 +131,7 @@ const PARALLEL_ISOLATED = [
   'tests/unit/setup-secret-no-token-leak.test.ts',
   'tests/unit/square-error-contract.test.ts',
   'tests/unit/square-provider-not-configured-422.test.ts',
-  // 'tests/unit/square-webhook-stub.test.ts' — converted to vi.hoisted (Task #720), now in parallel
+  'tests/unit/square-webhook-stub.test.ts', // Task #720 hoist preserved as precaution after sibling regressions (#722). Reverted.
   'tests/unit/use-bowler-payment-submit.test.ts',
 ];
 
