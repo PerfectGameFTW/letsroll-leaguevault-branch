@@ -154,7 +154,7 @@ outputType = "console"
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node --import ./dist/instrument.js dist/index.js"]
-deploymentTarget = "vm"
+deploymentTarget = "cloudrun"
 build = ["sh", "-c", "npm run build && esbuild server/instrument.ts --platform=node --packages=external --bundle --format=esm --outdir=dist"]
 
 [userenv]
