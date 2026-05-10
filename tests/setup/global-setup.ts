@@ -107,14 +107,23 @@ export default async function setup() {
     // failures.
     //
     // Cleanup is split into two reliable hooks instead:
-    //   1. **Per-fork exit hook** (`tests/setup/per-worker-setup.ts`
-    //      and `tests/setup/per-worker-db-only.ts`) — when each
-    //      individual worker fork exits, it deletes its own branch
-    //      via the Neon API. This is per-fork-scoped, so it cannot
-    //      race with sibling projects.
-    //   2. **Startup sweep** (`cleanupTestDbs()` at the top of this
-    //      function) — sweeps any leftovers from crashed runs whose
-    //      per-fork hooks didn't fire.
+    //   1. **End-of-run reporter hook** in
+    //      `tests/setup/summary-reporter.ts` `onTestRunEnd` — runs
+    //      once in the main vitest process after every project +
+    //      every fork has finished, RUN_ID-scoped so concurrent
+    //      sibling vitest processes are never touched. This is the
+    //      "true run-once-at-process-end" hook the architect review
+    //      asked for.
+    //   2. **Startup cross-run sweep** (`cleanupTestDbs({ minAgeMs })`
+    //      at the top of this function) — sweeps `test_worker_*`
+    //      branches older than 10 min while leaving an active
+    //      sibling run's freshly-created branches alone.
+    //
+    // A per-fork `process.on('beforeExit')` hook was tried and
+    // reverted: vitest projects with `isolate: true` recycle fork
+    // processes between files, so the hook fires after every file
+    // and deletes the branch the next file's fresh fork is about
+    // to use.
     try {
       await closeDbPool();
     } catch (err) {

@@ -35,8 +35,11 @@ export default class SummaryReporter implements Reporter {
    * failure here is logged but not fatal — the next run's startup
    * sweep is the safety net. Opt-out: `LV_TEST_SKIP_BRANCH_CLEANUP=1`.
    *
-   * Legacy CREATE-DATABASE-TEMPLATE mode no-ops inside
-   * `cleanupTestDbs` when no Neon creds are present.
+   * In legacy CREATE-DATABASE-TEMPLATE mode, `cleanupTestDbs` runs
+   * its `cleanupViaCreateDatabase` path (drops `test_worker_%` DBs
+   * under the same advisory lock `cloneTemplate` uses, with the
+   * active-connection skip safeguard preserved). The
+   * `branchNamePrefix` we pass is ignored in legacy mode.
    */
   private async runEndOfRunCleanup(): Promise<void> {
     if (process.env.LV_TEST_SKIP_BRANCH_CLEANUP === '1') return;
