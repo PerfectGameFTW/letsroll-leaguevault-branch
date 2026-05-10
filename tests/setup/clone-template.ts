@@ -36,6 +36,7 @@
 import { randomBytes } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import pg from 'pg';
+import { assertSafeDatabaseHost } from '../../server/utils/db-safety';
 import { CLONE_ADVISORY_LOCK_KEY, TEMPLATE_DB_NAME } from './per-worker-lock';
 import {
   buildBranchUrl,
@@ -45,6 +46,16 @@ import {
   getTemplateBranchId,
   resolveBranchUrl,
 } from './neon-branches';
+
+// Memoize the safety check across the process. The check parses
+// DATABASE_URL and compares against DEV_DB_HOST_ALLOWLIST; running
+// it once per fork is plenty.
+let safetyChecked = false;
+function ensureCloneHostSafe(): void {
+  if (safetyChecked) return;
+  assertSafeDatabaseHost('clone-template');
+  safetyChecked = true;
+}
 
 function originalDatabaseUrl(): string {
   const url = process.env.DATABASE_URL;
@@ -261,6 +272,7 @@ async function cloneViaCreateDatabase(targetDb: string): Promise<CloneResult> {
 // ============================================================
 
 export async function cloneTemplate(targetName: string): Promise<CloneResult> {
+  ensureCloneHostSafe();
   if (getNeonConfig()) {
     return cloneViaBranch(targetName);
   }

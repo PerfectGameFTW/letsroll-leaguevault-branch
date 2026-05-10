@@ -43,12 +43,18 @@ function adminDatabaseUrl(): string {
   return u.toString();
 }
 
-async function cleanupViaNeonBranches(): Promise<string[]> {
+async function cleanupViaNeonBranches(branchNamePrefix?: string): Promise<string[]> {
   const cfg = getNeonConfig();
   if (!cfg) throw new Error('cleanupViaNeonBranches called without Neon config');
   const tStart = Date.now();
   const branches = await listBranches(cfg);
-  const targets = branches.filter((b) => b.name.startsWith(WORKER_BRANCH_PREFIX));
+  // Default: every branch under the WORKER_BRANCH_PREFIX (the cross-run
+  // sweep used at globalSetup start and by the manual entrypoint).
+  // Caller-supplied: only branches under the current LV_TEST_RUN_ID
+  // prefix (used at globalTeardown so a concurrently-running sibling
+  // vitest process's branches are not deleted).
+  const filterPrefix = branchNamePrefix ?? WORKER_BRANCH_PREFIX;
+  const targets = branches.filter((b) => b.name.startsWith(filterPrefix));
   const dropped: string[] = [];
   const failed: string[] = [];
   // Parallel deletes — Neon serialises operations on the parent
@@ -71,10 +77,25 @@ async function cleanupViaNeonBranches(): Promise<string[]> {
   }
   console.log(
     `[lv-perf] cleanupTestDbs mode=neon-branches scanned=${branches.length}` +
-      ` targets=${targets.length} dropped=${dropped.length}` +
+      ` prefix=${filterPrefix} targets=${targets.length} dropped=${dropped.length}` +
       ` failed=${failed.length} total=${Date.now() - tStart}ms`,
   );
   return dropped;
+}
+
+export interface CleanupOptions {
+  /**
+   * In Neon-branches mode, only delete branches whose names start
+   * with this prefix. Defaults to `WORKER_BRANCH_PREFIX`
+   * (`test_worker_`), which sweeps all worker branches across runs.
+   * Pass `test_worker_<RUN_ID>_` from globalTeardown so a concurrent
+   * sibling vitest process's branches are not affected.
+   *
+   * Has no effect in legacy CREATE-DATABASE-TEMPLATE mode (which
+   * already runs under an advisory lock and skips end-of-run
+   * teardown).
+   */
+  branchNamePrefix?: string;
 }
 
 async function cleanupViaCreateDatabase(): Promise<string[]> {
@@ -131,10 +152,10 @@ async function cleanupViaCreateDatabase(): Promise<string[]> {
   return dropped;
 }
 
-export async function cleanupTestDbs(): Promise<string[]> {
+export async function cleanupTestDbs(opts: CleanupOptions = {}): Promise<string[]> {
   assertSafeDatabaseHost('cleanup-test-dbs');
   if (getNeonConfig()) {
-    return cleanupViaNeonBranches();
+    return cleanupViaNeonBranches(opts.branchNamePrefix);
   }
   return cleanupViaCreateDatabase();
 }

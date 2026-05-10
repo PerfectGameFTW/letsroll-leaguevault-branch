@@ -27,6 +27,7 @@ import { cleanupTestDbs } from '../../scripts/cleanup-test-dbs';
 import { ensureTestTemplate } from '../../scripts/ensure-test-template';
 import { cleanup as closeDbPool } from '../../server/db';
 import { precloneAllWorkerDbs } from './clone-template';
+import { getNeonConfig } from './neon-branches';
 
 // Maximum VITEST_POOL_ID across every forks-pool project in vitest.config.ts.
 // `parallel`, `parallel-isolated` and `parallel-isolated-with-app` all top
@@ -45,8 +46,10 @@ const SETUP_DONE_MARKER = '__LV_GLOBAL_SETUP_DONE__';
 const RUN_ID_ENV = 'LV_TEST_RUN_ID';
 
 export default async function setup() {
+  let didSetupHere = false;
   if (process.env.SKIP_TEST_SEED !== '1' && !process.env[SETUP_DONE_MARKER]) {
     process.env[SETUP_DONE_MARKER] = '1';
+    didSetupHere = true;
     // Stable per-run identifier inherited by every spawned vitest fork
     // (including forks recycled by `isolate: true` mid-run). Per-worker
     // setup uses this to build a deterministic per-pool DB name so that
@@ -81,17 +84,47 @@ export default async function setup() {
   }
 
   return async function teardown() {
-    // We deliberately do NOT call cleanupTestDbs() here. Vitest may fire
-    // this teardown per-project — i.e. before sibling projects' workers
-    // have finished — and the cleanup script terminates connections to
-    // every `test_worker_*` DB before dropping it, which yanks live DBs
-    // out from under in-flight workers. Per-worker setup registers
-    // process.exit/SIGINT/SIGTERM hooks that drop their own DB; the
-    // next run's startup `cleanupTestDbs()` sweeps any stragglers.
+    // End-of-run cleanup (Task #723). Two safety rails:
+    //
+    // 1. Only the project invocation that DID the setup runs the
+    //    cleanup. Vitest invokes `globalSetup` once per project and
+    //    each invocation's returned teardown fires independently;
+    //    without this gate, project B's teardown would run while
+    //    project C's workers are still finishing.
+    //
+    // 2. In Neon-branches mode the cleanup is scoped to the current
+    //    `LV_TEST_RUN_ID` prefix, not all `test_worker_*` branches.
+    //    This means even if a sibling vitest *process* (different
+    //    RUN_ID) is concurrently running against the same Neon
+    //    project, we never touch its branches.
+    //
+    // Legacy CREATE-DATABASE-TEMPLATE mode still skips end-of-run
+    // cleanup entirely: DROP DATABASE force-terminates connections,
+    // and per-project teardown timing can yank DBs out from under
+    // sibling projects' workers. The next run's startup
+    // `cleanupTestDbs()` sweeps any stragglers.
+    let teardownErr: unknown;
+    if (didSetupHere && getNeonConfig() && process.env.SKIP_TEST_SEED !== '1') {
+      const runId = process.env[RUN_ID_ENV];
+      const prefix = runId ? `test_worker_${runId}_` : undefined;
+      try {
+        await cleanupTestDbs({ branchNamePrefix: prefix });
+      } catch (err) {
+        // Don't fail the whole test run if Neon API is briefly
+        // unreachable at teardown — startup cleanup will sweep.
+        console.warn(
+          '[global-teardown] cleanupTestDbs failed (will retry on next run):',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
     try {
       await closeDbPool();
     } catch (err) {
-      throw err instanceof Error ? err : new Error(String(err));
+      teardownErr = err;
+    }
+    if (teardownErr) {
+      throw teardownErr instanceof Error ? teardownErr : new Error(String(teardownErr));
     }
   };
 }
