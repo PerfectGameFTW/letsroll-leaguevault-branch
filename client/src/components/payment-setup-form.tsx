@@ -85,6 +85,11 @@ interface PaymentSetupFormProps {
   // `paidByUserId`.
   additionalBowlerIds: number[];
   setAdditionalBowlerIds: (ids: number[]) => void;
+  // Task #715: per-partner past-due (cents) for the current league.
+  // When weekly auto-pay is being set up and any included bowler has
+  // a past-due balance, the immediate charge is Σ(pastDue+weeklyFee)
+  // per included bowler — surfaced here as a "Total due today" line.
+  partnerPastDueByBowlerId?: Record<number, number>;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -132,6 +137,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   allowPartnerSelection,
   additionalBowlerIds,
   setAdditionalBowlerIds,
+  partnerPastDueByBowlerId = {},
 }) => {
   // Task #706: combined-pay (multi-select) is now offered for ALL
   // payment modes — autopay, one-time, and upfront — whenever the
@@ -148,6 +154,26 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   const showCombinedPay = partnerOptions.length > 0;
   const baseAmount = calculateTotalAmount();
   const combinedTotal = baseAmount * (1 + additionalBowlerIds.length);
+
+  // Task #715: weekly auto-pay setup must clear past-due up front. When
+  // any included bowler has a past-due balance, the immediate charge is
+  // Σ(amountPastDue + weeklyFee) for the payer + each combined partner.
+  // The recurring weekly amount is unchanged.
+  const isAutopayMode = paymentMode === 'autopay' && league.paymentMode !== 'upfront';
+  const selfPastDue = financials.amountPastDue;
+  const partnerPastDueSum = additionalBowlerIds.reduce(
+    (sum, id) => sum + (partnerPastDueByBowlerId[id] ?? 0),
+    0,
+  );
+  const anyAutopayPastDue =
+    isAutopayMode &&
+    (selfPastDue > 0 ||
+      additionalBowlerIds.some((id) => (partnerPastDueByBowlerId[id] ?? 0) > 0));
+  const autopayDueTodayTotal = isAutopayMode
+    ? selfPastDue + weeklyFee * (1 + additionalBowlerIds.length) + partnerPastDueSum
+    : 0;
+  const selfDueToday = selfPastDue + weeklyFee;
+  const partnerDueToday = (id: number) => (partnerPastDueByBowlerId[id] ?? 0) + weeklyFee;
   const togglePartner = (id: number, on: boolean) => {
     if (on) {
       if (!additionalBowlerIds.includes(id)) {
@@ -227,12 +253,25 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               </div>
             </div>
           ) : paymentMode === 'autopay' && (
-            <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-4">
-              <CalendarDays className="h-5 w-5 text-muted-foreground shrink-0" />
-              <div>
-                <p className="text-sm font-medium">Weekly auto-pay</p>
-                <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
+            <div className="rounded-md border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <CalendarDays className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">Weekly auto-pay</p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
+                </div>
               </div>
+              {anyAutopayPastDue && (
+                <div className="border-t pt-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold">Total due today</span>
+                  <span
+                    className="text-base font-bold"
+                    data-testid="autopay-due-today"
+                  >
+                    {formatCurrency(autopayDueTodayTotal)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -261,10 +300,14 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
                     <Checkbox checked disabled />
                     <span>{selfBowler.name} (you)</span>
                   </span>
-                  <span className="text-muted-foreground">{formatCurrency(baseAmount)}</span>
+                  <span className="text-muted-foreground">
+                    {formatCurrency(isAutopayMode && anyAutopayPastDue ? selfDueToday : baseAmount)}
+                  </span>
                 </label>
                 {partnerOptions.map((p) => {
                   const checked = additionalBowlerIds.includes(p.id);
+                  const rowAmount =
+                    isAutopayMode && anyAutopayPastDue ? partnerDueToday(p.id) : baseAmount;
                   return (
                     <label
                       key={p.id}
@@ -279,7 +322,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
                         />
                         <span>{p.name}</span>
                       </span>
-                      <span className="text-muted-foreground">{formatCurrency(baseAmount)}</span>
+                      <span className="text-muted-foreground">{formatCurrency(rowAmount)}</span>
                     </label>
                   );
                 })}
@@ -287,15 +330,19 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               {additionalBowlerIds.length > 0 && (
                 <div className="border-t pt-3 flex items-center justify-between">
                   <span className="text-sm font-semibold">
-                    {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
-                      ? 'Combined per-cycle total'
-                      : 'Combined total'}
+                    {isAutopayMode && anyAutopayPastDue
+                      ? 'Total due today'
+                      : isAutopayMode
+                        ? 'Combined per-cycle total'
+                        : 'Combined total'}
                   </span>
                   <span
                     className="text-base font-bold"
                     data-testid="combined-pay-total"
                   >
-                    {formatCurrency(combinedTotal)}
+                    {formatCurrency(
+                      isAutopayMode && anyAutopayPastDue ? autopayDueTodayTotal : combinedTotal,
+                    )}
                   </span>
                 </div>
               )}
@@ -353,6 +400,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             selectedSavedCardId={selectedSavedCardId}
             fullSeasonAmount={financials.fullSeasonAmount}
             additionalBowlerCount={additionalBowlerIds.length}
+            autopayDueTodayOverride={anyAutopayPastDue ? autopayDueTodayTotal : null}
             onSubmit={onSubmit}
             onCancel={onCancel}
           />

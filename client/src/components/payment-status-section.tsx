@@ -4,11 +4,11 @@ import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { csrfFetch, queryClient } from '@/lib/queryClient';
-import { calculateFinancials } from "@/lib/financial-utils";
+import { calculateFinancials, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
-import type { League, Bowler, Payment, SavedCard, ApiResponse } from "@shared/schema";
+import type { League, Bowler, Payment, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
 import { PaymentSetupForm } from "@/components/payment-setup-form";
 import { useBowlerPaymentSubmit } from "@/hooks/use-bowler-payment-submit";
@@ -118,6 +118,40 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       .filter((l) => l.status === "accepted")
       .map((l) => ({ id: l.partnerBowlerId, name: l.partnerName }));
   }, [linksResponse]);
+
+  // Task #715: per-partner past-due in this league. The combined
+  // weekly auto-pay setup must clear every included bowler's past-due
+  // balance up front, so we fetch each accepted partner's payments,
+  // filter to this league, and reuse the same `calculateBowlerPastDue`
+  // helper the server uses to enforce the rule.
+  const partnerDetailsQueries = useQueries({
+    queries: partnerOptions.map((p) => ({
+      queryKey: [`/api/bowlers/${p.id}/details`, { includePayments: true }],
+      queryFn: async (): Promise<ApiResponse<BowlerDetailsResponse>> => {
+        const res = await csrfFetch(`/api/bowlers/${p.id}/details?includePayments=true`);
+        if (!res.ok) throw new Error('Failed to fetch partner details');
+        return res.json();
+      },
+      enabled: !!p.id,
+      staleTime: 30_000,
+      retry: false,
+    })),
+  });
+  const partnerPastDueByBowlerId = useMemo(() => {
+    const map: Record<number, number> = {};
+    partnerOptions.forEach((p, idx) => {
+      const data = partnerDetailsQueries[idx]?.data?.data;
+      if (!data) return;
+      const partnerPayments = (data.payments ?? []).filter(
+        (pmt) => pmt.leagueId === league.id,
+      );
+      const paid = partnerPayments
+        .filter((pmt) => pmt.status === 'paid')
+        .reduce((sum, pmt) => sum + pmt.amount, 0);
+      map[p.id] = calculateBowlerPastDue(league, paid);
+    });
+    return map;
+  }, [partnerOptions, league, partnerDetailsQueries]);
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],
@@ -332,6 +366,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     storeCard,
     targetBowlerId,
     additionalBowlerIds,
+    partnerPastDueByBowlerId,
     financials,
     calculateTotalAmount,
     setIsSubmitting,
@@ -421,6 +456,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         allowPartnerSelection={paymentMode !== 'autopay'}
         additionalBowlerIds={additionalBowlerIds}
         setAdditionalBowlerIds={setAdditionalBowlerIds}
+        partnerPastDueByBowlerId={partnerPastDueByBowlerId}
       />
     );
   }

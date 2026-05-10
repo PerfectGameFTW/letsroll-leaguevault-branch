@@ -47,6 +47,12 @@ interface UseBowlerPaymentSubmitOptions {
   // autopay executor charges the payer's vault once per cycle for
   // every selected partner. Ignored unless `isAutoPay`.
   additionalBowlerIds?: number[];
+  // Task #715: per-partner past-due balances. Used to compute the
+  // combined "catch-up + this week" immediate charge when setting up
+  // weekly auto-pay so every included bowler is brought current as
+  // part of the same transaction. When omitted, partners are assumed
+  // to have zero past-due (legacy behavior).
+  partnerPastDueByBowlerId?: Record<number, number>;
   financials: {
     fullSeasonAmount: number;
     amountPastDue: number;
@@ -68,6 +74,7 @@ export function useBowlerPaymentSubmit({
   buyerEmail,
   targetBowlerId,
   additionalBowlerIds,
+  partnerPastDueByBowlerId,
   financials,
   calculateTotalAmount,
   setIsSubmitting,
@@ -250,11 +257,24 @@ export function useBowlerPaymentSubmit({
         return;
       }
 
-      const hasOutstandingBalance = financials.amountPastDue > 0;
+      // Task #715: weekly auto-pay setup must clear any included
+      // bowler's past-due balance up front. The immediate charge is
+      // Σ(amountPastDue + weeklyFee) across the payer + each combined
+      // partner; only on success do we create the recurring schedule.
+      const partnerIdsForAutopay = isAutoPay ? (additionalBowlerIds ?? []) : [];
+      const partnerPastDueMap = partnerPastDueByBowlerId ?? {};
+      const selfPastDue = financials.amountPastDue;
+      const anyAutopayPastDue =
+        isAutoPay &&
+        (selfPastDue > 0 ||
+          partnerIdsForAutopay.some((id) => (partnerPastDueMap[id] ?? 0) > 0));
       let paymentCardId: string | null = null;
       let paymentWasCharged = false;
+      let autopayChargedAmount = 0;
 
-      if (isAutoPay && !hasOutstandingBalance) {
+      if (isAutoPay && !anyAutopayPastDue) {
+        // Zero past-due everywhere: keep the legacy "save card only,
+        // schedule starts on the next league night" flow.
         if (cardMode === 'saved' && selectedSavedCardId) {
           paymentCardId = selectedSavedCardId;
         } else {
@@ -272,6 +292,82 @@ export function useBowlerPaymentSubmit({
           }
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
+      } else if (isAutoPay && anyAutopayPastDue) {
+        // Step 1: get a savedCardId. We always vault new cards here
+        // because the recurring schedule needs a card id to charge.
+        let cardIdForAutopay: string | null = null;
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          cardIdForAutopay = selectedSavedCardId;
+        } else {
+          if (!newCard) throw new Error('Please enter your card details before proceeding.');
+          const token = await tokenizeCard(newCard);
+          const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: token, leagueId: league.id }),
+          });
+          const saveData = await saveResponse.json();
+          await throwApiErrorIfNotOk(saveResponse, saveData, 'Failed to save card');
+          cardIdForAutopay = saveData.data?.savedCardId || null;
+          if (!cardIdForAutopay) {
+            throw new Error('Your card could not be saved for auto-pay. Please try again.');
+          }
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
+        }
+
+        // Step 2: charge the combined catch-up + this-week amount.
+        // Per-bowler amount = amountPastDue + weeklyFee. Every
+        // included bowler is brought current in the same charge so
+        // the schedule can start on the next league night cleanly.
+        const selfDueToday = selfPastDue + weeklyFee;
+        const trimmedBuyerEmail = (buyerEmail ?? '').trim();
+        if (hasCombinedPartners) {
+          const payees = [
+            { bowlerId: bowler.id, amount: selfDueToday },
+            ...partnerIdsForAutopay.map((id) => ({
+              bowlerId: id,
+              amount: (partnerPastDueMap[id] ?? 0) + weeklyFee,
+            })),
+          ];
+          const totalAmount = payees.reduce((sum, p) => sum + p.amount, 0);
+          const response = await csrfFetch('/api/payments-provider/combined-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: cardIdForAutopay,
+              amount: totalAmount,
+              leagueId: league.id,
+              storeCard: false,
+              payees,
+              ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
+            }),
+          });
+          const data = await response.json();
+          await throwApiErrorIfNotOk(response, data, 'Payment failed');
+          autopayChargedAmount = totalAmount;
+          partnerIdsForAutopay.forEach((id) =>
+            queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${id}/details`] }),
+          );
+        } else {
+          const response = await csrfFetch('/api/payments-provider/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: cardIdForAutopay,
+              amount: selfDueToday,
+              bowlerId: chargeForBowlerId,
+              leagueId: league.id,
+              storeCard: false,
+              ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
+            }),
+          });
+          const responseData = await response.json();
+          await throwApiErrorIfNotOk(response, responseData, 'Payment failed');
+          autopayChargedAmount = selfDueToday;
+        }
+
+        paymentCardId = cardIdForAutopay;
+        paymentWasCharged = true;
       } else if (cardMode === 'saved' && selectedSavedCardId) {
         const trimmedBuyerEmail = (buyerEmail ?? '').trim();
         const response = await csrfFetch('/api/payments-provider/payments', {
@@ -339,10 +435,11 @@ export function useBowlerPaymentSubmit({
 
       if (isAutoPay) {
         const cadence = scheduleLabel(selectedSchedule);
+        const chargedToday = autopayChargedAmount > 0 ? autopayChargedAmount : amount;
         toast({
           title: "Auto-Pay Activated",
           description: paymentWasCharged
-            ? `Paid ${formatCurrency(amount)} today and ${cadence} auto-pay is now active for future weeks.`
+            ? `Paid ${formatCurrency(chargedToday)} today and ${cadence} auto-pay is now active for future weeks.`
             : `Your card has been saved and ${cadence} auto-pay is now active.`,
         });
       } else {
@@ -387,6 +484,6 @@ export function useBowlerPaymentSubmit({
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard,
     buyerEmail, chargeForBowlerId, additionalBowlerIds, financials, calculateTotalAmount, toast, navigate, isClover,
-    setIsSubmitting, setShowPaymentSetup,
+    setIsSubmitting, setShowPaymentSetup, partnerPastDueByBowlerId,
   ]);
 }

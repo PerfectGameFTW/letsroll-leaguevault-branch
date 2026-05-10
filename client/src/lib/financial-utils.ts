@@ -177,62 +177,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
   };
 }
 
-export function calculateBowlerPastDue(
-  league: {
-    seasonStart: string | Date;
-    seasonEnd?: string | Date;
-    weekDay?: string;
-    weeklyFee: number;
-    paymentMode?: string;
-    totalBowlingWeeks?: number | null;
-    skipDates?: string[] | null;
-    cancelledDates?: string[] | null;
-    doublePayDates?: string[] | null;
-  },
-  bowlerPaidAmount: number
-): number {
-  const doublePayDates = (league.doublePayDates ?? [])
-    .map(d => d.slice(0, 10))
-    .filter(Boolean);
-
-  if (league.paymentMode === 'upfront') {
-    const totalWeeks = getSeasonLengthWeeks({
-      seasonStart: league.seasonStart,
-      seasonEnd: league.seasonEnd ?? league.seasonStart,
-      weekDay: league.weekDay,
-      totalBowlingWeeks: league.totalBowlingWeeks,
-      skipDates: league.skipDates,
-      cancelledDates: league.cancelledDates,
-    });
-    const fullSeasonAmount = league.weeklyFee * totalWeeks
-      + doublePayDates.length * league.weeklyFee;
-    return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
-  }
-
-  const today = startOfToday();
-  const todayStr = toIsoDateStr(today);
-  const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
-
-  if (league.totalBowlingWeeks != null && league.weekDay) {
-    const weeksPassed = countBowlingWeeksPassed(
-      league.seasonStart,
-      league.weekDay,
-      league.skipDates ?? [],
-      league.cancelledDates ?? []
-    );
-    const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
-    return Math.max(0, dueToDate - bowlerPaidAmount);
-  }
-
-  const seasonStart = new Date(league.seasonStart);
-  if (!isValid(seasonStart)) return 0;
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const weeksPassed = Math.max(0, Math.round(
-    (today.getTime() - seasonStart.getTime()) / msPerWeek
-  ));
-  const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
-  return Math.max(0, dueToDate - bowlerPaidAmount);
-}
+export { calculateBowlerPastDue } from "@shared/financial-utils";
 
 export function getPaymentSummary(payments: Payment[]) {
   const paidPayments = payments.filter((p) => p.status === "paid");

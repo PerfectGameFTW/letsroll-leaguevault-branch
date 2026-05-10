@@ -228,6 +228,93 @@ describe('useBowlerPaymentSubmit success toasts', () => {
     expect(description).not.toMatch(/selectedSchedule/);
   });
 
+  // Task #715: combined weekly auto-pay setup must clear every
+  // included bowler's past-due balance up front. The immediate charge
+  // is Σ(amountPastDue + weeklyFee) per included bowler, routed
+  // through the combined-payments endpoint so one charge writes N+1
+  // per-bowler rows. Only on success does the schedule POST happen.
+  it('combined autopay with past-due charges Σ(pastDue+weeklyFee) via combined-payments before scheduling', async () => {
+    csrfFetchMock
+      // 1) immediate combined charge
+      .mockResolvedValueOnce(await jsonResponse({ data: { id: 'pmt-1' } }))
+      // 2) schedule create
+      .mockResolvedValueOnce(await jsonResponse({ ok: true }));
+
+    const submit = useBowlerPaymentSubmit(
+      makeOptions({
+        selectedSchedule: 'weekly',
+        cardMode: 'saved',
+        selectedSavedCardId: 'card-1',
+        weeklyFee: 2000,
+        additionalBowlerIds: [42, 43],
+        partnerPastDueByBowlerId: { 42: 4000, 43: 0 },
+        financials: {
+          fullSeasonAmount: 30000,
+          amountPastDue: 6000,
+        },
+        calculateTotalAmount: () => 2000,
+      }),
+    );
+
+    await submit();
+
+    // First csrfFetch: combined-payments with per-bowler payees that
+    // each charge `amountPastDue + weeklyFee`. Self: 6000+2000,
+    // partner-42: 4000+2000, partner-43: 0+2000. Total 16000.
+    const [combinedUrl, combinedInit] = csrfFetchMock.mock.calls[0];
+    expect(combinedUrl).toBe('/api/payments-provider/combined-payments');
+    const combinedBody = JSON.parse((combinedInit as { body: string }).body);
+    expect(combinedBody.amount).toBe(16000);
+    expect(combinedBody.payees).toEqual([
+      { bowlerId: 'bowler-1', amount: 8000 },
+      { bowlerId: 42, amount: 6000 },
+      { bowlerId: 43, amount: 2000 },
+    ]);
+    expect(combinedBody.sourceId).toBe('card-1');
+
+    // Second csrfFetch: schedule create with the recurring weeklyFee
+    // (NOT the catch-up amount) and the combined partner ids.
+    const [scheduleUrl, scheduleInit] = csrfFetchMock.mock.calls[1];
+    expect(scheduleUrl).toBe('/api/payment-schedules');
+    const scheduleBody = JSON.parse((scheduleInit as { body: string }).body);
+    expect(scheduleBody.amount).toBe(2000);
+    expect(scheduleBody.additionalBowlerIds).toEqual([42, 43]);
+
+    const { title, description } = lastToast();
+    expect(title).toBe('Auto-Pay Activated');
+    expect(description).toBe(
+      'Paid $160.00 today and weekly auto-pay is now active for future weeks.',
+    );
+  });
+
+  // Task #715: when the immediate catch-up charge fails, NO schedule
+  // is created. The hook surfaces a Payment Failed toast and the
+  // schedule POST never fires.
+  it('aborts schedule creation when the immediate past-due charge fails', async () => {
+    csrfFetchMock.mockResolvedValueOnce(
+      await jsonResponse({ error: { message: 'Card declined', code: 'CARD_DECLINED' } }, false),
+    );
+
+    const submit = useBowlerPaymentSubmit(
+      makeOptions({
+        selectedSchedule: 'weekly',
+        cardMode: 'saved',
+        selectedSavedCardId: 'card-1',
+        financials: { fullSeasonAmount: 30000, amountPastDue: 6000 },
+        calculateTotalAmount: () => 2000,
+      }),
+    );
+
+    await submit();
+
+    // Exactly one POST: the failed immediate charge. The schedule POST
+    // never fires because the throw aborts before it.
+    expect(csrfFetchMock).toHaveBeenCalledTimes(1);
+    const { title, variant } = lastToast();
+    expect(variant).toBe('destructive');
+    expect(title).toBe('Payment Failed');
+  });
+
   it('shows the auto-pay with-balance toast that splits the past-due charge from the schedule', async () => {
     csrfFetchMock
       .mockResolvedValueOnce(await jsonResponse({ data: { id: 'pmt-1' } }))

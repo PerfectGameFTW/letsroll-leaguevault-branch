@@ -15,6 +15,11 @@ interface PaymentSubmitSectionProps {
   selectedSavedCardId: string;
   fullSeasonAmount: number;
   additionalBowlerCount?: number;
+  // Task #715: when weekly auto-pay is being set up against a bowler
+  // (or combined group) with a past-due balance, the immediate charge
+  // is `Σ(amountPastDue + weeklyFee)`. When provided, it replaces the
+  // displayed "Total Amount" with a "Total due today" line.
+  autopayDueTodayOverride?: number | null;
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -31,20 +36,32 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
   selectedSavedCardId,
   fullSeasonAmount,
   additionalBowlerCount = 0,
+  autopayDueTodayOverride = null,
   onSubmit,
   onCancel,
 }) => {
   const multiplier = 1 + additionalBowlerCount;
+  const useDueTodayOverride =
+    autopayDueTodayOverride !== null && selectedSchedule === 'weekly';
+  const displayAmount = useDueTodayOverride
+    ? autopayDueTodayOverride
+    : calculateTotalAmount() * multiplier;
   return (
     <>
       {league.paymentMode !== 'upfront' && (
         <div className="pt-4 border-t">
           <div className="flex justify-between items-center">
-            <span className="text-lg font-medium">Total Amount</span>
-            <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount() * multiplier)}</span>
+            <span className="text-lg font-medium">
+              {useDueTodayOverride ? 'Total due today' : 'Total Amount'}
+            </span>
+            <span className="text-lg font-bold">{formatCurrency(displayAmount)}</span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {selectedSchedule === 'weekly' && 'Charged weekly'}
+            {selectedSchedule === 'weekly' && (
+              useDueTodayOverride
+                ? `Then ${formatCurrency(calculateTotalAmount() * multiplier)} charged each league night`
+                : 'Charged weekly'
+            )}
             {selectedSchedule === 'custom' && (
               fixedAmountType === 'pastDue'
                 ? 'One-time payment for Past Due Balance'
