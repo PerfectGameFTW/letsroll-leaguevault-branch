@@ -1,23 +1,50 @@
 /**
  * Side-effect-free home for the worker-DB cloning logic.
  *
- * Extracted from `per-worker-setup.ts` (Task #722 follow-up) so that
- * `tests/setup/global-setup.ts` can pre-clone all per-pool DBs serially
- * without triggering `per-worker-setup.ts`'s top-level
- * `await ensurePerWorkerApp()` side effect (which would try to spawn a
- * test Express from globalSetup, hanging the run).
+ * Two cloning backends are supported and selected automatically:
+ *
+ *   1. **Neon Branches API** (Task #723) — preferred when
+ *      `NEON_API_KEY` and `NEON_PROJECT_ID` are set. Each per-pool
+ *      worker is a Neon branch off the persistent template branch.
+ *      Branch creation is ~1-2s per branch, parallelisable, and
+ *      avoids the `CREATE DATABASE … TEMPLATE` source-DB lock that
+ *      caused 358s+ preclone-all buckets on bad-Neon-control-plane
+ *      days under #722's serial-CREATE flow.
+ *
+ *   2. **Legacy CREATE DATABASE TEMPLATE** — used as a fallback when
+ *      the Neon API creds are absent (e.g. CI without secrets, or
+ *      an opt-out via `LV_TEST_USE_NEON_BRANCHES=0`). This path is
+ *      preserved unchanged from #722 — serial preclone with the
+ *      24-attempt 55006 retry loop and per-iteration adminPool
+ *      tear-down (which empirically beats the shared-client variant
+ *      43s → 180s on Neon).
  *
  * The module exposes:
- *   - `workerDbNameForPool(poolId)`  — deterministic per-pool DB name
- *   - `cloneTemplate(targetDb)`      — single-DB clone with advisory lock
- *   - `precloneAllWorkerDbs(maxPoolId)` — serial preclone called by globalSetup
+ *   - `workerDbNameForPool(poolId)`  — deterministic per-pool name
+ *     (used as both DB name in legacy mode AND branch name in API mode)
+ *   - `cloneTemplate(targetName)`    — single clone with internal
+ *     dispatch; returns the URL the caller should use as DATABASE_URL
+ *   - `precloneAllWorkerDbs(maxPoolId)` — preclone for globalSetup
+ *     (parallel in API mode, serial in legacy mode)
+ *   - `cloneTemplateForWorker()`     — per-fork hot path (env-stash
+ *     fast path for both modes)
  *
  * Importing this module must NOT have side effects beyond pulling in
- * `pg`. Specifically: do NOT add a top-level `await` here.
+ * `pg` and `./neon-branches`. Specifically: do NOT add a top-level
+ * `await` here.
  */
 import { randomBytes } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import pg from 'pg';
 import { CLONE_ADVISORY_LOCK_KEY, TEMPLATE_DB_NAME } from './per-worker-lock';
+import {
+  buildBranchUrl,
+  createBranchWithEndpoint,
+  findBranchByName,
+  getNeonConfig,
+  getTemplateBranchId,
+  resolveBranchUrl,
+} from './neon-branches';
 
 function originalDatabaseUrl(): string {
   const url = process.env.DATABASE_URL;
@@ -33,6 +60,7 @@ function adminUrl(): string {
   return u.toString();
 }
 
+/** Legacy-mode worker URL (DB-name-only swap on shared host). */
 export function workerDbUrl(dbName: string): string {
   const u = new URL(originalDatabaseUrl());
   u.pathname = `/${dbName}`;
@@ -40,9 +68,9 @@ export function workerDbUrl(dbName: string): string {
 }
 
 /**
- * Compute the per-fork DB name. Deterministic per pool when LV_TEST_RUN_ID
- * is set by globalSetup (Task #722); falls back to a random suffix for
- * standalone paths that bypass globalSetup (e.g. SKIP_TEST_SEED=1).
+ * Compute the per-fork DB/branch name. Deterministic per pool when
+ * LV_TEST_RUN_ID is set by globalSetup (Task #722); falls back to a
+ * random suffix for standalone paths that bypass globalSetup.
  */
 export function workerDbName(): string {
   const poolId = process.env.VITEST_POOL_ID ?? '0';
@@ -59,6 +87,18 @@ export function workerDbName(): string {
 // process under `pool: 'forks'`. See Task #719.
 export const ENV_DB_NAME = '__LV_WORKER_DB_NAME__';
 export const ENV_DB_URL = '__LV_WORKER_DB_URL__';
+export const ENV_BRANCH_ID = '__LV_WORKER_BRANCH_ID__';
+
+/** Per-pool stash keys set by globalSetup's parallel preclone in
+ * Neon-branches mode. Per-fork hot path reads its pool's slot rather
+ * than re-calling the API. The stash is inherited from the main
+ * process via `process.env` at fork spawn time. */
+function envBranchUrlKey(poolId: number | string): string {
+  return `__LV_WORKER_DB_URL_pool_${poolId}__`;
+}
+function envBranchIdKey(poolId: number | string): string {
+  return `__LV_WORKER_BRANCH_ID_pool_${poolId}__`;
+}
 
 async function databaseExists(client: pg.PoolClient, dbName: string): Promise<boolean> {
   const { rows } = await client.query<{ exists: boolean }>(
@@ -77,6 +117,47 @@ export function workerDbNameForPool(poolId: number | string): string {
   }
   return `test_worker_${runId}_pool_${poolId}`;
 }
+
+export interface CloneResult {
+  /** Connection URL the caller should use as DATABASE_URL. */
+  url: string;
+  /** Present only in Neon-branches mode. */
+  branchId?: string;
+}
+
+// ============================================================
+// Neon-branches mode
+// ============================================================
+
+async function cloneViaBranch(targetName: string): Promise<CloneResult> {
+  const cfg = getNeonConfig();
+  if (!cfg) throw new Error('cloneViaBranch called without Neon config');
+  const t0 = Date.now();
+  const templateBranchId = await getTemplateBranchId(cfg);
+  // Idempotency: if a branch by this name already exists (e.g. from
+  // a previous interrupted run that crashed before cleanup, or from
+  // the same run's globalSetup preclone), reuse it. Branch names are
+  // unique within a project so this is unambiguous.
+  const existing = await findBranchByName(cfg, targetName);
+  if (existing) {
+    const url = await resolveBranchUrl(cfg, existing.id);
+    console.log(
+      `[lv-perf] cloneTemplate mode=neon-branches name=${targetName}` +
+        ` existed=true branchId=${existing.id} total=${Date.now() - t0}ms`,
+    );
+    return { url, branchId: existing.id };
+  }
+  const created = await createBranchWithEndpoint(cfg, templateBranchId, targetName);
+  console.log(
+    `[lv-perf] cloneTemplate mode=neon-branches name=${targetName}` +
+      ` existed=false branchId=${created.branchId} total=${Date.now() - t0}ms`,
+  );
+  return { url: created.url, branchId: created.branchId };
+}
+
+// ============================================================
+// Legacy CREATE DATABASE TEMPLATE mode
+// ============================================================
 
 /**
  * Inner clone routine that operates on a caller-supplied admin client
@@ -133,14 +214,14 @@ async function cloneTemplateOnClient(
         return;
       } catch (err) {
         lastErr = err;
-        await new Promise((r) => setTimeout(r, 500 * Math.min(attempt, 12)));
+        await sleep(500 * Math.min(attempt, 12));
       }
     }
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   } finally {
     const tEnd = Date.now();
     console.log(
-      `[lv-perf] cloneTemplate pool=${process.env.VITEST_POOL_ID ?? 'gs'}` +
+      `[lv-perf] cloneTemplate mode=legacy pool=${process.env.VITEST_POOL_ID ?? 'gs'}` +
         ` pid=${process.pid} db=${targetDb}` +
         ` existed=${existed} attempts=${attempts}` +
         ` connect=${perfPrefix.tConnect - perfPrefix.tStart}ms` +
@@ -152,7 +233,7 @@ async function cloneTemplateOnClient(
   }
 }
 
-export async function cloneTemplate(targetDb: string): Promise<void> {
+async function cloneViaCreateDatabase(targetDb: string): Promise<CloneResult> {
   const tStart = Date.now();
   const adminPool = new pg.Pool({ connectionString: adminUrl(), max: 2 });
   const client = await adminPool.connect();
@@ -172,6 +253,18 @@ export async function cloneTemplate(targetDb: string): Promise<void> {
     client.release();
     await adminPool.end();
   }
+  return { url: workerDbUrl(targetDb) };
+}
+
+// ============================================================
+// Public dispatch
+// ============================================================
+
+export async function cloneTemplate(targetName: string): Promise<CloneResult> {
+  if (getNeonConfig()) {
+    return cloneViaBranch(targetName);
+  }
+  return cloneViaCreateDatabase(targetName);
 }
 
 // Module-level memo of the cold-path DB clone. Wiped by vitest's
@@ -181,36 +274,40 @@ let dbPromise: Promise<{ dbName: string; url: string }> | null = null;
 
 async function initDbOnce(): Promise<{ dbName: string; url: string }> {
   const dbName = workerDbName();
-  await cloneTemplate(dbName);
-  const url = workerDbUrl(dbName);
-  process.env.DATABASE_URL = url;
-  process.env.TEST_DATABASE_URL = url;
+  const result = await cloneTemplate(dbName);
+  process.env.DATABASE_URL = result.url;
+  process.env.TEST_DATABASE_URL = result.url;
   process.env[ENV_DB_NAME] = dbName;
-  process.env[ENV_DB_URL] = url;
+  process.env[ENV_DB_URL] = result.url;
+  if (result.branchId) process.env[ENV_BRANCH_ID] = result.branchId;
   if (process.env.LV_DEBUG_PERWORKER === '1') {
     const cold = Number(process.env.__LV_DB_COLD_HITS__ ?? '0') + 1;
     process.env.__LV_DB_COLD_HITS__ = String(cold);
     console.log(`[perworker] db COLD pid=${process.pid} pool=${process.env.VITEST_POOL_ID} db=${dbName} cold=${cold}`);
   }
-  return { dbName, url };
+  return { dbName, url: result.url };
 }
 
 /**
- * Clone the per-worker DB only (no Express spawn). Used by both the
- * DB-only setup file (`per-worker-db-only.ts`) for projects that don't
- * make HTTP calls AND by the app-spawning `per-worker-setup.ts` as the
- * first step of `initAppOnce`.
+ * Per-fork hot path. Returns the worker DB info, hitting one of three
+ * fast paths in order before falling back to a cold clone:
  *
- * Lives in this side-effect-free module so `per-worker-db-only.ts` can
- * call it without dragging in `per-worker-setup.ts`'s top-level
- * `await ensurePerWorkerApp()` (which would spawn an Express in
- * DB-only contexts).
+ *   1. Per-fork env-stash (`__LV_WORKER_DB_URL__`) — the same fork
+ *      already provisioned its DB on a previous file load. This
+ *      survives `isolate:true`'s module-registry reset because
+ *      `process.env` is owned by the OS process, not the loader.
+ *
+ *   2. Per-pool stash (`__LV_WORKER_DB_URL_pool_<id>__`) — globalSetup
+ *      pre-cloned this fork's DB; the env was inherited at spawn.
+ *      Promotes the per-pool slot into the per-fork stash so future
+ *      file loads in this fork hit path #1.
+ *
+ *   3. Cold clone via `cloneTemplate()` — DB was not pre-cloned (e.g.
+ *      `SKIP_TEST_SEED=1`, standalone vitest invocation, or the test
+ *      script is being driven outside `npm test`).
  */
 export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string }> {
-  // Fast path: this fork already cloned a DB on a previous file load.
-  // The module-registry reset wiped `dbPromise`, but `process.env`
-  // survives. Defence-in-depth equality check guards against a test
-  // mutating TEST_DATABASE_URL out from under us.
+  // Fast path #1: per-fork env-stash (survives isolate:true reset).
   const stashedUrl = process.env[ENV_DB_URL];
   const stashedName = process.env[ENV_DB_NAME];
   if (
@@ -226,6 +323,31 @@ export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string 
     }
     return Promise.resolve({ dbName: stashedName, url: stashedUrl });
   }
+
+  // Fast path #2: per-pool stash from globalSetup's preclone (Neon-
+  // branches mode pre-stashes the URL since it isn't deterministic
+  // from the branch name; legacy mode also pre-stashes since #722).
+  const poolId = process.env.VITEST_POOL_ID;
+  if (poolId) {
+    const poolUrl = process.env[envBranchUrlKey(poolId)];
+    if (poolUrl) {
+      const dbName = workerDbName();
+      const branchId = process.env[envBranchIdKey(poolId)];
+      process.env.DATABASE_URL = poolUrl;
+      process.env.TEST_DATABASE_URL = poolUrl;
+      process.env[ENV_DB_NAME] = dbName;
+      process.env[ENV_DB_URL] = poolUrl;
+      if (branchId) process.env[ENV_BRANCH_ID] = branchId;
+      if (process.env.LV_DEBUG_PERWORKER === '1') {
+        const warm = Number(process.env.__LV_DB_WARM_HITS__ ?? '0') + 1;
+        process.env.__LV_DB_WARM_HITS__ = String(warm);
+        console.log(`[perworker] db WARM pid=${process.pid} pool=${poolId} db=${dbName} warm=${warm}`);
+      }
+      return Promise.resolve({ dbName, url: poolUrl });
+    }
+  }
+
+  // Fast path #3: cold clone.
   if (dbPromise === null) {
     dbPromise = initDbOnce();
   }
@@ -234,14 +356,32 @@ export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string 
 
 export async function precloneAllWorkerDbs(maxPoolId: number): Promise<void> {
   const tStart = Date.now();
-  // IMPORTANT: each iteration gets its OWN admin pool + client +
-  // advisory lock + tear-down. An earlier "shared client across all
-  // iterations" version (Task #722 follow-up attempt) regressed the
-  // total from 43s to 180s on Neon — every pool then hit 4-9 retries
-  // instead of 1-2. The per-iteration tear-down apparently lets the
-  // managed Postgres backend release some source-template resource
-  // that a long-held admin session keeps pinned. Do not "optimise"
-  // by sharing the client without re-running with the profiler.
+  const cfg = getNeonConfig();
+
+  if (cfg) {
+    // Neon-branches mode: parallel preclone via API. Branches don't
+    // share the source-DB lock that CREATE DATABASE TEMPLATE
+    // requires, so concurrent creates are safe and ~maxPoolId× faster.
+    const results = await Promise.all(
+      Array.from({ length: maxPoolId }, async (_, i) => {
+        const poolId = i + 1;
+        const name = workerDbNameForPool(poolId);
+        const r = await cloneTemplate(name);
+        return { poolId, ...r };
+      }),
+    );
+    for (const r of results) {
+      process.env[envBranchUrlKey(r.poolId)] = r.url;
+      if (r.branchId) process.env[envBranchIdKey(r.poolId)] = r.branchId;
+    }
+    console.log(
+      `[lv-perf] preclone-all mode=neon-branches maxPoolId=${maxPoolId} total=${Date.now() - tStart}ms`,
+    );
+    return;
+  }
+
+  // Legacy mode: serial preclone. See #722 follow-up notes — parallel
+  // CREATE DATABASE TEMPLATE on managed Postgres regressed 43s → 180s.
   for (let poolId = 1; poolId <= maxPoolId; poolId++) {
     if (poolId > 1) {
       // Brief pause to let Neon's control plane release the source
@@ -250,11 +390,17 @@ export async function precloneAllWorkerDbs(maxPoolId: number): Promise<void> {
       // 55006 "source database … is being accessed by other users"
       // because CREATE DATABASE itself opens a transient session
       // against the template that Neon takes a beat to tear down.
-      await new Promise((r) => setTimeout(r, 1500));
+      await sleep(1500);
     }
-    await cloneTemplate(workerDbNameForPool(poolId));
+    const name = workerDbNameForPool(poolId);
+    const r = await cloneTemplate(name);
+    process.env[envBranchUrlKey(poolId)] = r.url;
   }
   console.log(
-    `[lv-perf] preclone-all maxPoolId=${maxPoolId} total=${Date.now() - tStart}ms`,
+    `[lv-perf] preclone-all mode=legacy maxPoolId=${maxPoolId} total=${Date.now() - tStart}ms`,
   );
 }
+
+// Re-export for convenience so callers can construct a branch URL
+// without importing from ./neon-branches directly.
+export { buildBranchUrl };

@@ -1,20 +1,29 @@
 /**
- * Build the per-worker test template database (Task #699 / Phase 1).
+ * Build the per-worker test template database (Task #699 / Phase 1)
+ * with optional Neon-branches backend (Task #723).
  *
- * Drops + recreates `leaguevault_test_template` on the same Postgres
- * server pointed at by `DATABASE_URL`, then primes it so Phase 2 can
- * `CREATE DATABASE … TEMPLATE leaguevault_test_template` per vitest
- * worker:
- *   1. `drizzle-kit push --force` against the template.
- *   2. `installDbInvariants(db)` against the template.
- *   3. `seedTestUsers(db)` against the template.
- *   4. Hash of the schema sources is written to
- *      `.local/test-template-hash` so `ensure-test-template.ts` can
- *      decide whether to rebuild on subsequent runs.
+ * Two modes:
  *
- * Safe to run repeatedly. The drop refuses to run against a host
- * the dev-DB allow-list rejects (same `assertSafeDatabaseHost`
- * rail every other destructive script uses).
+ *   1. **Neon Branches API** — when `NEON_API_KEY` and
+ *      `NEON_PROJECT_ID` are set:
+ *        a. Look up the persistent template branch by name (default
+ *           `LeagueVault_Test_Template`); recreate it from the
+ *           production branch if a previous run left children behind.
+ *        b. Patch out any `expires_at` so the branch can be a parent.
+ *        c. Run drizzle-kit push, installDbInvariants, seedTestUsers
+ *           against the branch's connection URL.
+ *
+ *   2. **Legacy** — drops + recreates `leaguevault_test_template` on
+ *      the same Postgres server pointed at by `DATABASE_URL`, then
+ *      runs the same drizzle-kit push / invariants / seed sequence.
+ *
+ * In both modes the schema-input hash is written to
+ * `.local/test-template-hash` so `ensure-test-template.ts` can decide
+ * whether to rebuild on subsequent runs.
+ *
+ * Safe to run repeatedly. The drop/branch-replace refuses to run
+ * against a host the dev-DB allow-list rejects (same
+ * `assertSafeDatabaseHost` rail every other destructive script uses).
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -25,6 +34,18 @@ import { assertSafeDatabaseHost } from '../server/utils/db-safety';
 import { createDbClient } from '../server/db';
 import { installDbInvariants } from '../server/db-invariants';
 import { seedTestUsers } from '../tests/setup/seed-test-users';
+import {
+  createBranchWithEndpoint,
+  deleteBranch,
+  ensureBranchPersistent,
+  findBranchByName,
+  getNeonConfig,
+  listBranches,
+  PRODUCTION_BRANCH_NAME,
+  resolveBranchUrl,
+  TEMPLATE_BRANCH_NAME,
+  type NeonConfig,
+} from '../tests/setup/neon-branches';
 
 const TEMPLATE_DB_NAME = process.env.TEST_TEMPLATE_DB_NAME ?? 'leaguevault_test_template';
 const HASH_FILE = '.local/test-template-hash';
@@ -52,11 +73,11 @@ function adminDatabaseUrl(): string {
   return u.toString();
 }
 
-async function recreateTemplateDb(): Promise<void> {
+async function recreateLegacyTemplateDb(): Promise<void> {
   const adminPool = new pg.Pool({ connectionString: adminDatabaseUrl(), max: 2 });
   try {
     // Forcibly disconnect any lingering sessions, then drop + create.
-    // `WITH (FORCE)` is supported on PG 13+; Neon is on 16.
+    // `WITH (FORCE)` is supported on PG 13+; Neon is on 16/17.
     await adminPool.query(
       `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
        WHERE datname = $1 AND pid <> pg_backend_pid()`,
@@ -69,8 +90,65 @@ async function recreateTemplateDb(): Promise<void> {
   }
 }
 
-function runDrizzlePush(): void {
-  const env = { ...process.env, DATABASE_URL: templateDatabaseUrl() };
+async function recreateNeonTemplateBranch(cfg: NeonConfig): Promise<string> {
+  const tStart = Date.now();
+  // 1) Find production parent.
+  const prod = await findBranchByName(cfg, PRODUCTION_BRANCH_NAME);
+  if (!prod) {
+    throw new Error(
+      `[build-test-template] production branch "${PRODUCTION_BRANCH_NAME}" not found in Neon project.`,
+    );
+  }
+
+  // 2) If a template branch already exists, delete its children
+  //    first (`test_worker_*` branches from a crashed prior run that
+  //    bypassed cleanup-test-dbs), then delete the template itself.
+  const existingTemplate = await findBranchByName(cfg, TEMPLATE_BRANCH_NAME);
+  if (existingTemplate) {
+    const all = await listBranches(cfg);
+    const children = all.filter((b) => b.parent_id === existingTemplate.id);
+    if (children.length > 0) {
+      console.log(
+        `[build-test-template] deleting ${children.length} child branch(es) before template recreate`,
+      );
+      await Promise.all(
+        children.map((c) =>
+          deleteBranch(cfg, c.id).catch((err) => {
+            console.warn(
+              `[build-test-template] failed to delete child ${c.name}:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          }),
+        ),
+      );
+    }
+    console.log(
+      `[build-test-template] deleting existing template branch "${TEMPLATE_BRANCH_NAME}" (${existingTemplate.id})`,
+    );
+    await deleteBranch(cfg, existingTemplate.id);
+  }
+
+  // 3) Create a fresh template branch from production with a
+  //    read_write endpoint so we can connect to apply schema/seed.
+  console.log(
+    `[build-test-template] creating template branch "${TEMPLATE_BRANCH_NAME}" from "${PRODUCTION_BRANCH_NAME}"`,
+  );
+  const created = await createBranchWithEndpoint(cfg, prod.id, TEMPLATE_BRANCH_NAME);
+
+  // 4) Clear any default TTL so child worker branches can later
+  //    parent off this one. Neon refuses BRANCHING_IS_NOT_ALLOWED
+  //    on parents with `expires_at` set.
+  await ensureBranchPersistent(cfg, created.branchId);
+
+  console.log(
+    `[lv-perf] build-test-template recreate-template branchId=${created.branchId}` +
+      ` total=${Date.now() - tStart}ms`,
+  );
+  return created.url;
+}
+
+function runDrizzlePush(targetUrl: string): void {
+  const env = { ...process.env, DATABASE_URL: targetUrl };
   const result = spawnSync('npx', ['drizzle-kit', 'push', '--force'], {
     stdio: 'inherit',
     env,
@@ -133,15 +211,27 @@ function writeHash(hash: string): void {
 export async function buildTestTemplate(): Promise<void> {
   // Independent host-allow-list guard: refuse to wipe a database
   // unless the operator's DATABASE_URL is on the dev allow-list.
+  // (Asserted on the original DATABASE_URL, before any branch-URL
+  // swap — the original is the dev host registered in the allow-list.)
   assertSafeDatabaseHost('build-test-template');
 
-  console.log(`[build-test-template] dropping + recreating "${TEMPLATE_DB_NAME}"…`);
-  await recreateTemplateDb();
+  const cfg = getNeonConfig();
+  let templateUrl: string;
+  if (cfg) {
+    console.log(`[build-test-template] mode=neon-branches; recreating template branch…`);
+    templateUrl = await recreateNeonTemplateBranch(cfg);
+  } else {
+    console.log(
+      `[build-test-template] mode=legacy; dropping + recreating "${TEMPLATE_DB_NAME}"…`,
+    );
+    await recreateLegacyTemplateDb();
+    templateUrl = templateDatabaseUrl();
+  }
 
   console.log(`[build-test-template] running drizzle-kit push --force against template…`);
-  runDrizzlePush();
+  runDrizzlePush(templateUrl);
 
-  const client = createDbClient(templateDatabaseUrl());
+  const client = createDbClient(templateUrl);
   try {
     console.log(`[build-test-template] installing DB invariants…`);
     await installDbInvariants(client.db);
@@ -163,3 +253,7 @@ if (isMain) {
     process.exit(1);
   });
 }
+
+// Re-export for tests/scripts that import the legacy resolveBranchUrl
+// to inspect the persistent template branch.
+export { resolveBranchUrl };

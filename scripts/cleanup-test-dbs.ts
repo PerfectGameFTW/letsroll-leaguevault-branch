@@ -1,18 +1,37 @@
 /**
- * Drop any leftover per-worker test databases (Task #699 / Phase 1).
+ * Drop any leftover per-worker test databases / branches (Task #699 +
+ * Task #723).
  *
- * Phase 2's vitest globalSetup will create one
- * `test_worker_<wid>_<rand>` database per worker by cloning the
- * template. Crashes / Ctrl-C can leave those orphaned. This script
- * sweeps them up. Phase 2 will call this at the start of globalSetup
- * before allocating new worker DBs.
+ * Two cleanup backends, mirroring the two cloning backends:
  *
- * Match pattern: `test_worker_%`. Refuses to run unless the
- * dev-DB allow-list rail accepts the connected host.
+ *   1. **Neon Branches API** (Task #723) — when `NEON_API_KEY` and
+ *      `NEON_PROJECT_ID` are set, lists every branch whose name
+ *      starts with `test_worker_` and deletes it via API. No
+ *      advisory-lock dance is needed (Neon serialises branch
+ *      operations on its control plane), no in-use safety rail is
+ *      needed (deleting a Neon branch tears down its compute and
+ *      any open connections cleanly).
+ *
+ *   2. **Legacy CREATE DATABASE TEMPLATE** — drops `test_worker_%`
+ *      databases on the dev host under the same advisory lock
+ *      `cloneTemplate()` uses, with the in-use skip safeguard
+ *      preserved from #722.
+ *
+ * Match pattern: `test_worker_*` (branch names) / `test_worker_%` (DB
+ * names). Refuses to run unless the dev-DB allow-list rail accepts
+ * the connected host (covers both modes — even in Neon-branches mode
+ * we don't want this script to talk to a project whose dev URL isn't
+ * the registered dev host).
  */
 import pg from 'pg';
 import { assertSafeDatabaseHost } from '../server/utils/db-safety';
 import { CLONE_ADVISORY_LOCK_KEY } from '../tests/setup/per-worker-lock';
+import {
+  deleteBranch,
+  getNeonConfig,
+  listBranches,
+  WORKER_BRANCH_PREFIX,
+} from '../tests/setup/neon-branches';
 
 function adminDatabaseUrl(): string {
   const raw = process.env.DATABASE_URL;
@@ -24,8 +43,41 @@ function adminDatabaseUrl(): string {
   return u.toString();
 }
 
-export async function cleanupTestDbs(): Promise<string[]> {
-  assertSafeDatabaseHost('cleanup-test-dbs');
+async function cleanupViaNeonBranches(): Promise<string[]> {
+  const cfg = getNeonConfig();
+  if (!cfg) throw new Error('cleanupViaNeonBranches called without Neon config');
+  const tStart = Date.now();
+  const branches = await listBranches(cfg);
+  const targets = branches.filter((b) => b.name.startsWith(WORKER_BRANCH_PREFIX));
+  const dropped: string[] = [];
+  const failed: string[] = [];
+  // Parallel deletes — Neon serialises operations on the parent
+  // (template) branch internally, but branch *deletions* don't
+  // interact with each other.
+  await Promise.all(
+    targets.map(async (b) => {
+      try {
+        await deleteBranch(cfg, b.id);
+        dropped.push(b.name);
+      } catch (err) {
+        failed.push(`${b.name} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }),
+  );
+  if (failed.length > 0) {
+    console.warn(
+      `[cleanup-test-dbs] failed to delete ${failed.length} branch(es): ${failed.join('; ')}`,
+    );
+  }
+  console.log(
+    `[lv-perf] cleanupTestDbs mode=neon-branches scanned=${branches.length}` +
+      ` targets=${targets.length} dropped=${dropped.length}` +
+      ` failed=${failed.length} total=${Date.now() - tStart}ms`,
+  );
+  return dropped;
+}
+
+async function cleanupViaCreateDatabase(): Promise<string[]> {
   const tStart = Date.now();
   const adminPool = new pg.Pool({ connectionString: adminDatabaseUrl(), max: 2 });
   const dropped: string[] = [];
@@ -44,18 +96,6 @@ export async function cleanupTestDbs(): Promise<string[]> {
     );
     for (const { datname } of rows) {
       try {
-        // Task #722 safety rail: refuse to drop a worker DB that is
-        // actively in use by another process. The original (#700)
-        // implementation `pg_terminate_backend()`-and-DROPped every
-        // `test_worker_*` DB unconditionally, which is fine when only
-        // one `npm test` ever runs at a time. In CI / dev shells where
-        // the agent restarts the test workflow while the previous run
-        // is still tearing down (or where post-merge runs the suite in
-        // background), the second run's globalSetup yanks the first
-        // run's per-worker DBs out from under live forks, producing
-        // the `database "test_worker_…" does not exist` cascade
-        // observed in #719's post-merge runs. The advisory lock used
-        // by `cloneTemplate()` only serialises CREATE — not DROP.
         const { rows: usage } = await adminPool.query<{ count: string }>(
           `SELECT count(*)::text AS count FROM pg_stat_activity
            WHERE datname = $1 AND pid <> pg_backend_pid()`,
@@ -78,7 +118,7 @@ export async function cleanupTestDbs(): Promise<string[]> {
       );
     }
     console.log(
-      `[lv-perf] cleanupTestDbs scanned=${rows.length} dropped=${dropped.length}` +
+      `[lv-perf] cleanupTestDbs mode=legacy scanned=${rows.length} dropped=${dropped.length}` +
         ` skipped=${skipped.length} total=${Date.now() - tStart}ms`,
     );
   } finally {
@@ -91,12 +131,20 @@ export async function cleanupTestDbs(): Promise<string[]> {
   return dropped;
 }
 
+export async function cleanupTestDbs(): Promise<string[]> {
+  assertSafeDatabaseHost('cleanup-test-dbs');
+  if (getNeonConfig()) {
+    return cleanupViaNeonBranches();
+  }
+  return cleanupViaCreateDatabase();
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   cleanupTestDbs()
     .then((dropped) => {
       if (dropped.length === 0) {
-        console.log('[cleanup-test-dbs] no leftover test_worker_* databases.');
+        console.log('[cleanup-test-dbs] no leftover test_worker_* targets.');
       } else {
         console.log(`[cleanup-test-dbs] dropped ${dropped.length}: ${dropped.join(', ')}`);
       }
