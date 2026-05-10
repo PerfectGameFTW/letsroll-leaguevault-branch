@@ -31,7 +31,15 @@ export interface SpawnTestAppOptions {
 }
 
 export async function spawnTestApp(opts: SpawnTestAppOptions): Promise<SpawnedTestApp> {
-  const readyTimeoutMs = opts.readyTimeoutMs ?? 30_000;
+  // 60s (was 30s). Under the `parallel` vitest project (isolate:false,
+  // 4 forks) the spawned per-worker app occasionally takes >30s to
+  // reach `[ready] port=…` because the 4 forks all hammer Neon-branch
+  // creation + schema install at once. Bumping to 60s eliminates the
+  // spawnTestApp-timeout flake (5 files affected: email-change,
+  // setup-admin-header, check-log-debug-pii, check-provider-not-configured,
+  // check-wire-sanitization) without slowing healthy spawns (they still
+  // resolve in ~3s — the timeout only fires on the contention tail).
+  const readyTimeoutMs = opts.readyTimeoutMs ?? 60_000;
 
   // Quieter-by-opt-in: setting LV_TEST_QUIET_APP=1 lowers the spawned
   // app's LOG_LEVEL to `warn` and stops mirroring its stdout to the

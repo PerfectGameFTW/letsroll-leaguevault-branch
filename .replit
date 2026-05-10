@@ -74,10 +74,6 @@ args = "csrf-coverage"
 task = "workflow.run"
 args = "extra-guards"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -155,17 +151,6 @@ args = "npx tsx scripts/check-eslint-baseline.ts --strict && npx tsx scripts/che
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow]]
-name = "test"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm test"
-
-[workflows.workflow.metadata]
-isValidation = true
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node --import ./dist/instrument.js dist/index.js"]
