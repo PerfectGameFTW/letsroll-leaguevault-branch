@@ -226,6 +226,27 @@ describe('upfront-mode parity across helpers (Task #726)', () => {
     expect(bv.remainingBalance).toBe(0);
   });
 
+  it('weekly league past season end with double-pay dates: report matches bowler page (cap at fullSeasonAmount)', () => {
+    // Regression for the Michael Shearer bug: 32-week season ($30/wk),
+    // 2 past double-pay dates, paid $960. Past the season end the
+    // shared helper used to keep counting bowling weeks (returned 34)
+    // and produced $1080 - $960 = $120 past-due, while the bowler page
+    // capped to $1020 and produced $60. Both must agree at $60.
+    const league = makeLeague({
+      doublePayDates: [isoDate(2026, 4, 8), isoDate(2026, 4, 15)],
+    });
+    setToday(2026, 5, 8); // ~2 weeks after seasonEnd 2026-04-22
+
+    const totalPaid = 96000;
+    const cf = calculateFinancials(league, [paid(totalPaid)]);
+    const past = calculateBowlerPastDue(league, totalPaid);
+
+    expect(cf.fullSeasonAmount).toBe(102000);
+    expect(cf.totalDueToDate).toBe(102000);
+    expect(cf.amountPastDue).toBe(6000);
+    expect(past).toBe(6000);
+  });
+
   it('weekly league mid-season (no regression): bowler-view helper matches calculateFinancials', () => {
     const league = makeLeague(); // weekly mode, 32 weeks at $30
     setToday(2025, 10, 22);

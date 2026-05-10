@@ -67,24 +67,46 @@ export function calculateBowlerPastDue(
   const pastExtra =
     doublePayDates.filter((d) => d <= todayStr).length * league.weeklyFee;
 
+  // Cap due-to-date at the full season amount so a season that has
+  // already ended doesn't keep inflating past-due as time marches on.
+  // Mirrors `calculateFinancials.totalDueToDate = Math.min(raw, fullSeasonAmount)`
+  // on the bowler-page side; without this cap the past-due report and
+  // the bowler page disagree once the season is over (Task #726 follow-up).
+  const totalWeeks = getSeasonLengthWeeks({
+    seasonStart: league.seasonStart,
+    seasonEnd: league.seasonEnd ?? league.seasonStart,
+    totalBowlingWeeks: league.totalBowlingWeeks,
+    cancelledDates: league.cancelledDates,
+  });
+  const fullSeasonAmount =
+    league.weeklyFee * totalWeeks + doublePayDates.length * league.weeklyFee;
+
   if (league.totalBowlingWeeks != null && league.weekDay) {
-    const weeksPassed = countBowlingWeeksPassed(
+    const weeksPassedRaw = countBowlingWeeksPassed(
       league.seasonStart,
       league.weekDay,
       league.skipDates ?? [],
       league.cancelledDates ?? [],
     );
-    const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
+    const weeksPassed = Math.min(weeksPassedRaw, totalWeeks);
+    const dueToDate = Math.min(
+      league.weeklyFee * weeksPassed + pastExtra,
+      fullSeasonAmount,
+    );
     return Math.max(0, dueToDate - bowlerPaidAmount);
   }
 
   const seasonStart = new Date(league.seasonStart);
   if (!isValid(seasonStart)) return 0;
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const weeksPassed = Math.max(
+  const weeksPassedRaw = Math.max(
     0,
     Math.round((today.getTime() - seasonStart.getTime()) / msPerWeek),
   );
-  const dueToDate = league.weeklyFee * weeksPassed + pastExtra;
+  const weeksPassed = Math.min(weeksPassedRaw, totalWeeks);
+  const dueToDate = Math.min(
+    league.weeklyFee * weeksPassed + pastExtra,
+    fullSeasonAmount,
+  );
   return Math.max(0, dueToDate - bowlerPaidAmount);
 }
