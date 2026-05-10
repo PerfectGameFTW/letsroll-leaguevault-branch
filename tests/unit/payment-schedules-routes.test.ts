@@ -22,7 +22,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import express, { type Request } from 'express';
+import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
@@ -119,9 +119,11 @@ beforeAll(async () => {
   // Inject req.user + req.isAuthenticated() from a test header.
   app.use((req, _res, next) => {
     const raw = req.header('x-test-user');
-    const r = req as Request & { user?: unknown; isAuthenticated?: () => boolean };
-    if (raw) r.user = JSON.parse(raw);
-    r.isAuthenticated = (() => Boolean(raw)) as Request['isAuthenticated'];
+    if (raw) Object.defineProperty(req, 'user', { value: JSON.parse(raw), configurable: true });
+    Object.defineProperty(req, 'isAuthenticated', {
+      value: () => Boolean(raw),
+      configurable: true,
+    });
     next();
   });
   app.use('/api/payment-schedules', paymentSchedulesRouter);
