@@ -121,7 +121,7 @@ beforeAll(async () => {
     const raw = req.header('x-test-user');
     const r = req as Request & { user?: unknown; isAuthenticated?: () => boolean };
     if (raw) r.user = JSON.parse(raw);
-    r.isAuthenticated = () => Boolean(raw);
+    r.isAuthenticated = (() => Boolean(raw)) as Request['isAuthenticated'];
     next();
   });
   app.use('/api/payment-schedules', paymentSchedulesRouter);

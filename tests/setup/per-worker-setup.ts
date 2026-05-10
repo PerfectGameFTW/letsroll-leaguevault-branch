@@ -123,6 +123,19 @@ async function cloneTemplate(targetDb: string): Promise<void> {
   }
 }
 
+// Reserved env keys that survive vitest's per-file module-registry reset
+// (which `isolate: true` performs) but are still scoped to this fork
+// process under `pool: 'forks'`. See Task #719: with `isolate: true` +
+// `pool: 'forks'`, a module-level memo is wiped between files within a
+// fork, so every file would re-clone the template DB. Stashing the
+// resolved DB name / URL / app port in `process.env` keeps the memo
+// alive across files within the fork while still being isolated from
+// other forks. DON'T move this back to module scope without first
+// refactoring `parallel-isolated` files to `vi.hoisted()`.
+const ENV_DB_NAME = '__LV_WORKER_DB_NAME__';
+const ENV_DB_URL = '__LV_WORKER_DB_URL__';
+const ENV_APP_PORT = '__LV_WORKER_APP_PORT__';
+
 let dbPromise: Promise<{ dbName: string; url: string }> | null = null;
 let appPromise: Promise<{ app: SpawnedTestApp; dbName: string }> | null = null;
 
@@ -132,6 +145,8 @@ async function initDbOnce(): Promise<{ dbName: string; url: string }> {
   const url = workerDbUrl(dbName);
   process.env.DATABASE_URL = url;
   process.env.TEST_DATABASE_URL = url;
+  process.env[ENV_DB_NAME] = dbName;
+  process.env[ENV_DB_URL] = url;
   return { dbName, url };
 }
 
@@ -141,6 +156,20 @@ async function initDbOnce(): Promise<{ dbName: string; url: string }> {
  * spawned app.
  */
 export function cloneTemplateForWorker(): Promise<{ dbName: string; url: string }> {
+  // Fast path: this fork already cloned a DB on a previous file load.
+  // The module-registry reset wiped `dbPromise`, but `process.env`
+  // survives. Defence-in-depth equality check guards against a test
+  // mutating TEST_DATABASE_URL out from under us.
+  const stashedUrl = process.env[ENV_DB_URL];
+  const stashedName = process.env[ENV_DB_NAME];
+  if (
+    stashedUrl &&
+    stashedName &&
+    process.env.TEST_DATABASE_URL === stashedUrl
+  ) {
+    process.env.DATABASE_URL = stashedUrl;
+    return Promise.resolve({ dbName: stashedName, url: stashedUrl });
+  }
   if (dbPromise === null) {
     dbPromise = initDbOnce();
   }
@@ -151,9 +180,12 @@ async function initAppOnce(): Promise<{ app: SpawnedTestApp; dbName: string }> {
   const { dbName, url } = await cloneTemplateForWorker();
   const app = await spawnTestApp({ databaseUrl: url });
   process.env.TEST_BASE_URL = `http://127.0.0.1:${app.port}`;
+  process.env[ENV_APP_PORT] = String(app.port);
 
   // Hard backstop: kill the child when the worker exits, even on
   // uncaught exceptions / signal-driven termination. Sync-only API.
+  // Only registered on the cold path so we don't pile up N copies per
+  // fork as files reload.
   const killer = (): void => {
     try { app.kill(); } catch { /* noop */ }
   };
@@ -165,6 +197,31 @@ async function initAppOnce(): Promise<{ app: SpawnedTestApp; dbName: string }> {
 }
 
 export function ensurePerWorkerApp(): Promise<{ app: SpawnedTestApp; dbName: string }> {
+  // Fast path: this fork already spawned an app on a previous file
+  // load. We return a stub whose `kill` is a no-op — the real killer
+  // was registered via `process.once('exit', ...)` on the cold path
+  // and survives module-registry resets (it's owned by the OS
+  // process, not the module loader).
+  const stashedPort = process.env[ENV_APP_PORT];
+  const stashedDbName = process.env[ENV_DB_NAME];
+  const stashedUrl = process.env[ENV_DB_URL];
+  const expectedBaseUrl = stashedPort ? `http://127.0.0.1:${stashedPort}` : '';
+  if (
+    stashedPort &&
+    stashedDbName &&
+    stashedUrl &&
+    process.env.TEST_DATABASE_URL === stashedUrl &&
+    process.env.TEST_BASE_URL === expectedBaseUrl
+  ) {
+    const port = Number(stashedPort);
+    const stub: SpawnedTestApp = {
+      pid: -1,
+      port,
+      kill: () => { /* noop — real killer registered on cold path */ },
+    };
+    process.env.DATABASE_URL = stashedUrl;
+    return Promise.resolve({ app: stub, dbName: stashedDbName });
+  }
   if (appPromise === null) {
     appPromise = initAppOnce();
   }

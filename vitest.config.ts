@@ -229,6 +229,15 @@ export default defineConfig({
           // achieved by `isolate: true` above, even though we are now on
           // forks (each fork still owns its own module registry).
           pool: 'forks',
+          // Task #719: cap fork count to match the `parallel` project.
+          // After the process-env-backed clone memo in
+          // `per-worker-setup.ts`, the per-fork DB clone cost is paid
+          // exactly once per fork (instead of once per file), so worker
+          // count directly determines clone count. Pinning to 4 bounds
+          // worst-case provisioning at ~20s and matches the pg
+          // connection budget set by Task #691.
+          maxWorkers: 4,
+          minWorkers: 4,
         },
       },
       {
