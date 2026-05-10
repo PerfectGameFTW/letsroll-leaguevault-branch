@@ -59,7 +59,17 @@ export default async function setup() {
       process.env[RUN_ID_ENV] = randomBytes(4).toString('hex');
     }
     const t0 = Date.now();
-    await cleanupTestDbs();
+    // Cross-run sweep at startup. `minAgeMs` only affects Neon-branches
+    // mode: it skips any `test_worker_*` branch younger than 10 minutes
+    // so a concurrently-running sibling vitest process (different
+    // LV_TEST_RUN_ID, same Neon project) doesn't get its live branches
+    // deleted out from under it. Crashed-run leftovers are reliably
+    // older than 10 min by the time the next run starts, so the
+    // safety rail doesn't compromise cleanup. End-of-run cleanup
+    // (in `summary-reporter.ts`) passes a RUN_ID prefix and skips the
+    // age gate. Legacy CREATE-DATABASE-TEMPLATE mode ignores `minAgeMs`
+    // and uses its existing active-connection skip safeguard.
+    await cleanupTestDbs({ minAgeMs: 10 * 60 * 1000 });
     const t1 = Date.now();
     await ensureTestTemplate();
     const t2 = Date.now();

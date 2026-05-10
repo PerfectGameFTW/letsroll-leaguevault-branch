@@ -43,7 +43,10 @@ function adminDatabaseUrl(): string {
   return u.toString();
 }
 
-async function cleanupViaNeonBranches(branchNamePrefix?: string): Promise<string[]> {
+async function cleanupViaNeonBranches(
+  branchNamePrefix?: string,
+  minAgeMs?: number,
+): Promise<string[]> {
   const cfg = getNeonConfig();
   if (!cfg) throw new Error('cleanupViaNeonBranches called without Neon config');
   const tStart = Date.now();
@@ -51,10 +54,34 @@ async function cleanupViaNeonBranches(branchNamePrefix?: string): Promise<string
   // Default: every branch under the WORKER_BRANCH_PREFIX (the cross-run
   // sweep used at globalSetup start and by the manual entrypoint).
   // Caller-supplied: only branches under the current LV_TEST_RUN_ID
-  // prefix (used at globalTeardown so a concurrently-running sibling
-  // vitest process's branches are not deleted).
+  // prefix (used at end-of-run cleanup so a concurrently-running
+  // sibling vitest process's branches are not deleted).
   const filterPrefix = branchNamePrefix ?? WORKER_BRANCH_PREFIX;
-  const targets = branches.filter((b) => b.name.startsWith(filterPrefix));
+  let targets = branches.filter((b) => b.name.startsWith(filterPrefix));
+  // Optional age gate (Task #723 review): when the cross-run sweep
+  // runs at globalSetup start (no RUN_ID prefix), a concurrent
+  // sibling vitest process's branches will share the
+  // `test_worker_` prefix but a different `LV_TEST_RUN_ID` segment.
+  // Without a guard we'd delete their live branches mid-run. The
+  // age gate skips any branch younger than `minAgeMs`, so an active
+  // sibling run (whose branches were created seconds ago) is never
+  // touched while crashed-run leftovers (older than the threshold)
+  // are still swept. End-of-run cleanup passes a RUN_ID prefix and
+  // skips the age gate (we *want* to delete our own branches
+  // immediately).
+  if (minAgeMs !== undefined && minAgeMs > 0) {
+    const cutoff = Date.now() - minAgeMs;
+    const before = targets.length;
+    targets = targets.filter((b) => {
+      const created = b.created_at ? Date.parse(b.created_at) : 0;
+      return created > 0 && created < cutoff;
+    });
+    if (before !== targets.length) {
+      console.log(
+        `[cleanup-test-dbs] age-gate (minAgeMs=${minAgeMs}) skipped ${before - targets.length} young branch(es)`,
+      );
+    }
+  }
   const dropped: string[] = [];
   const failed: string[] = [];
   // Parallel deletes — Neon serialises operations on the parent
@@ -88,14 +115,24 @@ export interface CleanupOptions {
    * In Neon-branches mode, only delete branches whose names start
    * with this prefix. Defaults to `WORKER_BRANCH_PREFIX`
    * (`test_worker_`), which sweeps all worker branches across runs.
-   * Pass `test_worker_<RUN_ID>_` from globalTeardown so a concurrent
-   * sibling vitest process's branches are not affected.
+   * Pass `test_worker_<RUN_ID>_` from end-of-run cleanup so a
+   * concurrent sibling vitest process's branches are not affected.
    *
    * Has no effect in legacy CREATE-DATABASE-TEMPLATE mode (which
    * already runs under an advisory lock and skips end-of-run
    * teardown).
    */
   branchNamePrefix?: string;
+  /**
+   * In Neon-branches mode, only delete branches whose `created_at`
+   * is older than `minAgeMs` ms ago. Used by the startup cross-run
+   * sweep (no `branchNamePrefix`) to leave a concurrently-running
+   * sibling vitest process's freshly-created branches alone while
+   * still cleaning up older leftovers from crashed runs.
+   *
+   * Has no effect in legacy mode.
+   */
+  minAgeMs?: number;
 }
 
 async function cleanupViaCreateDatabase(): Promise<string[]> {
@@ -155,7 +192,7 @@ async function cleanupViaCreateDatabase(): Promise<string[]> {
 export async function cleanupTestDbs(opts: CleanupOptions = {}): Promise<string[]> {
   assertSafeDatabaseHost('cleanup-test-dbs');
   if (getNeonConfig()) {
-    return cleanupViaNeonBranches(opts.branchNamePrefix);
+    return cleanupViaNeonBranches(opts.branchNamePrefix, opts.minAgeMs);
   }
   return cleanupViaCreateDatabase();
 }

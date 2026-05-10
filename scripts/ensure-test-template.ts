@@ -16,6 +16,7 @@
  *      the next clone can succeed.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { assertSafeDatabaseHost } from '../server/utils/db-safety';
 import { buildTestTemplate, computeTemplateHash } from './build-test-template';
 import {
   findBranchByName,
@@ -41,6 +42,13 @@ export async function ensureTestTemplate(): Promise<void> {
   // Hash matches — but in Neon-branches mode, also confirm the
   // template branch is still present. (This is a single ~150ms API
   // call; cheap enough to do on every test run.)
+  //
+  // Host-allow-list rail (Task #723 review): refuse to talk to the
+  // Neon control plane unless the connected DB host is on the dev
+  // allow-list. `cleanupTestDbs` and `cloneTemplate` apply the same
+  // guard; this fast path was previously bypassing it. Memoised once
+  // per process inside `assertSafeDatabaseHost`.
+  assertSafeDatabaseHost('ensure-test-template');
   const cfg = getNeonConfig();
   if (cfg) {
     const branch = await findBranchByName(cfg, TEMPLATE_BRANCH_NAME);

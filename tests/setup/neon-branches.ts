@@ -42,6 +42,8 @@ export interface NeonBranch {
   parent_id?: string;
   current_state?: string;
   expires_at?: string | null;
+  /** ISO-8601 timestamp; populated by GET /branches and POST /branches. */
+  created_at?: string;
 }
 
 export interface NeonEndpoint {
