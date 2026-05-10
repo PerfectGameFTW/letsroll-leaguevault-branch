@@ -112,7 +112,10 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     enabled: !!bowler.id,
     staleTime: 30_000,
   });
-  const partnerOptions = useMemo(() => {
+  // All accepted partners regardless of league. Drives the per-partner
+  // details fetch below so the eligibility filter has each partner's
+  // `bowlerLeagues` to consult.
+  const acceptedPartners = useMemo(() => {
     const all = linksResponse?.data?.links ?? [];
     return all
       .filter((l) => l.status === "accepted")
@@ -123,9 +126,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   // weekly auto-pay setup must clear every included bowler's past-due
   // balance up front, so we fetch each accepted partner's payments,
   // filter to this league, and reuse the same `calculateBowlerPastDue`
-  // helper the server uses to enforce the rule.
+  // helper the server uses to enforce the rule. The same response
+  // payload (`bowlerLeagues`) also feeds the Task #725 enrollment
+  // filter just below — one fetch covers both.
   const partnerDetailsQueries = useQueries({
-    queries: partnerOptions.map((p) => ({
+    queries: acceptedPartners.map((p) => ({
       queryKey: [`/api/bowlers/${p.id}/details`, { includePayments: true }],
       queryFn: async (): Promise<ApiResponse<BowlerDetailsResponse>> => {
         const res = await csrfFetch(`/api/bowlers/${p.id}/details?includePayments=true`);
@@ -137,9 +142,26 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       retry: false,
     })),
   });
+
+  // Task #725: scope partner options to the current league. A linked
+  // partner should only surface as a payment recipient / combined-pay
+  // row on leagues they are *also* enrolled in. While a partner's
+  // details query is still in flight we treat them as not-yet-eligible
+  // (rather than optimistically showing them and yanking them once the
+  // fetch resolves) so the picker doesn't flicker.
+  const partnerOptions = useMemo(() => {
+    return acceptedPartners.filter((p, idx) => {
+      const data = partnerDetailsQueries[idx]?.data?.data;
+      if (!data) return false;
+      return (data.bowlerLeagues ?? []).some(
+        (bl) => bl.leagueId === league.id && bl.active,
+      );
+    });
+  }, [acceptedPartners, partnerDetailsQueries, league.id]);
+
   const partnerPastDueByBowlerId = useMemo(() => {
     const map: Record<number, number> = {};
-    partnerOptions.forEach((p, idx) => {
+    acceptedPartners.forEach((p, idx) => {
       const data = partnerDetailsQueries[idx]?.data?.data;
       if (!data) return;
       const partnerPayments = (data.payments ?? []).filter(
@@ -151,7 +173,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       map[p.id] = calculateBowlerPastDue(league, paid);
     });
     return map;
-  }, [partnerOptions, league, partnerDetailsQueries]);
+  }, [acceptedPartners, league, partnerDetailsQueries]);
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],
@@ -207,6 +229,24 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setAdditionalBowlerIds([]);
     }
   }, [showPaymentSetup]);
+
+  // Task #725: reconcile recipient + combined-pay selections to the
+  // currently-eligible partner set. When the user navigates between
+  // leagues (or a partner-details fetch resolves and reveals the
+  // partner is not enrolled here) any previously-picked partner that
+  // is no longer eligible must be dropped so a stale id never rides
+  // into checkout. Recipient resets to self; combined-pay drops the
+  // ineligible id(s) and keeps the rest.
+  useEffect(() => {
+    const eligibleIds = new Set(partnerOptions.map((p) => p.id));
+    if (targetBowlerId !== bowler.id && !eligibleIds.has(targetBowlerId)) {
+      setTargetBowlerId(bowler.id);
+    }
+    setAdditionalBowlerIds((prev) => {
+      const next = prev.filter((id) => eligibleIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [partnerOptions, bowler.id, targetBowlerId]);
 
   const bowlerPayments = useMemo(() => {
     return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
