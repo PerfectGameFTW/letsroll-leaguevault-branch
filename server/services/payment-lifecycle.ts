@@ -8,7 +8,8 @@ import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage";
 import { isDateSkippedOrCancelled } from "@shared/schedule-utils";
-import { executeScheduledPayment, executeChargeForLocation, buildLineItems, computePaymentSplit, fetchBowlerPaymentInfo, type ChargeResult } from "./payment-execution";
+import { executeScheduledPayment, computePaymentSplit, type ChargeResult } from "./payment-execution";
+import crypto from "crypto";
 import { checkPaidInFull } from "./payment-checks";
 import { getUserByBowlerId } from "../storage/users";
 
@@ -23,6 +24,7 @@ async function safeResolvePaidByUserId(bowlerId: number): Promise<number | null>
 }
 import { arePartners } from "../storage/bowler-payment-links";
 import { bowlers } from "@shared/schema";
+import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 
 interface SchedulerCallbacks {
   schedulePayment: (record: PaymentSchedule) => void;
@@ -86,10 +88,52 @@ export async function processScheduledPaymentJob(
       return;
     }
 
-    const paymentResult = await executeScheduledPayment(scheduleRecord, league, jobId);
+    // Combined autopay: validate each partner against the same
+    // accepted-link + same-org rules as canUserPayForBowler. Revoked
+    // links drop silently; missing rows or thrown errors abort the
+    // cycle so an admin sees the failure.
+    const orgId = league?.organizationId ?? null;
+    const requestedExtras = scheduleRecord.additionalBowlerIds ?? [];
+    const validPartnerIds: number[] = [];
+    if (requestedExtras.length > 0 && orgId != null) {
+      for (const partnerBowlerId of requestedExtras) {
+        let stillPartners: boolean;
+        let partnerBowlerRow: typeof bowlers.$inferSelect | undefined;
+        try {
+          stillPartners = await arePartners(scheduleRecord.bowlerId, partnerBowlerId, orgId);
+          partnerBowlerRow = await db.select().from(bowlers).where(eq(bowlers.id, partnerBowlerId)).then(r => r[0]);
+        } catch (err) {
+          logger.error(`[PaymentScheduler] Combined-autopay partner ${partnerBowlerId} for ${jobId} validation threw — ABORTING cycle`, {
+            error: err instanceof Error ? { name: err.name, message: err.message } : err,
+          });
+          await handleFailedPayment(
+            scheduleRecord,
+            { status: 'error', error: 'Combined-autopay validation failed (transient)' },
+            jobId,
+          );
+          return;
+        }
+        if (!stillPartners) {
+          logger.warn(`[PaymentScheduler] Skipping combined-autopay partner ${partnerBowlerId} for ${jobId} — link no longer accepted`);
+          continue;
+        }
+        if (!partnerBowlerRow || partnerBowlerRow.organizationId !== orgId) {
+          logger.error(`[PaymentScheduler] Combined-autopay partner ${partnerBowlerId} for ${jobId} missing or cross-org — ABORTING cycle`);
+          await handleFailedPayment(
+            scheduleRecord,
+            { status: 'error', error: `Combined-autopay partner ${partnerBowlerId} is missing or cross-org` },
+            jobId,
+          );
+          return;
+        }
+        validPartnerIds.push(partnerBowlerId);
+      }
+    }
+
+    const paymentResult = await executeScheduledPayment(scheduleRecord, league, jobId, validPartnerIds.length);
 
     if (paymentResult.status === 'success') {
-      await handleSuccessfulPayment(scheduleRecord, league, paymentResult, jobId, callbacks);
+      await handleSuccessfulPayment(scheduleRecord, league, paymentResult, jobId, callbacks, validPartnerIds);
     } else {
       await handleFailedPayment(scheduleRecord, paymentResult, jobId);
     }
@@ -145,7 +189,8 @@ async function handleSuccessfulPayment(
   league: typeof leagues.$inferSelect,
   paymentResult: ChargeResult,
   jobId: string,
-  callbacks: SchedulerCallbacks
+  callbacks: SchedulerCallbacks,
+  validPartnerIds: number[] = [],
 ) {
   const isUpfrontLeague = league?.paymentMode === 'upfront';
   const nextDate = computeNextPaymentDate(scheduleRecord, league);
@@ -171,112 +216,111 @@ async function handleSuccessfulPayment(
       recordTime: new Date().toISOString()
     });
 
-    const billedAmount = paymentResult.chargedAmount ?? scheduleRecord.amount;
+    // Combined autopay writes N+1 rows sharing one provider charge and
+    // groupId; billedAmount is the per-bowler share of the total charge.
+    const totalCharged = paymentResult.chargedAmount ?? scheduleRecord.amount;
+    const denom = 1 + validPartnerIds.length;
+    const billedAmount = denom > 0 ? Math.floor(totalCharged / denom) : totalCharged;
     const { lineageAmount, prizeFundAmount } = computePaymentSplit(billedAmount, league);
-    const notes = paymentResult.isDoublePay
+    const baseNotes = paymentResult.isDoublePay
       ? 'Double-pay week (2× weekly fee)'
       : undefined;
-    await tx.insert(payments).values({
-      bowlerId: scheduleRecord.bowlerId,
-      leagueId: scheduleRecord.leagueId,
-      amount: billedAmount,
-      lineageAmount,
-      prizeFundAmount,
-      status: 'paid',
-      type: providerNameToPaymentType(paymentResult.providerName || ''),
-      weekOf: scheduleRecord.nextPaymentDate,
-      providerPaymentId: paymentResult.paymentId,
-      cloverChargeId: paymentResult.providerRef?.cloverChargeId,
-      receiptUrl: paymentResult.receiptUrl,
-      receiptNumber: paymentResult.receiptNumber,
-      receiptEmailMissing:
-        paymentResult.providerName === 'square'
-          ? paymentResult.buyerEmailMissing ?? false
-          : false,
-      notes,
-    });
+    const isCombined = validPartnerIds.length > 0;
+    const groupId = isCombined ? crypto.randomUUID() : null;
+    const paidByUserId = isCombined ? await safeResolvePaidByUserId(scheduleRecord.bowlerId) : null;
+
+    const rows: (typeof payments.$inferInsert)[] = [
+      {
+        bowlerId: scheduleRecord.bowlerId,
+        leagueId: scheduleRecord.leagueId,
+        amount: billedAmount,
+        lineageAmount,
+        prizeFundAmount,
+        status: 'paid',
+        type: providerNameToPaymentType(paymentResult.providerName || ''),
+        weekOf: scheduleRecord.nextPaymentDate,
+        providerPaymentId: paymentResult.paymentId,
+        cloverChargeId: paymentResult.providerRef?.cloverChargeId,
+        receiptUrl: paymentResult.receiptUrl,
+        receiptNumber: paymentResult.receiptNumber,
+        receiptEmailMissing:
+          paymentResult.providerName === 'square'
+            ? paymentResult.buyerEmailMissing ?? false
+            : false,
+        notes: isCombined
+          ? (baseNotes ? `${baseNotes} (combined autopay self)` : 'Combined autopay (self)')
+          : baseNotes,
+        combinedChargeGroupId: groupId,
+        paidByUserId,
+      },
+    ];
+
+    for (const partnerBowlerId of validPartnerIds) {
+      rows.push({
+        bowlerId: partnerBowlerId,
+        leagueId: scheduleRecord.leagueId,
+        amount: billedAmount,
+        lineageAmount,
+        prizeFundAmount,
+        status: 'paid',
+        type: providerNameToPaymentType(paymentResult.providerName || ''),
+        weekOf: scheduleRecord.nextPaymentDate,
+        providerPaymentId: paymentResult.paymentId,
+        cloverChargeId: paymentResult.providerRef?.cloverChargeId,
+        receiptUrl: paymentResult.receiptUrl,
+        receiptNumber: paymentResult.receiptNumber,
+        receiptEmailMissing:
+          paymentResult.providerName === 'square'
+            ? paymentResult.buyerEmailMissing ?? false
+            : false,
+        notes: 'Combined autopay (paid by partner)',
+        combinedChargeGroupId: groupId,
+        paidByUserId,
+      });
+    }
+
+    await tx.insert(payments).values(rows);
 
     logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {
       completionTime: new Date().toISOString(),
       nextScheduledDate: nextDate
     });
-  });
-
-  const additional = scheduleRecord.additionalBowlerIds ?? [];
-  if (additional.length > 0) {
-    const paidByUserId = await safeResolvePaidByUserId(scheduleRecord.bowlerId);
-    const orgId = league?.organizationId ?? null;
-    for (const partnerBowlerId of additional) {
+  }).catch(async (txErr) => {
+    // Compensation: the provider already charged base × (1+N) but we
+    // couldn't persist the per-bowler rows. Best-effort refund so the
+    // cardholder isn't billed for an unrecorded cycle, then rethrow.
+    logger.error(`[PaymentScheduler] Combined-autopay row insert failed for ${jobId} — attempting refund`, {
+      providerPaymentId: paymentResult.paymentId,
+      partnerCount: validPartnerIds.length,
+      error: txErr instanceof Error ? { name: txErr.name, message: txErr.message } : txErr,
+    });
+    if (paymentResult.paymentId && (paymentResult.chargedAmount ?? 0) > 0) {
       try {
-        if (!orgId) {
-          logger.warn(`[PaymentScheduler] Skipping combined-autopay partner ${partnerBowlerId} for ${jobId} — league has no org`);
-          continue;
-        }
-        const stillPartners = await arePartners(scheduleRecord.bowlerId, partnerBowlerId, orgId);
-        if (!stillPartners) {
-          logger.warn(`[PaymentScheduler] Skipping combined-autopay partner ${partnerBowlerId} for ${jobId} — link no longer accepted`);
-          continue;
-        }
-        const partnerBowlerRow = await db.select().from(bowlers).where(eq(bowlers.id, partnerBowlerId)).then(r => r[0]);
-        if (!partnerBowlerRow || partnerBowlerRow.organizationId !== orgId) {
-          logger.warn(`[PaymentScheduler] Skipping combined-autopay partner ${partnerBowlerId} for ${jobId} — bowler missing or cross-org`);
-          continue;
-        }
-        if (!scheduleRecord.paymentCardId) {
-          logger.warn(`[PaymentScheduler] Skipping combined-autopay partner ${partnerBowlerId} for ${jobId} — schedule has no card`);
-          continue;
-        }
-        const partnerLineItems = buildLineItems(league, '1');
-        const { paymentCustomerId: payerCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
-        const partnerCharge = await executeChargeForLocation(
-          scheduleRecord.paymentCardId,
-          scheduleRecord.amount,
-          partnerLineItems,
-          league?.locationId ?? null,
-          payerCustomerId,
-          partnerBowlerRow.email ?? undefined,
+        const provider = await getPaymentProvider(league?.locationId ?? null);
+        await provider.refundPayment(
+          paymentResult.paymentId,
+          paymentResult.chargedAmount ?? scheduleRecord.amount,
+          'Combined autopay row insert failed — automatic compensation',
         );
-        const { lineageAmount: pLineage, prizeFundAmount: pPrize } = computePaymentSplit(scheduleRecord.amount, league);
-        if (partnerCharge.status === 'success') {
-          await db.insert(payments).values({
-            bowlerId: partnerBowlerId,
-            leagueId: scheduleRecord.leagueId,
-            amount: scheduleRecord.amount,
-            lineageAmount: pLineage,
-            prizeFundAmount: pPrize,
-            status: 'paid',
-            type: providerNameToPaymentType(partnerCharge.providerName || ''),
-            weekOf: scheduleRecord.nextPaymentDate,
-            providerPaymentId: partnerCharge.paymentId,
-            cloverChargeId: partnerCharge.providerRef?.cloverChargeId,
-            receiptUrl: partnerCharge.receiptUrl,
-            receiptNumber: partnerCharge.receiptNumber,
-            receiptEmailMissing:
-              partnerCharge.providerName === 'square'
-                ? partnerCharge.buyerEmailMissing ?? false
-                : false,
-            notes: 'Combined autopay (paid by partner)',
-            paidByUserId,
+        logger.warn(`[PaymentScheduler] Combined-autopay refund issued for ${jobId}`, {
+          providerPaymentId: paymentResult.paymentId,
+          refundedAmount: paymentResult.chargedAmount ?? scheduleRecord.amount,
+        });
+      } catch (refundErr) {
+        if (refundErr instanceof ProviderNotConfiguredError) {
+          logger.error(`[PaymentScheduler] Combined-autopay refund SKIPPED — provider not configured for ${jobId}`, {
+            providerPaymentId: paymentResult.paymentId,
           });
         } else {
-          await db.insert(payments).values({
-            bowlerId: partnerBowlerId,
-            leagueId: scheduleRecord.leagueId,
-            amount: scheduleRecord.amount,
-            status: 'failed',
-            type: providerNameToPaymentType(partnerCharge.providerName || ''),
-            weekOf: scheduleRecord.nextPaymentDate,
-            notes: `Combined autopay failed: ${partnerCharge.error}`,
-            paidByUserId,
+          logger.error(`[PaymentScheduler] Combined-autopay refund ALSO failed for ${jobId} — manual reconciliation required`, {
+            providerPaymentId: paymentResult.paymentId,
+            error: refundErr instanceof Error ? { name: refundErr.name, message: refundErr.message } : refundErr,
           });
         }
-      } catch (err) {
-        logger.error(`[PaymentScheduler] Combined-autopay partner ${partnerBowlerId} for ${jobId} threw`, {
-          error: err instanceof Error ? { name: err.name, message: err.message } : err,
-        });
       }
     }
-  }
+    throw txErr;
+  });
 
   if (isUpfrontLeague) {
     logger.info(`[PaymentScheduler] Upfront league — deactivating schedule after payment for ${jobId}`, {

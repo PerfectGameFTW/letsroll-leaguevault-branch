@@ -194,6 +194,33 @@ export async function createPayment(payment: InsertPayment): Promise<Payment> {
   return result;
 }
 
+/**
+ * Task #706 — atomically insert N per-bowler payment rows that all share
+ * a single combined card transaction. All rows commit or none do, so a
+ * post-charge insert failure leaves zero phantom rows behind (caller
+ * refunds the provider charge).
+ */
+export async function createCombinedPayments(
+  rows: InsertPayment[],
+): Promise<Array<{ id: number; bowlerId: number; amount: number }>> {
+  if (rows.length === 0) return [];
+  return await db.transaction(async (tx) => {
+    const inserted = await tx.insert(payments).values(rows).returning({
+      id: payments.id,
+      bowlerId: payments.bowlerId,
+      amount: payments.amount,
+    });
+    return inserted;
+  });
+}
+
+export async function getPaymentsByCombinedGroupId(groupId: string): Promise<Payment[]> {
+  return await db
+    .select()
+    .from(payments)
+    .where(eq(payments.combinedChargeGroupId, groupId));
+}
+
 export async function updatePayment(id: number, payment: UpdatePayment): Promise<Payment> {
   const [result] = await db
     .update(payments)

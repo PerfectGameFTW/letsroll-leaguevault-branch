@@ -198,7 +198,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
 
         {!activeSchedule && financials.remainingBalance > 0 && league.paymentMode === 'upfront' && (
           <div className="space-y-2">
-            <Button className="w-full" onClick={() => onSetupPayment('autopay')}>
+            <Button className="w-full" onClick={() => onSetupPayment('onetime')}>
               Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
               <CreditCard className="ml-2 h-4 w-4" />
             </Button>

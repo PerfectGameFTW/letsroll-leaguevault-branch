@@ -72,6 +72,7 @@ const PAYMENT: Payment = {
   status: 'paid',
   type: 'square',
   checkNumber: null,
+  combinedChargeGroupId: null,
   providerPaymentId: 'sq_pay_xyz',
   cloverChargeId: null,
   idempotencyKey: null,

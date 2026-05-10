@@ -180,7 +180,12 @@ export async function executeChargeForLocation(
 export async function executeScheduledPayment(
   scheduleRecord: PaymentSchedule,
   league: typeof leagues.$inferSelect,
-  jobId: string
+  jobId: string,
+  // Task #706 — combined autopay: number of accepted-link partners
+  // also being charged on this cycle. The provider sees ONE charge for
+  // base × (1 + extraPayeeCount); per-bowler payment rows are split
+  // upstream in lifecycle. Defaults to 0 (legacy single-bowler).
+  extraPayeeCount: number = 0,
 ): Promise<ChargeResult> {
   const { buyerEmail, paymentCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
 
@@ -218,9 +223,11 @@ export async function executeScheduledPayment(
   const firingDateStr = toIsoDateStr(firingDateLocal);
   const isDoublePayDate = (league?.doublePayDates ?? [])
     .some(d => d.slice(0, 10) === firingDateStr);
-  const chargeAmount = isDoublePayDate
+  const baseChargeAmount = isDoublePayDate
     ? (weeklyFee > 0 ? weeklyFee * 2 : scheduleRecord.amount * 2)
     : scheduleRecord.amount;
+  const totalPayees = 1 + Math.max(0, extraPayeeCount);
+  const chargeAmount = baseChargeAmount * totalPayees;
 
   if (isDoublePayDate) {
     logger.info(`[PaymentExecution] Double-pay week — charging 2× for ${jobId}`, {

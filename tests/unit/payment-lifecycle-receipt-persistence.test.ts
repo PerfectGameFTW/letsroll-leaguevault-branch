@@ -19,8 +19,12 @@ const insertedRows: Record<string, unknown>[] = [];
 const fakeTx = {
   update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
   insert: () => ({
-    values: (v: Record<string, unknown>) => {
-      insertedRows.push(v);
+    values: (v: Record<string, unknown> | Record<string, unknown>[]) => {
+      if (Array.isArray(v)) {
+        for (const row of v) insertedRows.push(row);
+      } else {
+        insertedRows.push(v);
+      }
       return Promise.resolve();
     },
   }),

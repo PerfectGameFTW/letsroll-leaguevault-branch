@@ -156,23 +156,23 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   // opening or closing the form, OR switching into autopay,
   // resets the recipient back to self so a stale partner choice never
-  // silently rides into a new checkout. Autopay only supports self pay
-  // (combined-autopay is configured separately by the schedule owner).
+  // silently rides into a new checkout. Autopay's per-payer schedule
+  // is always self; combined-pay (multi-select) handles partners.
   useEffect(() => {
     if (!showPaymentSetup || paymentMode === 'autopay') {
       setTargetBowlerId(bowler.id);
     }
   }, [showPaymentSetup, paymentMode, bowler.id]);
 
-  // combined-autopay reset. Clear selected
-  // combined-autopay partners whenever the form closes or the mode
-  // leaves autopay — the checkbox group is only meaningful in autopay
-  // mode and a stale selection must never carry into a one-time charge.
+  // Task #706: combined-pay reset. Clear selected combined partners
+  // only when the form CLOSES — combined-pay is now valid in every
+  // payment mode (autopay, one-time, upfront), so flipping mode no
+  // longer drops the selection.
   useEffect(() => {
-    if (!showPaymentSetup || paymentMode !== 'autopay') {
+    if (!showPaymentSetup) {
       setAdditionalBowlerIds([]);
     }
-  }, [showPaymentSetup, paymentMode]);
+  }, [showPaymentSetup]);
 
   const bowlerPayments = useMemo(() => {
     return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
@@ -206,21 +206,42 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     try {
       setIsSubmitting(true);
-      const amount = calculateTotalAmount();
-      const response = await csrfFetch('/api/payments-provider/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceId: token,
-          amount,
-          // chargeForBowlerId is the recipient bowler.
-          // Server resolves the payer's vault from the session and
-          // gates via canUserPayForBowler.
-          bowlerId: targetBowlerId,
-          leagueId: league.id,
-          storeCard: true,
-        }),
-      });
+      const perAmount = calculateTotalAmount();
+      // Task #706: when combined-pay partners are selected, route the
+      // wallet token through the combined-payments endpoint so ONE
+      // provider charge writes N+1 per-bowler rows sharing a
+      // `combinedChargeGroupId`. Otherwise fall through to the legacy
+      // single-bowler payments endpoint.
+      const isCombined = additionalBowlerIds.length > 0;
+      const totalPayees = 1 + additionalBowlerIds.length;
+      const totalAmount = perAmount * totalPayees;
+      const response = isCombined
+        ? await csrfFetch('/api/payments-provider/combined-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: token,
+              amount: totalAmount,
+              leagueId: league.id,
+              storeCard: true,
+              payees: [
+                { bowlerId: bowler.id, amount: perAmount },
+                ...additionalBowlerIds.map((id) => ({ bowlerId: id, amount: perAmount })),
+              ],
+            }),
+          })
+        : await csrfFetch('/api/payments-provider/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: token,
+              amount: perAmount,
+              bowlerId: targetBowlerId,
+              leagueId: league.id,
+              storeCard: true,
+            }),
+          });
+      const amount = isCombined ? totalAmount : perAmount;
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error?.message || data.message || `Payment failed (HTTP ${response.status})`);
@@ -243,6 +264,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       if (targetBowlerId !== bowler.id) {
         queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${targetBowlerId}/details`] });
       }
+      // Task #706: combined-pay writes a row against EVERY included
+      // partner — refresh each partner's details so all of their
+      // payment-history surfaces pick up the new "Paid by …" rows.
+      if (isCombined) {
+        for (const id of additionalBowlerIds) {
+          queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${id}/details`] });
+        }
+      }
       setShowPaymentSetup(false);
     } catch (err: unknown) {
       // task #514: route the wallet-payment failure path through the
@@ -254,7 +283,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [bowler.id, league.id, targetBowlerId, calculateTotalAmount, toast, setIsSubmitting, setShowPaymentSetup]);
+  }, [bowler.id, league.id, targetBowlerId, additionalBowlerIds, calculateTotalAmount, toast, setIsSubmitting, setShowPaymentSetup]);
 
   const {
     applePayAvailable,
@@ -269,7 +298,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     googlePayTokenizeOnly,
   } = useWalletPayments({
     locationId: league.locationId ?? null,
-    amountCents: calculateTotalAmount(),
+    // Wallet sheet must authorize the full combined total when partners
+    // are selected so the device-sheet amount matches the server charge.
+    amountCents: calculateTotalAmount() * (1 + additionalBowlerIds.length),
     enabled: showPaymentSetup && supportsWallets && (selectedSchedule === 'custom' || league.paymentMode === 'upfront'),
     onTokenReceived: handleWalletPayment,
     // task #514: route the wallet hook's `onError` string through the

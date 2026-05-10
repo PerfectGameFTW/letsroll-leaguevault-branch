@@ -114,6 +114,7 @@ export function useBowlerPaymentSubmit({
 
     const isUpfront = league.paymentMode === 'upfront';
     const isAutoPay = !isUpfront && selectedSchedule !== 'custom';
+    const hasCombinedPartners = (additionalBowlerIds?.length ?? 0) > 0;
 
     try {
       setIsSubmitting(true);
@@ -121,6 +122,47 @@ export function useBowlerPaymentSubmit({
       if (isUpfront) {
         const upfrontAmount = financials.fullSeasonAmount;
         const trimmedBuyerEmail = (buyerEmail ?? '').trim();
+
+        // Task #706: combined upfront — route through combined-payments
+        // so ONE charge writes N+1 per-bowler rows.
+        if (hasCombinedPartners) {
+          const partnerIds = additionalBowlerIds ?? [];
+          const totalPayees = 1 + partnerIds.length;
+          const totalAmount = upfrontAmount * totalPayees;
+          const payees = [
+            { bowlerId: bowler.id, amount: upfrontAmount },
+            ...partnerIds.map((id) => ({ bowlerId: id, amount: upfrontAmount })),
+          ];
+          let sourceId = selectedSavedCardId;
+          if (cardMode === 'new') {
+            if (!newCard) throw new Error('Please enter your card details before proceeding.');
+            sourceId = await tokenizeCard(newCard);
+          }
+          const response = await csrfFetch('/api/payments-provider/combined-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId,
+              amount: totalAmount,
+              leagueId: league.id,
+              storeCard: cardMode === 'new' ? storeCard : false,
+              payees,
+              ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
+            }),
+          });
+          const data = await response.json();
+          await throwApiErrorIfNotOk(response, data, 'Payment failed');
+          toast({
+            title: "Payment Successful",
+            description: `Combined payment of ${formatCurrency(totalAmount)} has been processed.`,
+          });
+          setShowPaymentSetup(false);
+          queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+          partnerIds.forEach((id) =>
+            queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${id}/details`] }),
+          );
+          return;
+        }
 
         if (cardMode === 'saved' && selectedSavedCardId) {
           const response = await csrfFetch('/api/payments-provider/payments', {
@@ -159,8 +201,55 @@ export function useBowlerPaymentSubmit({
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
         return;
       }
-      
+
       const amount = calculateTotalAmount();
+
+      // Task #706: combined ONE-TIME (non-autopay, non-upfront) — also
+      // routed through the combined-payments endpoint. Autopay combined
+      // is handled below by POSTing additionalBowlerIds on the schedule.
+      if (!isAutoPay && hasCombinedPartners) {
+        const partnerIds = additionalBowlerIds ?? [];
+        const totalPayees = 1 + partnerIds.length;
+        const totalAmount = amount * totalPayees;
+        const payees = [
+          { bowlerId: bowler.id, amount },
+          ...partnerIds.map((id) => ({ bowlerId: id, amount })),
+        ];
+        const trimmedBuyerEmail = (buyerEmail ?? '').trim();
+        let sourceId = selectedSavedCardId;
+        if (cardMode === 'new') {
+          if (!newCard) throw new Error('Please enter your card details before proceeding.');
+          sourceId = await tokenizeCard(newCard);
+        }
+        const response = await csrfFetch('/api/payments-provider/combined-payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId,
+            amount: totalAmount,
+            leagueId: league.id,
+            storeCard: cardMode === 'new' ? storeCard : false,
+            payees,
+            ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
+          }),
+        });
+        const data = await response.json();
+        await throwApiErrorIfNotOk(response, data, 'Payment failed');
+        if (cardMode === 'new' && storeCard) {
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
+        }
+        toast({
+          title: "Payment Successful",
+          description: `Combined payment of ${formatCurrency(totalAmount)} has been processed.`,
+        });
+        setShowPaymentSetup(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+        partnerIds.forEach((id) =>
+          queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${id}/details`] }),
+        );
+        return;
+      }
+
       const hasOutstandingBalance = financials.amountPastDue > 0;
       let paymentCardId: string | null = null;
       let paymentWasCharged = false;

@@ -56,12 +56,21 @@ export const payments = pgTable("payments", {
   // adult bowler pays on behalf of a linked payment partner. NULL for
   // legacy / admin-entered / webhook-driven rows.
   paidByUserId: integer("paid_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+  // Task #706: shared identifier for the N per-bowler rows that all
+  // came out of a single combined card transaction (self + accepted
+  // payment-link partners). NULL for ordinary single-bowler payments
+  // (legacy + non-combined). Lets the UI/audit surface "N rows from
+  // the same swipe" without coupling to providerPaymentId, which a
+  // future provider could legitimately reuse across rows for other
+  // reasons.
+  combinedChargeGroupId: text("combined_charge_group_id"),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   bowlerIdx: index("payments_bowler_idx").on(table.bowlerId),
   leagueIdx: index("payments_league_idx").on(table.leagueId),
   weekOfIdx: index("payments_week_of_idx").on(table.weekOf),
   paidByUserIdx: index("payments_paid_by_user_idx").on(table.paidByUserId),
+  combinedGroupIdx: index("payments_combined_group_idx").on(table.combinedChargeGroupId),
 }));
 
 export const paymentSchedules = pgTable("payment_schedules", {
@@ -114,6 +123,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   notes: z.string().optional(),
   storeCard: z.boolean().optional(),
   paidByUserId: z.number().int().positive().nullable().optional(),
+  combinedChargeGroupId: z.string().nullable().optional(),
 }).omit({ id: true, createdAt: true });
 
 export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({

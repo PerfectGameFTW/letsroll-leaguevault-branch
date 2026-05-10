@@ -133,16 +133,21 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   additionalBowlerIds,
   setAdditionalBowlerIds,
 }) => {
-  const showPartnerPicker = allowPartnerSelection && partnerOptions.length > 0;
-  // Combined-autopay multi-select renders only when the bowler is in
-  // autopay mode AND has at least one accepted partner. The picker
-  // above is disabled in autopay mode (per-payer schedule); this
-  // checkbox group is the autopay-equivalent.
-  const showCombinedAutopay =
-    !allowPartnerSelection &&
-    paymentMode === 'autopay' &&
-    league.paymentMode !== 'upfront' &&
-    partnerOptions.length > 0;
+  // Task #706: combined-pay (multi-select) is now offered for ALL
+  // payment modes — autopay, one-time, and upfront — whenever the
+  // bowler has accepted partners. Picking at least one partner here
+  // bundles the payment into ONE card transaction with N+1 per-bowler
+  // rows (server-side endpoint `/api/payments-provider/combined-
+  // payments` for one-time/upfront, or the autopay schedule's
+  // `additionalBowlerIds` for weekly/custom autopay).
+  const hasCombinedPicks = additionalBowlerIds.length > 0;
+  // The single-recipient picker only makes sense when NO combined-pay
+  // partners are selected (combined-pay is always self+partners).
+  const showPartnerPicker =
+    allowPartnerSelection && partnerOptions.length > 0 && !hasCombinedPicks;
+  const showCombinedPay = partnerOptions.length > 0;
+  const baseAmount = calculateTotalAmount();
+  const combinedTotal = baseAmount * (1 + additionalBowlerIds.length);
   const togglePartner = (id: number, on: boolean) => {
     if (on) {
       if (!additionalBowlerIds.includes(id)) {
@@ -216,7 +221,9 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               </div>
               <div className="border-t pt-3 flex items-center justify-between">
                 <span className="font-semibold">Total due today</span>
-                <span className="text-lg font-bold">{formatCurrency(financials.fullSeasonAmount)}</span>
+                <span className="text-lg font-bold" data-testid="upfront-total-due">
+                  {formatCurrency(financials.fullSeasonAmount * (1 + additionalBowlerIds.length))}
+                </span>
               </div>
             </div>
           ) : paymentMode === 'autopay' && (
@@ -229,39 +236,69 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             </div>
           )}
 
-          {showCombinedAutopay && (
+          {showCombinedPay && (
             <div
               className="space-y-2 rounded-md border bg-muted/20 p-4"
               data-testid="combined-autopay-group"
             >
               <Label className="flex items-center gap-2 text-sm font-medium">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                Also charge me for these linked bowlers each week
+                {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
+                  ? 'Also charge me for these linked bowlers each week'
+                  : 'Also pay for these linked bowlers in this transaction'}
               </Label>
               <p className="text-xs text-muted-foreground">
-                Your card will be charged for everyone you select on the same
-                schedule. Each charge is recorded against the partner's
-                account and attributed as paid by you.
+                {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
+                  ? "Your card will be charged for everyone you select on the same schedule. Each charge is recorded against the partner's account and attributed as paid by you."
+                  : "Your card will be charged once for everyone you select. Each amount is recorded against the partner's account and attributed as paid by you."}
               </p>
               <div className="space-y-2 pt-1">
+                <label
+                  className="flex items-center justify-between gap-2 text-sm opacity-80"
+                  data-testid={`combined-pay-option-self-${selfBowler.id}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Checkbox checked disabled />
+                    <span>{selfBowler.name} (you)</span>
+                  </span>
+                  <span className="text-muted-foreground">{formatCurrency(baseAmount)}</span>
+                </label>
                 {partnerOptions.map((p) => {
                   const checked = additionalBowlerIds.includes(p.id);
                   return (
                     <label
                       key={p.id}
-                      className="flex items-center gap-2 text-sm"
+                      className="flex items-center justify-between gap-2 text-sm"
                       data-testid={`combined-autopay-option-${p.id}`}
                     >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => togglePartner(p.id, v === true)}
-                        data-testid={`combined-autopay-checkbox-${p.id}`}
-                      />
-                      <span>{p.name}</span>
+                      <span className="flex items-center gap-2">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => togglePartner(p.id, v === true)}
+                          data-testid={`combined-autopay-checkbox-${p.id}`}
+                        />
+                        <span>{p.name}</span>
+                      </span>
+                      <span className="text-muted-foreground">{formatCurrency(baseAmount)}</span>
                     </label>
                   );
                 })}
               </div>
+              {additionalBowlerIds.length > 0 && (
+                <div className="border-t pt-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold">
+                    {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
+                      ? 'Combined per-cycle total'
+                      : 'Combined total'}
+                  </span>
+                  <span
+                    className="text-base font-bold"
+                    data-testid="combined-pay-total"
+                  >
+                    {formatCurrency(combinedTotal)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
           
