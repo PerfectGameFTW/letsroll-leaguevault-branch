@@ -1,6 +1,15 @@
 /**
  * Cleanup script for leaked vitest organizations (task #607).
  *
+ * NOTE (Task #717, post-#700): As of Task #700 the integration test
+ * suite runs against per-worker isolated databases and no longer
+ * writes test fixtures into the shared dev DB. This script should
+ * therefore normally be a no-op. It is retained as a one-shot safety
+ * net in case a future code path regresses and starts leaking again,
+ * or to mop up after an operator who runs tests against a non-isolated
+ * database by mistake. If you find yourself running this and it
+ * actually deletes rows, that is a regression — open a follow-up.
+ *
  * The integration suite historically created a fresh `organizations`
  * row inside each test file's beforeAll, which over time leaked
  * hundreds of rows into the dev DB (admin Organizations page was at
@@ -61,6 +70,12 @@ import { assertSafeDatabaseHost } from '../server/utils/db-safety';
  *     kept in sync there. (Task #609.)
  *   - The two seeded vitest baseline orgs that the refactored test
  *     suite re-uses across runs (`vitest-org-a` / `vitest-org-b`).
+ *     Task #717 will retire these from the protected list once
+ *     #700 (per-worker isolated test DBs) lands and the integration
+ *     tests stop hitting the shared dev DB via BASE_URL. Until then
+ *     `scripts/seed.ts` re-seeds them on every dev-server boot, so
+ *     deleting them is a no-op that also breaks any in-flight test
+ *     run.
  *
  * Defense-in-depth: even if a future test pattern accidentally matches
  * one of these, the allow-list keeps them safe.
