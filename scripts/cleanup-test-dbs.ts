@@ -26,6 +26,7 @@ function adminDatabaseUrl(): string {
 
 export async function cleanupTestDbs(): Promise<string[]> {
   assertSafeDatabaseHost('cleanup-test-dbs');
+  const tStart = Date.now();
   const adminPool = new pg.Pool({ connectionString: adminDatabaseUrl(), max: 2 });
   const dropped: string[] = [];
   const skipped: string[] = [];
@@ -76,6 +77,10 @@ export async function cleanupTestDbs(): Promise<string[]> {
         `[cleanup-test-dbs] skipped ${skipped.length} in-use DB(s): ${skipped.join(', ')}`,
       );
     }
+    console.log(
+      `[lv-perf] cleanupTestDbs scanned=${rows.length} dropped=${dropped.length}` +
+        ` skipped=${skipped.length} total=${Date.now() - tStart}ms`,
+    );
   } finally {
     try {
       await lockClient.query('SELECT pg_advisory_unlock($1)', [CLONE_ADVISORY_LOCK_KEY]);

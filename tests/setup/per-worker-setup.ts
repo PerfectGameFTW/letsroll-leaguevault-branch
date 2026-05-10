@@ -85,6 +85,20 @@ async function initAppOnce(): Promise<{ app: SpawnedTestApp; dbName: string }> {
   process.once('SIGINT', () => { killer(); process.exit(130); });
   process.once('SIGTERM', () => { killer(); process.exit(143); });
 
+  // Per-fork summary at exit so we can sum the across-fork setup cost
+  // (the cross-fork "643s setup bucket" is the sum of these values).
+  // Cold-path-only registration: fast-path forks never reach this code,
+  // so a fork's first cold-init is the only one that owns the summary.
+  const tWorkerStart = Date.now();
+  process.once('exit', () => {
+    const wallMs = Date.now() - tWorkerStart;
+    const provisionMs = tApp - tStart;
+    console.log(
+      `[lv-perf] worker-summary pool=${process.env.VITEST_POOL_ID ?? '?'}` +
+        ` pid=${process.pid} provisionMs=${provisionMs} wallMs=${wallMs}`,
+    );
+  });
+
   return { app, dbName };
 }
 
