@@ -52,7 +52,8 @@ router.get("/", async (req: Request, res) => {
 
     const organizationId = getOrganizationFilter(req);
     const isSystemAdmin = req.user?.role === 'system_admin';
-    
+    const isOrgAdmin = req.user?.role === 'org_admin';
+
     let leagues: Awaited<ReturnType<typeof storage.getLeagues>>;
     if (organizationId !== null) {
       leagues = await storage.getLeagues(organizationId);
@@ -62,10 +63,26 @@ router.get("/", async (req: Request, res) => {
       return sendSuccess(res, []);
     }
 
+    // Task #735: plain `user`-role callers must NOT see every league in
+    // the org by virtue of org membership alone — that would make a
+    // league_secretary grant a no-op for visibility. Scope the visible
+    // set to (a) leagues the caller is rostered into as a bowler, plus
+    // (b) leagues they were granted a secretary role on.
+    if (!isSystemAdmin && !isOrgAdmin && req.user) {
+      const visibleLeagueIds = new Set<number>();
+      if (req.user.bowlerId) {
+        const bowlerLeagueRows = await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId });
+        for (const r of bowlerLeagueRows) visibleLeagueIds.add(r.leagueId);
+      }
+      const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+      for (const id of grantedLeagueIds) visibleLeagueIds.add(id);
+      leagues = leagues.filter((l) => visibleLeagueIds.has(l.id));
+    }
+
     if (locationId) {
       leagues = leagues.filter(l => l.locationId === locationId);
     }
-    
+
     sendSuccess(res, leagues);
   } catch (error) {
     sendError(res, 'Failed to fetch leagues');
@@ -174,10 +191,13 @@ router.get("/:id", async (req: Request, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
+    // Task #735: hasAccessToLeague honors secretary grants AND has been
+    // tightened so that a plain `user`-role caller no longer gets
+    // org-wide league visibility purely from org membership.
+    if (!(await hasAccessToLeague(req, id))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
-    
+
     sendSuccess(res, league);
   } catch (error) {
     sendError(res, 'Failed to fetch league');

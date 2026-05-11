@@ -170,7 +170,15 @@ export async function hasAccessToLeague(req: Request, leagueId: number): Promise
     return false;
   }
 
-  if (req.user.organizationId === league.organizationId) {
+  // Task #735 hardening: org-match alone is NOT sufficient for plain
+  // `user`-role callers. Previously any user whose `organizationId`
+  // matched the league's org could see every league in the org, which
+  // turned league_secretary grants into a no-op for visibility (the
+  // secretary user already saw every other league). We restrict the
+  // org-match shortcut to `org_admin`/`system_admin` and require
+  // non-admin callers to either be a bowler in the league (handled
+  // above) or to hold an explicit secretary grant for it.
+  if (isOrgOrHigher(req.user) && req.user.organizationId === league.organizationId) {
     return true;
   }
 

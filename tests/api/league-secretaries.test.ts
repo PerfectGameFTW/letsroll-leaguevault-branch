@@ -385,6 +385,39 @@ describe('League Secretary grants (Task #735)', () => {
       expect(res.status).toBe(200);
     });
 
+    it('secretary GET /api/leagues is scoped to granted leagues only (not org-wide)', async () => {
+      const all = await apiGet<LeagueLite[]>('/api/leagues', orgAAdmin);
+      const orgLeagueIds = (Array.isArray(all.data.data) ? all.data.data : []).map((l) => l.id);
+      // Sanity: org A admin should see at least the granted league.
+      expect(orgLeagueIds).toContain(orgALeagueId);
+
+      const visible = await apiGet<LeagueLite[]>('/api/leagues', secretarySession);
+      expect(visible.status).toBe(200);
+      const visibleIds = (Array.isArray(visible.data.data) ? visible.data.data : []).map((l) => l.id);
+      // Every visible id must be in the granted set; the secretary
+      // must NOT see other org leagues purely by virtue of org
+      // membership.
+      const granted = await apiGet<LeagueLite[]>(
+        '/api/me/league-secretary-leagues',
+        secretarySession,
+      );
+      const grantedIds = new Set(
+        (Array.isArray(granted.data.data) ? granted.data.data : []).map((l) => l.id),
+      );
+      for (const id of visibleIds) {
+        expect(grantedIds.has(id)).toBe(true);
+      }
+    });
+
+    it('secretary GET /api/leagues/:id on a non-granted league returns 403', async () => {
+      const all = await apiGet<LeagueLite[]>('/api/leagues', orgAAdmin);
+      const others = (Array.isArray(all.data.data) ? all.data.data : [])
+        .filter((l) => l.id !== orgALeagueId);
+      if (others.length === 0) return;
+      const res = await apiGet(`/api/leagues/${others[0].id}`, secretarySession);
+      expect(res.status).toBe(403);
+    });
+
     it('secretary listing /api/payments (no leagueId) is SQL-scoped to granted leagues only', async () => {
       const res = await apiGet<Array<{ leagueId: number }>>(
         '/api/payments',
