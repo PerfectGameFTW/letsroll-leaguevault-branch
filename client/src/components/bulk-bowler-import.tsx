@@ -226,7 +226,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                 </p>
                 <input
                   type="file"
-                  accept=".csv,.xlsx,.xls"
+                  accept=".csv,.xlsx"
                   onChange={handleFileChange}
                   className="hidden"
                   id="bulk-import-file"

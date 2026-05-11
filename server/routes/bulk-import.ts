@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { Readable } from 'stream';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
@@ -69,20 +70,60 @@ function mapHeaders(rawHeaders: string[]): Record<string, number> {
   return mapping;
 }
 
-function parseFile(buffer: Buffer, filename: string): { rows: ParsedRow[]; errors: string[] } {
+function cellToString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.text === 'string') return obj.text;
+    if (Array.isArray(obj.richText)) {
+      return obj.richText.map((r) => (r as { text?: string }).text ?? '').join('');
+    }
+    if (obj.result !== undefined) return cellToString(obj.result);
+    if (typeof obj.hyperlink === 'string') return obj.hyperlink;
+  }
+  return String(value);
+}
+
+async function parseFile(buffer: Buffer, filename: string): Promise<{ rows: ParsedRow[]; errors: string[] }> {
   const errors: string[] = [];
   const rows: ParsedRow[] = [];
 
   try {
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
+    const ext = (filename || '').split('.').pop()?.toLowerCase();
+    const workbook = new ExcelJS.Workbook();
+
+    if (ext === 'csv') {
+      await workbook.csv.read(Readable.from([buffer]));
+    } else {
+      // ExcelJS's `xlsx.load` is typed as `Buffer` (unparameterised), but
+      // multer hands us `Buffer<ArrayBufferLike>` from newer @types/node.
+      // Copy the bytes into a plain ArrayBuffer view that ExcelJS accepts
+      // at runtime to avoid laundering the type via `as unknown as`.
+      const bytes = new Uint8Array(buffer.byteLength);
+      bytes.set(buffer);
+      await workbook.xlsx.load(bytes.buffer);
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
       errors.push('The file contains no sheets');
       return { rows, errors };
     }
 
-    const sheet = workbook.Sheets[sheetName];
-    const rawData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const rawData: string[][] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const values = row.values as unknown[];
+      const rowArr: string[] = [];
+      // ExcelJS row.values is 1-indexed; index 0 is undefined.
+      for (let i = 1; i < values.length; i++) {
+        rowArr.push(cellToString(values[i]));
+      }
+      rawData.push(rowArr);
+    });
 
     if (rawData.length < 2) {
       errors.push('The file must have a header row and at least one data row');
@@ -153,7 +194,7 @@ router.post('/', (req, res, next) => {
     }
 
     const ext = (req.file.originalname || '').split('.').pop()?.toLowerCase();
-    if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
+    if (!['csv', 'xlsx'].includes(ext || '')) {
       return sendError(res, 'Invalid file type. Please upload a CSV or XLSX file.', 400);
     }
 
@@ -177,7 +218,7 @@ router.post('/', (req, res, next) => {
       return sendError(res, 'Only admins can perform bulk imports', 403, 'FORBIDDEN');
     }
 
-    const { rows, errors: parseErrors } = parseFile(req.file.buffer, req.file.originalname);
+    const { rows, errors: parseErrors } = await parseFile(req.file.buffer, req.file.originalname);
     if (parseErrors.length > 0) {
       return sendError(res, parseErrors.join('; '), 400);
     }
