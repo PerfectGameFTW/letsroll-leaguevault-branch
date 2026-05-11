@@ -140,22 +140,19 @@ router.get("/", async (req, res) => {
     // `/api/payments?bowlerId=X` and get org-wide results that include
     // leagues they were not granted on. We compute the grant list once
     // here and pass it to the storage layer as an `IN (...)` filter.
+    // Apply only when the caller is acting as a secretary (i.e. has at
+    // least one active grant). A bowler with no grants must continue to
+    // hit the unchanged self-payments path; injecting an empty `IN ()`
+    // for them would render bowler payment history empty.
     let secretaryScopedLeagueIds: number[] | undefined;
-    if (!isSystemAdmin && req.user?.role !== 'org_admin') {
-      const grantedIds = req.user?.id
-        ? await storage.getSecretaryLeagueIdsForUser(req.user.id)
-        : [];
-      // If a leagueId filter is supplied, the per-leagueId grant check
-      // above already ran. Otherwise we collapse the visible set down
-      // to the granted leagues — empty list is honoured as "no rows".
-      if (leagueId === undefined) {
+    if (!isSystemAdmin && req.user?.role !== 'org_admin' && req.user?.id) {
+      const grantedIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+      if (grantedIds.length > 0 && leagueId === undefined) {
         secretaryScopedLeagueIds = grantedIds;
-      } else if (!grantedIds.includes(leagueId)) {
-        // Defence in depth: hasAdminAccessToLeague already handled
-        // this above, but if we reach here without a grant entry the
-        // user is not a secretary on the requested league — return [].
-        secretaryScopedLeagueIds = [];
       }
+      // If a `leagueId` IS supplied, `hasAdminAccessToLeague` upstream
+      // has already gated the secretary case; we don't override the
+      // bowler-self / org-wide path for the no-grant scenario here.
     }
 
     const baseFilters = {

@@ -94,10 +94,14 @@ router.get('/', async (req: Request, res: Response) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Allow: system_admin, same-org org_admin, or current secretary on
-    // this league. `hasAdminAccessToLeague` already covers all three.
-    const allowed = await hasAdminAccessToLeague(req, leagueId);
-    if (!allowed) {
+    // Per task #735: managing the secretary roster is an org-admin /
+    // system-admin surface. A secretary listing the roster of their
+    // own league is not part of the contract — they would also need
+    // grant/revoke powers to act on it, and those are explicitly
+    // org_admin-only. Tighten to admin-only.
+    if (!isSystemAdmin(req.user)
+        && !(req.user?.role === 'org_admin'
+             && req.user.organizationId === league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 

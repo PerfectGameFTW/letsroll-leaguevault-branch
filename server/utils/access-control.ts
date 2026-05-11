@@ -582,7 +582,16 @@ export async function hasAccessToPayment(req: Request, paymentId: number): Promi
       return true;
     }
 
-    if (req.user.organizationId && req.user.organizationId === league.organizationId) {
+    // Task #735 hardening: org-match alone is NOT sufficient for a
+    // plain `user`-role caller — they could otherwise update or delete
+    // any same-org payment without an admin grant. Restrict the
+    // org-match shortcut to org_admin/system_admin and require a
+    // secretary grant for non-admin callers.
+    if (
+      isOrgOrHigher(req.user) &&
+      req.user.organizationId &&
+      req.user.organizationId === league.organizationId
+    ) {
       return true;
     }
 
