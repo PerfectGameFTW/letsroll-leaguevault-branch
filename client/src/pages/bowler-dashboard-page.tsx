@@ -134,7 +134,7 @@ export const BowlerDashboardPage: FC = () => {
   const currentWeek = useMemo(() => {
     if (!league?.seasonStart) return null;
     const weeksPassed = getWeeksPassedInSeason(league);
-    return Math.max(1, Math.min(weeksPassed + 1, totalWeeks));
+    return Math.max(1, Math.min(weeksPassed, totalWeeks));
   }, [league, totalWeeks]);
 
   const totalWeeksMap = useMemo(() => {
@@ -155,7 +155,7 @@ export const BowlerDashboardPage: FC = () => {
       } else {
         const tw = totalWeeksMap.get(bl.leagueId) || 30;
         const wp = getWeeksPassedInSeason(l);
-        map.set(bl.leagueId, Math.max(1, Math.min(wp + 1, tw)));
+        map.set(bl.leagueId, Math.max(1, Math.min(wp, tw)));
       }
     }
     return map;
