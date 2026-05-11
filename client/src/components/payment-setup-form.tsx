@@ -147,11 +147,23 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   // payments` for one-time/upfront, or the autopay schedule's
   // `additionalBowlerIds` for weekly/custom autopay).
   const hasCombinedPicks = additionalBowlerIds.length > 0;
-  // The single-recipient picker only makes sense when NO combined-pay
-  // partners are selected (combined-pay is always self+partners).
+  // The two partner-pay flows are mutually exclusive:
+  //  - "Pay for" dropdown (single recipient): user is paying for ONE
+  //    other bowler; the payment is recorded against that bowler only.
+  //  - "Also pay for these linked bowlers" (combined-pay): user is
+  //    paying for THEMSELVES plus N partners in one card transaction.
+  // Showing both at once is confusing — the screenshot bug had a
+  // dropdown set to "Bob Testable" while the combined-pay list still
+  // offered "Michael Shearer (you)" and "Bob Testable" as additional
+  // payees, leaving it unclear who the charge was actually for. So:
+  //  - Hide the recipient picker once combined-pay has any picks.
+  //  - Hide the combined-pay block once the recipient picker has
+  //    swapped away from self (you're paying for that one partner,
+  //    not bundling).
+  const payingForPartner = targetBowlerId !== selfBowler.id;
   const showPartnerPicker =
     allowPartnerSelection && partnerOptions.length > 0 && !hasCombinedPicks;
-  const showCombinedPay = partnerOptions.length > 0;
+  const showCombinedPay = partnerOptions.length > 0 && !payingForPartner;
   const baseAmount = calculateTotalAmount();
   const combinedTotal = baseAmount * (1 + additionalBowlerIds.length);
 
