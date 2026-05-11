@@ -10,7 +10,7 @@ import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { isCardPaymentType } from "@shared/schema/constants";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError, sanitizePayment } from '../../utils/api.js';
-import { hasAccessToPayment, requireOrganizationAccess } from '../../utils/access-control.js';
+import { hasAccessToPayment, hasAdminAccessToLeague, isSystemAdmin } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
 import { paymentScheduler } from '../../services/payment-scheduler.js';
@@ -38,7 +38,11 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    if (!requireOrganizationAccess(req, league.organizationId, 'league', payment.leagueId)) {
+    // Task #735: secretaries may record cash/check payments for their
+    // granted league. `hasAdminAccessToLeague` covers system_admin,
+    // org_admin (matching org), and active league-secretary grants —
+    // and still respects the org-less deny rule.
+    if (!(await hasAdminAccessToLeague(req, payment.leagueId))) {
       return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 
@@ -167,8 +171,9 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
     }
     
-    // Check if user has access to this payment
-    if (req.user?.role !== 'system_admin') {
+    // Check if user has access to this payment (system_admin, org_admin
+    // of the payment's org, or a league secretary on the payment's league).
+    if (!isSystemAdmin(req.user)) {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to update this payment", 403, 'FORBIDDEN');
@@ -203,11 +208,15 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
 
+    // Card payments may only be deleted by org/system admins (not
+    // secretaries) — the deletion of a card payment is a payment-
+    // provider-touching surface that the task explicitly keeps out of
+    // the secretary role.
     if (isCardPaymentType(payment.type) && req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, "Only admins can delete card payments", 403, "FORBIDDEN");
     }
 
-    if (req.user?.role !== 'system_admin') {
+    if (!isSystemAdmin(req.user)) {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to delete this payment", 403, 'FORBIDDEN');

@@ -308,6 +308,84 @@ describe('League Secretary grants (Task #735)', () => {
     });
   });
 
+  describe('Secretary-aware route migration (Task #735 follow-up)', () => {
+    let secretarySession: AuthSession;
+
+    beforeAll(async () => {
+      // Re-grant orgAUserPlainId on orgALeagueId (the earlier revoke
+      // test removed the grant).
+      await apiPost(
+        `/api/leagues/${orgALeagueId}/secretaries`,
+        { userId: orgAUserPlainId },
+        orgAAdmin,
+      );
+      secretarySession = await login(
+        `vitest-sec-a1-${stamp}@example.com`,
+        'test-password-123!',
+      );
+    });
+
+    it('secretary may list teams for their granted league', async () => {
+      const res = await apiGet(
+        `/api/teams?leagueId=${orgALeagueId}`,
+        secretarySession,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('secretary cannot list teams for a different league in the same org', async () => {
+      // find a different league in org A; if only one exists, skip
+      const all = await apiGet<LeagueLite[]>('/api/leagues', orgAAdmin);
+      const others = (Array.isArray(all.data.data) ? all.data.data : [])
+        .filter((l) => l.id !== orgALeagueId);
+      if (others.length === 0) return;
+      const otherLeagueId = others[0].id;
+      const res = await apiGet(
+        `/api/teams?leagueId=${otherLeagueId}`,
+        secretarySession,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it('secretary cannot list teams across the org without a leagueId filter', async () => {
+      const res = await apiGet<unknown[]>('/api/teams', secretarySession);
+      expect(res.status).toBe(200);
+      const teams = Array.isArray(res.data.data) ? res.data.data : [];
+      // Whatever they see must be inside their granted leagueIds only.
+      const granted = await apiGet<LeagueLite[]>(
+        '/api/me/league-secretary-leagues',
+        secretarySession,
+      );
+      const grantedIds = new Set(
+        (Array.isArray(granted.data.data) ? granted.data.data : []).map((l) => l.id),
+      );
+      for (const t of teams as Array<{ leagueId: number }>) {
+        expect(grantedIds.has(t.leagueId)).toBe(true);
+      }
+    });
+
+    it('secretary cannot list payments for a league they were not granted on', async () => {
+      const all = await apiGet<LeagueLite[]>('/api/leagues', orgAAdmin);
+      const others = (Array.isArray(all.data.data) ? all.data.data : [])
+        .filter((l) => l.id !== orgALeagueId);
+      if (others.length === 0) return;
+      const otherLeagueId = others[0].id;
+      const res = await apiGet(
+        `/api/payments?leagueId=${otherLeagueId}`,
+        secretarySession,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it('secretary may list payments for their granted league', async () => {
+      const res = await apiGet(
+        `/api/payments?leagueId=${orgALeagueId}`,
+        secretarySession,
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
   describe('DB invariant', () => {
     it('rejects an insert whose organization_id does not match the league', async () => {
       // Direct DB insert bypassing the route layer — should be blocked by

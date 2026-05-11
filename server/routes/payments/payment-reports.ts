@@ -18,7 +18,7 @@ import {
   parseOptionalDateParam,
   sanitizePayments,
 } from '../../utils/api.js';
-import { requireOrganizationAccess } from '../../utils/access-control.js';
+import { hasAdminAccessToLeague } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 
 /**
@@ -119,7 +119,11 @@ router.get("/", async (req, res) => {
       if (!league) {
         return sendError(res, "League not found", 404, 'NOT_FOUND');
       }
-      if (!requireOrganizationAccess(req, league.organizationId, 'league', leagueId)) {
+      // Task #735: secretaries may view payment reports scoped to their
+      // granted league. `hasAdminAccessToLeague` covers system_admin,
+      // org_admin, and active league-secretary grants while still
+      // enforcing the org-less deny rule.
+      if (!(await hasAdminAccessToLeague(req, leagueId))) {
         return sendError(res, "You don't have access to this league's payments", 403, 'FORBIDDEN');
       }
     }

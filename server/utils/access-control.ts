@@ -574,11 +574,14 @@ export async function hasAccessToPayment(req: Request, paymentId: number): Promi
       return true;
     }
 
-    if (!req.user.organizationId) {
-      return false;
+    if (req.user.organizationId && req.user.organizationId === league.organizationId) {
+      return true;
     }
 
-    return req.user.organizationId === league.organizationId;
+    // Task #735: a league secretary may act on payments for their
+    // granted league. The grant carries its own org match invariant
+    // (DB trigger + defence-in-depth check inside `isLeagueSecretaryFor`).
+    return await isLeagueSecretaryFor(req, payment.leagueId);
   } catch (error) {
     log.error(`Error checking payment access:`, error);
     return false;

@@ -3,6 +3,7 @@ import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError, parseOptionalIntParam, sanitizeBowler } from '../utils/api.js';
+import { hasAdminAccessToLeague } from '../utils/access-control.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("Teams");
@@ -35,9 +36,8 @@ router.get("/", async (req, res) => {
         return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
       }
 
-      const userHasAccess =
-        req.user?.role === 'system_admin' ||
-        (req.user?.organizationId === league.organizationId);
+      // Task #735: secretaries may list teams for their granted league.
+      const userHasAccess = await hasAdminAccessToLeague(req, leagueId);
       if (userHasAccess) {
         teams = await storage.getTeams(leagueId);
       } else {
@@ -60,10 +60,26 @@ router.get("/", async (req, res) => {
         const allTeams = await storage.getTeams();
         teams = allTeams.filter(t => orgScopedLeagueIds.has(t.leagueId));
       } else if (scopedOrgId !== null) {
-        const leagues = await storage.getLeagues(scopedOrgId);
-        const teamPromises = leagues.map(league => storage.getTeams(league.id));
-        const teamsArrays = await Promise.all(teamPromises);
-        teams = teamsArrays.flat();
+        // Task #735: a secretary (role !== org_admin) only sees teams
+        // for leagues they have an active grant on. Org admins see all
+        // teams across the org as before.
+        if (req.user?.role === 'org_admin') {
+          const leagues = await storage.getLeagues(scopedOrgId);
+          const teamPromises = leagues.map(league => storage.getTeams(league.id));
+          const teamsArrays = await Promise.all(teamPromises);
+          teams = teamsArrays.flat();
+        } else {
+          const grantedIds = req.user?.id
+            ? await storage.getSecretaryLeagueIdsForUser(req.user.id)
+            : [];
+          if (grantedIds.length === 0) {
+            teams = [];
+          } else {
+            const teamPromises = grantedIds.map((id) => storage.getTeams(id));
+            const teamsArrays = await Promise.all(teamPromises);
+            teams = teamsArrays.flat();
+          }
+        }
       } else {
         teams = [];
       }
@@ -112,10 +128,7 @@ router.patch("/reorder", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
@@ -150,10 +163,7 @@ router.get("/:id/details", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, team.leagueId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
@@ -200,10 +210,7 @@ router.get("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, team.leagueId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
     
@@ -230,10 +237,7 @@ router.post("/", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, team.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -271,10 +275,7 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, team.leagueId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
     
@@ -318,10 +319,7 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const userHasAccess =
-      req.user?.role === 'system_admin' ||
-      (req.user?.organizationId === league.organizationId);
-    if (!userHasAccess) {
+    if (!(await hasAdminAccessToLeague(req, team.leagueId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
     
