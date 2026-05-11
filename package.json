@@ -146,7 +146,7 @@
     "esbuild": "^0.25.0",
     "eslint": "^9.39.4",
     "globals": "^15.15.0",
-    "postcss": "^8.4.47",
+    "postcss": "^8.5.3",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
@@ -157,12 +157,18 @@
     "bufferutil": "^4.0.8"
   },
   "overrides": {
-    "axios": "^1.8.4",
+    "axios": "^1.14.0",
     "path-to-regexp": "0.1.13",
     "picomatch@2": "^2.3.2",
     "picomatch@4": "^4.0.4",
     "lodash": "^4.18.1",
     "@xmldom/xmldom@0.8": "^0.8.12",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "yaml": "^2.7.0",
+    "follow-redirects": "^1.16.0",
+    "ip-address": "^10.2.0",
+    "brace-expansion@1": "^1.1.13",
+    "brace-expansion@2": "^2.1.0",
+    "brace-expansion@5": "^5.0.5"
   }
 }
