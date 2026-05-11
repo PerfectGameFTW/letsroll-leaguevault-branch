@@ -12,7 +12,8 @@ import { ApplePayRecoveryBanner } from "@/components/apple-pay-recovery-banner";
 import { SquareCatalogCapBanner } from "@/components/square-catalog-cap-banner";
 
 
-function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
+function LeagueHealthCard({ leagueId, name, bowlerCount, pastDueBowlerCount }: {
+  leagueId: number;
   name: string;
   bowlerCount: number;
   pastDueBowlerCount: number;
@@ -21,7 +22,7 @@ function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
   const pastDueRate = bowlerCount > 0 ? Math.round((pastDueBowlerCount / bowlerCount) * 100) : 0;
 
   return (
-    <Link href="/reports/past-due">
+    <Link href={`/reports/leagues/${leagueId}/past-due`}>
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
         <div className="flex justify-between items-start mb-3">
           <div className="font-semibold text-slate-800 text-sm leading-tight">
@@ -155,6 +156,7 @@ export default function HomePage() {
     }
 
     return {
+      id: league.id,
       name: league.name,
       bowlerCount: leagueBowlerCount,
       pastDueBowlerCount: pastDueCount,
@@ -259,8 +261,14 @@ export default function HomePage() {
             <div>
               <h2 className="text-lg font-bold text-slate-900 mb-3">League Health</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {leagueHealthData.map((league, idx) => (
-                  <LeagueHealthCard key={idx} {...league} />
+                {leagueHealthData.map((league) => (
+                  <LeagueHealthCard
+                    key={league.id}
+                    leagueId={league.id}
+                    name={league.name}
+                    bowlerCount={league.bowlerCount}
+                    pastDueBowlerCount={league.pastDueBowlerCount}
+                  />
                 ))}
               </div>
             </div>
