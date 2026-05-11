@@ -40,18 +40,17 @@ export default function ReportsPage() {
   });
   const leagues = leaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
       if (!response.ok) {
         throw new Error('Failed to fetch teams');
       }
-      const result = await response.json();
-      return result;
+      return response.json();
     }
   });
-  const teams = teamsResponse?.data?.data || [];
+  const teams = teamsResponse?.data || [];
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
@@ -77,10 +76,10 @@ export default function ReportsPage() {
   });
   const payments = paymentsResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({ // Added query for bowler leagues
-    queryKey: ["/api/bowlerleagues"],
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues"],
     queryFn: async () => {
-      const response = await fetch('/api/bowlerleagues');
+      const response = await fetch('/api/bowler-leagues');
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
