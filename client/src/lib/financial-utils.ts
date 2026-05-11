@@ -142,10 +142,14 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const isUpfront = league.paymentMode === 'upfront';
 
   if (isUpfront) {
-    // Past-due only kicks in once the first bowling week has passed.
-    // Before the season starts, the full season is "due" (shown on the
-    // card) but nothing is past-due yet.
-    const amountPastDue = weeksPassed >= 1 ? Math.max(0, fullSeasonAmount - totalPaid) : 0;
+    // Upfront leagues: the full season is due immediately and the
+    // unpaid remainder is past-due. This matches calculateBowlerView-
+    // Financials and the shared calculateBowlerPastDue helper exactly
+    // (Task #726 parity). A pre-season "not yet past-due" gate would
+    // need to land in all three helpers together — adding it here
+    // alone would silently desync the bowler page from the past-due
+    // report and the autopay-setup guard.
+    const amountPastDue = Math.max(0, fullSeasonAmount - totalPaid);
     return {
       weeksPassed,
       totalWeeksInSeason,
