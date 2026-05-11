@@ -125,6 +125,7 @@ export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> 
       AS $$
       DECLARE
         league_org_id integer;
+        user_org_id integer;
       BEGIN
         SELECT organization_id INTO league_org_id FROM leagues WHERE id = NEW.league_id;
         IF league_org_id IS NULL THEN
@@ -133,6 +134,19 @@ export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> 
         END IF;
         IF NEW.organization_id <> league_org_id THEN
           RAISE EXCEPTION 'league_secretary_org_match: league_secretaries.organization_id (%) must match league %.organization_id (%)', NEW.organization_id, NEW.league_id, league_org_id
+            USING ERRCODE = 'check_violation';
+        END IF;
+        -- Defence in depth: the granted user must belong to the same
+        -- organization as the league. The route layer also enforces this
+        -- (USER_NOT_IN_ORG), but a buggy bypass or direct SQL operation
+        -- could otherwise grant a cross-tenant user per-league powers.
+        SELECT organization_id INTO user_org_id FROM users WHERE id = NEW.user_id;
+        IF user_org_id IS NULL THEN
+          RAISE EXCEPTION 'league_secretary_org_match: user % has no organization_id (org-less users are not eligible for secretary grants)', NEW.user_id
+            USING ERRCODE = 'check_violation';
+        END IF;
+        IF user_org_id <> league_org_id THEN
+          RAISE EXCEPTION 'league_secretary_org_match: user %.organization_id (%) must match league %.organization_id (%)', NEW.user_id, user_org_id, NEW.league_id, league_org_id
             USING ERRCODE = 'check_violation';
         END IF;
         RETURN NEW;

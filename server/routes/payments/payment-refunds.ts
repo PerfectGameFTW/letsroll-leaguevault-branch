@@ -10,7 +10,7 @@ import { isCardPaymentType } from "@shared/schema/constants";
 import { sendSuccess, sendError, sanitizePayment } from '../../utils/api.js';
 import { getPaymentProvider } from '../../services/payment-provider-factory';
 import { buildPaymentErrorResponse } from '../../utils/payment-error-response.js';
-import { hasAccessToPayment } from '../../utils/access-control.js';
+import { hasAccessToPayment, hasAdminAccessToLeague, isSystemAdmin, isOrgOrHigher } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
 
@@ -25,8 +25,8 @@ router.post("/:id/refund", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
     }
 
-    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
-      return sendError(res, "Only admins can process refunds", 403, "FORBIDDEN");
+    if (!req.user) {
+      return sendError(res, "Authentication required", 401, "AUTH_REQUIRED");
     }
 
     const payment = await storage.getPaymentById(id);
@@ -46,10 +46,21 @@ router.post("/:id/refund", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Only card payments can be refunded", 400, "INVALID_TYPE");
     }
 
-    if (req.user.role !== 'system_admin') {
+    // Task #735: refunds are an admin-tier action. Allow system_admin,
+    // org_admin (gated on payment access), or a league secretary with
+    // an active grant for this payment's league. Plain users (and
+    // non-secretary "user" role accounts) remain denied.
+    if (isSystemAdmin(req.user)) {
+      // ok — system_admin bypasses payment-level access check (legacy behaviour)
+    } else if (isOrgOrHigher(req.user)) {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to refund this payment", 403, "FORBIDDEN");
+      }
+    } else {
+      const isSecretary = await hasAdminAccessToLeague(req, payment.leagueId);
+      if (!isSecretary) {
+        return sendError(res, "Only admins can process refunds", 403, "FORBIDDEN");
       }
     }
 

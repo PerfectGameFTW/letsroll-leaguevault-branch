@@ -52,9 +52,18 @@ const log = createLogger('LeagueSecretaries');
 // `mergeParams: true` so the parent `:leagueId` is available on req.params.
 const router = Router({ mergeParams: true });
 
-const grantBodySchema = z.object({
-  userId: z.number().int().positive(),
-});
+// Grant accepts EITHER a numeric userId OR an email. The email path is the
+// user-facing entry from the org-admin UI: it scopes the lookup to the
+// league's owning org so an org_admin cannot accidentally grant an arbitrary
+// user from another org. The userId path remains supported for tooling.
+const grantBodySchema = z
+  .object({
+    userId: z.number().int().positive().optional(),
+    email: z.string().email().optional(),
+  })
+  .refine((v) => v.userId !== undefined || v.email !== undefined, {
+    message: 'userId or email is required',
+  });
 
 function getLeagueIdParam(req: Request): number | null {
   const raw = (req.params as { leagueId?: string }).leagueId;
@@ -107,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const parsed = grantBodySchema.safeParse(req.body);
     if (!parsed.success) return handleZodError(res, parsed.error);
-    const { userId } = parsed.data;
+    const { userId: userIdInput, email } = parsed.data;
 
     if (!req.user) return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
 
@@ -135,8 +144,33 @@ router.post('/', async (req: Request, res: Response) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    const targetUser = await storage.getUser(userId);
+    // Resolve the target user from either userId or email. The email
+    // path collapses "not found globally" and "found in another org"
+    // into a single response (`USER_NOT_IN_ORG`) so an org_admin
+    // cannot use this endpoint as an email-existence oracle for
+    // sibling-org accounts. The userId path keeps the legacy
+    // not-found / not-in-org distinction since a numeric ID alone
+    // does not leak email existence.
+    let targetUser = userIdInput !== undefined
+      ? await storage.getUser(userIdInput)
+      : undefined;
+    if (userIdInput !== undefined && !targetUser) {
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    }
+    if (!targetUser && email) {
+      const found = await storage.getUserByEmail(email);
+      if (!found || found.organizationId !== league.organizationId) {
+        return sendError(
+          res,
+          "No user with that email belongs to this league's organization.",
+          422,
+          'USER_NOT_IN_ORG',
+        );
+      }
+      targetUser = found;
+    }
     if (!targetUser) return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    const userId = targetUser.id;
 
     if (targetUser.organizationId !== league.organizationId) {
       return sendError(

@@ -24,7 +24,7 @@ export default function LeagueSecretariesPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId ?? "0", 10);
   const { toast } = useToast();
-  const [userIdInput, setUserIdInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
 
   const leagueQuery = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
@@ -45,15 +45,15 @@ export default function LeagueSecretariesPage() {
   });
 
   const grantMutation = useMutation({
-    mutationFn: async (userId: number) => {
+    mutationFn: async (email: string) => {
       return await apiRequest<SecretaryRow>(
         `/api/leagues/${leagueId}/secretaries`,
         "POST",
-        { userId },
+        { email },
       );
     },
     onSuccess: () => {
-      setUserIdInput("");
+      setEmailInput("");
       queryClient.invalidateQueries({ queryKey: [`/api/leagues/${leagueId}/secretaries`] });
       toast({ title: "Secretary granted" });
     },
@@ -103,16 +103,19 @@ export default function LeagueSecretariesPage() {
               className="flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                const id = parseInt(userIdInput, 10);
-                if (Number.isFinite(id) && id > 0) grantMutation.mutate(id);
+                const trimmed = emailInput.trim();
+                if (trimmed.length > 0 && trimmed.includes("@")) {
+                  grantMutation.mutate(trimmed);
+                }
               }}
             >
               <Input
-                value={userIdInput}
-                onChange={(e) => setUserIdInput(e.target.value)}
-                placeholder="User ID to grant"
-                inputMode="numeric"
-                data-testid="input-user-id"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="User email to grant"
+                type="email"
+                inputMode="email"
+                data-testid="input-user-email"
               />
               <Button type="submit" disabled={grantMutation.isPending} data-testid="button-grant">
                 {grantMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Grant"}

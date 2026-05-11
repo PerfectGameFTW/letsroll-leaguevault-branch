@@ -170,7 +170,20 @@ export async function hasAccessToLeague(req: Request, leagueId: number): Promise
     return false;
   }
 
-  return req.user.organizationId === league.organizationId;
+  if (req.user.organizationId === league.organizationId) {
+    return true;
+  }
+
+  // Task #735: a user with an active League Secretary grant for this
+  // league has league-scoped read+admin access. The grant carries its
+  // own org_id == league.org_id invariant (DB trigger + defence-in-depth
+  // check inside `isLeagueSecretaryFor`), so this never widens
+  // cross-tenant access. Sensitive surfaces that must remain hidden
+  // from secretaries (saved cards, payment-provider config, league
+  // delete, location/payment-provider mutations) must continue to gate
+  // on `requireOrganizationAccess` / `isOrgOrHigher` rather than this
+  // helper.
+  return await isLeagueSecretaryFor(req, leagueId);
 }
 
 export async function hasAccessToTeam(req: Request, teamId: number): Promise<boolean> {
@@ -247,6 +260,15 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     if (isOrgOrHigher(req.user)) {
       return false;
     }
+  }
+
+  // Task #735: a League Secretary may access a bowler iff the bowler
+  // is rostered into one of their granted leagues (and that league's
+  // org matches the grant's stamped org). Checked before the legacy
+  // bowler-self league scan so a secretary who is not themselves a
+  // bowler still gets access.
+  if (await hasSecretaryAccessToBowler(req, bowlerId)) {
+    return true;
   }
 
   const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
