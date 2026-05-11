@@ -76,6 +76,16 @@ export async function isLeagueSecretaryFor(req: Request, leagueId: number): Prom
   if (req.user.role === 'system_admin') return false;
   const league = await storage.getLeague(leagueId);
   if (!league || league.organizationId === null) return false;
+  // Task #735 hardening: the caller's CURRENT org must also match the
+  // league's org. `users.organization_id` is mutable (admins can move
+  // a user between orgs); if a user is reassigned to a new org, any
+  // stale `league_secretaries` rows pointing at their old org must NOT
+  // continue to grant cross-tenant powers on the next request. The
+  // BEFORE UPDATE trigger on `users` (see `server/db-invariants.ts`)
+  // auto-revokes the rows in-transaction, but we also fail closed at
+  // the auth layer in case a buggy migration or direct SQL operation
+  // bypasses the trigger.
+  if (req.user.organizationId !== league.organizationId) return false;
   // Defence in depth: even if a stale grant survives a league
   // org-reassignment, only honour grants whose stamped org matches the
   // league's current org.
@@ -108,6 +118,10 @@ export async function hasAdminAccessToLeague(req: Request, leagueId: number): Pr
   if (req.user.role === 'org_admin' && req.user.organizationId === league.organizationId) {
     return true;
   }
+  // Task #735 hardening: caller's CURRENT org must also match the
+  // league's org before honouring any secretary grant. See the
+  // matching note in `isLeagueSecretaryFor` for the reasoning.
+  if (req.user.organizationId !== league.organizationId) return false;
   // Fall through to the secretary check.
   const grant = await storage.getLeagueSecretary(req.user.id, leagueId);
   return !!grant && grant.organizationId === league.organizationId;

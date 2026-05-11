@@ -173,5 +173,46 @@ export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> 
         END IF;
       END $$;
     `);
+
+    // Task #735 drift protection: when a user is moved to a different
+    // organization (or has their org cleared), any existing
+    // `league_secretaries` grants would otherwise still let the user
+    // act as a secretary on their OLD org's leagues — both via the
+    // matching grant.organization_id and via stale UI state. Auto-revoke
+    // those grants in-transaction so the user's new org is the only
+    // org they can act in. The runtime layer ALSO checks
+    // `req.user.organizationId === league.organizationId` in
+    // `isLeagueSecretaryFor` / `hasAdminAccessToLeague`, so this trigger
+    // is defence in depth — but it is the only thing that prevents the
+    // grant rows from being visible to admins of the new org via
+    // `listSecretariesForLeague` (which keys on user_id).
+    await tx.execute(sql`
+      CREATE OR REPLACE FUNCTION users_org_change_revoke_secretaries_fn()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF OLD.organization_id IS DISTINCT FROM NEW.organization_id THEN
+          DELETE FROM league_secretaries WHERE user_id = NEW.id;
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+    `);
+    await tx.execute(sql`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = current_schema() AND table_name = 'league_secretaries'
+        ) THEN
+          EXECUTE 'DROP TRIGGER IF EXISTS users_org_change_revoke_secretaries ON users';
+          EXECUTE 'CREATE TRIGGER users_org_change_revoke_secretaries
+            AFTER UPDATE OF organization_id ON users
+            FOR EACH ROW
+            EXECUTE FUNCTION users_org_change_revoke_secretaries_fn()';
+        END IF;
+      END $$;
+    `);
   });
 }

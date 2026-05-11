@@ -410,6 +410,63 @@ describe('League Secretary grants (Task #735)', () => {
       }
     });
 
+    it('moving a granted user to another org auto-revokes secretary access (drift protection)', async () => {
+      // Create a fresh granted user so we can move them without
+      // disturbing the other tests in this describe block.
+      const driftEmail = `vitest-sec-drift-${stamp}@example.com`;
+      const driftPassword = 'test-password-123!';
+      const [driftUser] = await db
+        .insert(users)
+        .values({
+          email: driftEmail,
+          name: `Vitest Sec Drift ${stamp}`,
+          password: await hashPassword(driftPassword),
+          role: 'user',
+          organizationId: orgAId,
+        })
+        .returning();
+      createdUserIds.push(driftUser.id);
+      const grantRes = await apiPost(
+        `/api/leagues/${orgALeagueId}/secretaries`,
+        { userId: driftUser.id },
+        orgAAdmin,
+      );
+      expect(grantRes.status).toBe(201);
+      const driftSession = await login(driftEmail, driftPassword);
+
+      // Sanity: BEFORE the org move, the secretary can read the granted league.
+      const before = await apiGet(`/api/leagues/${orgALeagueId}`, driftSession);
+      expect(before.status).toBe(200);
+
+      // Move the user to org B (direct DB write — no API surface allows
+      // a non-system_admin to relocate themselves).
+      await db
+        .update(users)
+        .set({ organizationId: orgBId })
+        .where(eq(users.id, driftUser.id));
+
+      // 1. The grant row was auto-revoked by the AFTER UPDATE trigger.
+      const remaining = await db
+        .select()
+        .from(leagueSecretaries)
+        .where(eq(leagueSecretaries.userId, driftUser.id));
+      expect(remaining.length).toBe(0);
+
+      // 2. The user's existing session still carries the old
+      //    organizationId, but the access-control layer must not
+      //    honour any (now-deleted) grant against an org they no
+      //    longer belong to. Re-login to refresh the session and try
+      //    again — both must be 403.
+      const afterStaleSession = await apiGet(
+        `/api/leagues/${orgALeagueId}`,
+        driftSession,
+      );
+      expect(afterStaleSession.status).toBe(403);
+      const refreshed = await login(driftEmail, driftPassword);
+      const afterFresh = await apiGet(`/api/leagues/${orgALeagueId}`, refreshed);
+      expect(afterFresh.status).toBe(403);
+    });
+
     it('secretary CANNOT delete/archive/restore/patch the league (admin-only)', async () => {
       const patchRes = await apiPatch(
         `/api/leagues/${orgALeagueId}`,
