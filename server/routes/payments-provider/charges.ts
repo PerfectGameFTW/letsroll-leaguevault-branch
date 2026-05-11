@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../../storage';
 import { sendError } from '../../utils/api.js';
-import { hasAccessToLeague, hasAccessToBowler, isOrgOrHigher } from '../../utils/access-control.js';
+import { hasAccessToLeague, hasAccessToBowler, hasAccessToPayment, isOrgOrHigher } from '../../utils/access-control.js';
 import { canUserPayForBowler } from '../../utils/bowler-payment-authz.js';
 import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
@@ -40,6 +40,10 @@ router.get('/payments/:paymentId/verify', async (req, res) => {
 
     const dbPayment = await storage.getPaymentById(parseInt(req.params.paymentId));
     if (!dbPayment) {
+      return sendError(res, 'Payment not found', 404, 'NOT_FOUND');
+    }
+
+    if (userRole !== 'system_admin' && !await hasAccessToPayment(req, dbPayment.id)) {
       return sendError(res, 'Payment not found', 404, 'NOT_FOUND');
     }
 

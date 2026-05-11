@@ -9,11 +9,14 @@
  * `paymentLimiter` from the charge route, or strip the admin check off
  * `/payments/:id/verify` and nothing would notice. These tests pin down
  * that contract from the outside.
+ *
+ * Task #733 — cross-tenant IDOR fix: the verify endpoint now enforces that
+ * org_admin callers may only access payments belonging to their own org.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users } from '@shared/schema';
+import { users, leagues, bowlers, payments, organizations } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import {
   login,
@@ -22,9 +25,13 @@ import {
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
+  TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
   type AuthSession,
 } from '../helpers';
+
+const TEST_ORG_A_SLUG = process.env.TEST_ORG_A_SLUG || 'vitest-org-a';
+const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
 
 describe('payments-provider router guards', () => {
   describe('auth gate (composed router-level requireAuthenticated)', () => {
@@ -133,6 +140,100 @@ describe('payments-provider router guards', () => {
       expect(data.success).toBe(false);
       expect(data.error?.code).toBe('FORBIDDEN');
     });
+  });
+
+  describe('cross-tenant IDOR on GET /payments/:paymentId/verify (task #733)', () => {
+    let orgAAdmin: AuthSession;
+    let orgBAdmin: AuthSession;
+    let sysAdmin: AuthSession;
+
+    let orgBId = 0;
+    let leagueOrgBId = 0;
+    let bowlerOrgBId = 0;
+    let paymentOrgBId = 0;
+
+    beforeAll(async () => {
+      orgAAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+      orgBAdmin = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
+      sysAdmin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+      const [orgB] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.slug, TEST_ORG_B_SLUG));
+      if (!orgB) throw new Error('Test orgs missing — run seed-test-users');
+      orgBId = orgB.id;
+
+      const [lb] = await db
+        .insert(leagues)
+        .values({
+          name: 'Vitest #733 Org-B League',
+          seasonStart: '2025-01-01 00:00:00',
+          seasonEnd: '2025-12-31 00:00:00',
+          weekDay: 'Monday' as const,
+          organizationId: orgBId,
+        })
+        .returning({ id: leagues.id });
+      leagueOrgBId = lb.id;
+
+      const [bw] = await db
+        .insert(bowlers)
+        .values({ name: 'Vitest #733 Bowler (Org B)', organizationId: orgBId })
+        .returning({ id: bowlers.id });
+      bowlerOrgBId = bw.id;
+
+      const [pb] = await db
+        .insert(payments)
+        .values({
+          bowlerId: bowlerOrgBId,
+          leagueId: leagueOrgBId,
+          amount: 5000,
+          weekOf: '2025-01-06 00:00:00',
+          type: 'cash',
+          status: 'paid',
+        })
+        .returning({ id: payments.id });
+      paymentOrgBId = pb.id;
+    });
+
+    afterAll(async () => {
+      if (paymentOrgBId) {
+        await db.delete(payments).where(eq(payments.id, paymentOrgBId));
+      }
+      if (bowlerOrgBId) {
+        await db.delete(bowlers).where(eq(bowlers.id, bowlerOrgBId));
+      }
+      if (leagueOrgBId) {
+        await db.delete(leagues).where(eq(leagues.id, leagueOrgBId));
+      }
+    });
+
+    it('org A admin cannot verify a payment from org B (returns 404)', async () => {
+      const { status, data } = await apiGet(
+        `/api/payments-provider/payments/${paymentOrgBId}/verify`,
+        orgAAdmin,
+      );
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+    });
+
+    it('org B admin can verify their own org payment', async () => {
+      const { status } = await apiGet(
+        `/api/payments-provider/payments/${paymentOrgBId}/verify`,
+        orgBAdmin,
+      );
+      expect(status).toBe(200);
+    });
+
+    it('system admin can verify any payment regardless of org', async () => {
+      const { status } = await apiGet(
+        `/api/payments-provider/payments/${paymentOrgBId}/verify`,
+        sysAdmin,
+      );
+      expect(status).toBe(200);
+    });
+
   });
 
   describe('paymentLimiter on POST /payments', () => {
