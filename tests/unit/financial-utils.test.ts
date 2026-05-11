@@ -69,7 +69,11 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
     expect(result.amountPastDue).toBe(8 * 3000);
   });
 
-  it('two double-pay dates inflate fullSeasonAmount by 2× weekly fee', () => {
+  it('two future double-pay dates do NOT inflate fullSeasonAmount (redistribution model)', () => {
+    // Double-pay weeks shift dollars forward — they don't add to the
+    // season total. A 32-week league with 2 double-pay weeks still
+    // totals 32 × $30 = $960, just billed earlier with the last 2
+    // regular bowling weeks free.
     const league = makeLeague({
       doublePayDates: [isoDate(2026, 4, 15), isoDate(2026, 4, 22)],
     });
@@ -77,14 +81,14 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
 
     const result = calculateFinancials(league, []);
 
-    expect(result.fullSeasonAmount).toBe(32 * 3000 + 2 * 3000);
-    expect(result.doublePay.totalExtra).toBe(6000);
+    expect(result.fullSeasonAmount).toBe(32 * 3000);
+    expect(result.doublePay.totalExtra).toBe(6000); // shifted, not added
     expect(result.doublePay.perWeekExtra).toBe(3000);
     expect(result.doublePay.pastExtra).toBe(0);
     expect(result.totalDueToDate).toBe(8 * 3000);
   });
 
-  it('past double-pay dates roll into pastExtra and totalDueToDate', () => {
+  it('past double-pay dates roll into pastExtra and totalDueToDate (still capped at fullSeasonAmount)', () => {
     const league = makeLeague({
       doublePayDates: [isoDate(2025, 10, 1), isoDate(2026, 4, 22)],
     });
@@ -94,6 +98,8 @@ describe('calculateFinancials — totalDueToDate is capped at fullSeasonAmount',
 
     expect(result.weeksPassed).toBe(8);
     expect(result.doublePay.pastExtra).toBe(3000);
+    // 8 weeks of regular billing + $30 extra from the past double-pay date.
+    // Well below the season cap (32 × $30 = $960), so dueToDate matches raw.
     expect(result.totalDueToDate).toBe(8 * 3000 + 3000);
     expect(result.amountPastDue).toBe(8 * 3000 + 3000);
     expect(result.totalDueToDate).toBeLessThanOrEqual(result.fullSeasonAmount);
@@ -226,12 +232,13 @@ describe('upfront-mode parity across helpers (Task #726)', () => {
     expect(bv.remainingBalance).toBe(0);
   });
 
-  it('weekly league past season end with double-pay dates: report matches bowler page (cap at fullSeasonAmount)', () => {
-    // Regression for the Michael Shearer bug: 32-week season ($30/wk),
-    // 2 past double-pay dates, paid $960. Past the season end the
-    // shared helper used to keep counting bowling weeks (returned 34)
-    // and produced $1080 - $960 = $120 past-due, while the bowler page
-    // capped to $1020 and produced $60. Both must agree at $60.
+  it('weekly league past season end with double-pay dates: redistribution model — paid full season has $0 past-due', () => {
+    // Regression for the Michael Shearer bug, updated for the
+    // redistribution model: 32-week season ($30/wk), 2 past double-pay
+    // dates, paid $960. Under redistribution the season total stays at
+    // $960 (double-pay weeks shift dollars forward — they don't add to
+    // the season total), so a fully-paid bowler is paid in full with
+    // $0 past-due. Both helpers must agree.
     const league = makeLeague({
       doublePayDates: [isoDate(2026, 4, 8), isoDate(2026, 4, 15)],
     });
@@ -241,10 +248,10 @@ describe('upfront-mode parity across helpers (Task #726)', () => {
     const cf = calculateFinancials(league, [paid(totalPaid)]);
     const past = calculateBowlerPastDue(league, totalPaid);
 
-    expect(cf.fullSeasonAmount).toBe(102000);
-    expect(cf.totalDueToDate).toBe(102000);
-    expect(cf.amountPastDue).toBe(6000);
-    expect(past).toBe(6000);
+    expect(cf.fullSeasonAmount).toBe(96000);
+    expect(cf.totalDueToDate).toBe(96000);
+    expect(cf.amountPastDue).toBe(0);
+    expect(past).toBe(0);
   });
 
   it('weekly league mid-season (no regression): bowler-view helper matches calculateFinancials', () => {

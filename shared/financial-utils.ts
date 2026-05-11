@@ -41,6 +41,17 @@ function getSeasonLengthWeeks(league: {
  * Source-of-truth past-due calculation shared by the client UI and the
  * server-side autopay-setup guard. Mirrors the per-bowler past-due
  * shown in the bowler payment page.
+ *
+ * **Double-pay redistribution model**: a league with N double-pay
+ * dates bills 2× on each of those dates and bills $0 on the LAST N
+ * bowling weeks of the season. The season total stays at
+ * `weeklyFee × totalWeeks` regardless of how many double-pay dates
+ * are configured — double-pay weeks shift money forward in the
+ * schedule, they do not add to the season total.
+ *
+ * Worked example: 32-week league, $30/week, double-pay on weeks 5 & 6:
+ *   - weeks 1–4: $30, week 5: $60, week 6: $60, weeks 7–30: $30,
+ *     weeks 31–32: $0. Sum = 30 × $30 + 2 × $30 = $960 = 32 × $30.
  */
 export function calculateBowlerPastDue(
   league: BowlerPastDueLeague,
@@ -49,16 +60,17 @@ export function calculateBowlerPastDue(
   const doublePayDates = (league.doublePayDates ?? [])
     .map((d) => d.slice(0, 10))
     .filter(Boolean);
+  const doublePayCount = doublePayDates.length;
+
+  const totalWeeks = getSeasonLengthWeeks({
+    seasonStart: league.seasonStart,
+    seasonEnd: league.seasonEnd ?? league.seasonStart,
+    totalBowlingWeeks: league.totalBowlingWeeks,
+    cancelledDates: league.cancelledDates,
+  });
+  const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
   if (league.paymentMode === "upfront") {
-    const totalWeeks = getSeasonLengthWeeks({
-      seasonStart: league.seasonStart,
-      seasonEnd: league.seasonEnd ?? league.seasonStart,
-      totalBowlingWeeks: league.totalBowlingWeeks,
-      cancelledDates: league.cancelledDates,
-    });
-    const fullSeasonAmount =
-      league.weeklyFee * totalWeeks + doublePayDates.length * league.weeklyFee;
     return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
   }
 
@@ -66,20 +78,9 @@ export function calculateBowlerPastDue(
   const todayStr = toIsoDateStr(today);
   const pastExtra =
     doublePayDates.filter((d) => d <= todayStr).length * league.weeklyFee;
-
-  // Cap due-to-date at the full season amount so a season that has
-  // already ended doesn't keep inflating past-due as time marches on.
-  // Mirrors `calculateFinancials.totalDueToDate = Math.min(raw, fullSeasonAmount)`
-  // on the bowler-page side; without this cap the past-due report and
-  // the bowler page disagree once the season is over (Task #726 follow-up).
-  const totalWeeks = getSeasonLengthWeeks({
-    seasonStart: league.seasonStart,
-    seasonEnd: league.seasonEnd ?? league.seasonStart,
-    totalBowlingWeeks: league.totalBowlingWeeks,
-    cancelledDates: league.cancelledDates,
-  });
-  const fullSeasonAmount =
-    league.weeklyFee * totalWeeks + doublePayDates.length * league.weeklyFee;
+  // Last N bowling weeks aren't billed (the double-pay redistribution
+  // shifted that money forward), so cap chargeable weeks accordingly.
+  const billableWeeks = Math.max(0, totalWeeks - doublePayCount);
 
   if (league.totalBowlingWeeks != null && league.weekDay) {
     const weeksPassedRaw = countBowlingWeeksPassed(
@@ -88,9 +89,9 @@ export function calculateBowlerPastDue(
       league.skipDates ?? [],
       league.cancelledDates ?? [],
     );
-    const weeksPassed = Math.min(weeksPassedRaw, totalWeeks);
+    const chargedWeeks = Math.min(weeksPassedRaw, billableWeeks);
     const dueToDate = Math.min(
-      league.weeklyFee * weeksPassed + pastExtra,
+      league.weeklyFee * chargedWeeks + pastExtra,
       fullSeasonAmount,
     );
     return Math.max(0, dueToDate - bowlerPaidAmount);
@@ -103,9 +104,9 @@ export function calculateBowlerPastDue(
     0,
     Math.round((today.getTime() - seasonStart.getTime()) / msPerWeek),
   );
-  const weeksPassed = Math.min(weeksPassedRaw, totalWeeks);
+  const chargedWeeks = Math.min(weeksPassedRaw, billableWeeks);
   const dueToDate = Math.min(
-    league.weeklyFee * weeksPassed + pastExtra,
+    league.weeklyFee * chargedWeeks + pastExtra,
     fullSeasonAmount,
   );
   return Math.max(0, dueToDate - bowlerPaidAmount);

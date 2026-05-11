@@ -32,13 +32,14 @@ export async function checkPaidInFull(
     } else {
       totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
     }
-    // Task #646: include the per-date double-pay extras
-    // (weeklyFee per dated double-pay week) in the full-season target
-    // so a schedule with double-pay weeks isn't deactivated before the
-    // doubled charges have run.
-    const doublePayExtras =
-      (league.doublePayDates?.length ?? 0) * league.weeklyFee;
-    const fullSeasonAmount = league.weeklyFee * totalWeeks + doublePayExtras;
+    // Double-pay redistribution model: a league with N double-pay
+    // dates bills 2× on those dates and bills $0 on the last N regular
+    // bowling weeks. The season total stays at `weeklyFee × totalWeeks`
+    // regardless of double-pay count — double-pay weeks shift dollars
+    // forward in the schedule, they do not add to the season total.
+    // The natural billing pattern reaches exactly this amount, so the
+    // schedule deactivates on the right week.
+    const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
     if (fullSeasonAmount <= 0) return false;
 

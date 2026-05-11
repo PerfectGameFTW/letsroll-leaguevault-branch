@@ -147,17 +147,21 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
                   Double-Pay Weeks
                 </span>
                 <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                  +{formatCurrency(financials.doublePay.totalExtra)}
+                  {formatCurrency(financials.doublePay.perWeekExtra * 2)}/week
                 </span>
               </div>
               <ul className="text-xs text-muted-foreground pl-5 space-y-0.5">
                 {financials.doublePay.dates.map((d) => (
                   <li key={d} className="flex justify-between">
                     <span>{format(parseISO(d), 'MMM d, yyyy')}</span>
-                    <span>+{formatCurrency(financials.doublePay.perWeekExtra)}</span>
+                    <span>{formatCurrency(financials.doublePay.perWeekExtra * 2)}</span>
                   </li>
                 ))}
               </ul>
+              <p className="text-xs text-muted-foreground pl-5">
+                Last {financials.doublePay.dates.length} regular week
+                {financials.doublePay.dates.length === 1 ? '' : 's'} bill $0 — season total unchanged.
+              </p>
             </div>
           )}
         </div>

@@ -133,21 +133,26 @@ export function PaymentSummaryCards({
               Double-Pay Weeks
             </CardTitle>
             <CardDescription>
-              {doublePay.dates.length} week{doublePay.dates.length === 1 ? '' : 's'} at 2× weekly fee
+              {doublePay.dates.length} week{doublePay.dates.length === 1 ? '' : 's'} billed at 2× — last{' '}
+              {doublePay.dates.length} regular week{doublePay.dates.length === 1 ? '' : 's'} not charged
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
-              +{formatCurrency(doublePay.totalExtra)}
+              {formatCurrency(doublePay.perWeekExtra * 2)}/week
             </p>
             <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
               {doublePay.dates.map((d) => (
                 <li key={d} className="flex items-center justify-between">
                   <span>{format(parseISO(d), 'MMM d, yyyy')}</span>
-                  <span>+{formatCurrency(doublePay.perWeekExtra)}</span>
+                  <span>{formatCurrency(doublePay.perWeekExtra * 2)}</span>
                 </li>
               ))}
             </ul>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Season total unchanged — these dates collect early so the last{' '}
+              {doublePay.dates.length} regular bowling week{doublePay.dates.length === 1 ? '' : 's'} bill $0.
+            </p>
           </CardContent>
         </Card>
       )}

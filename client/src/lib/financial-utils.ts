@@ -8,23 +8,30 @@ import {
 
 /**
  * Task #646 — replaces the old `FinalTwoWeeksStatus` shape. The
- * admin now picks 0–2 individual ISO dates ("double-pay weeks") and
- * each one bills the bowler 2× the weekly fee on that date.
+ * admin picks 0–2 individual ISO dates ("double-pay weeks") that
+ * bill 2× the weekly fee on those dates.
+ *
+ * **Redistribution model**: double-pay weeks shift money forward in
+ * the season — they do NOT add to the season total. A 32-week league
+ * with 2 double-pay weeks still totals `weeklyFee × 32`; the last 2
+ * regular bowling weeks are not billed (their dollars were collected
+ * earlier on the doubled weeks).
  */
 export interface DoublePayStatus {
   /** ISO yyyy-mm-dd dates flagged as 2× pay weeks (0–2 entries). */
   dates: string[];
-  /** Per-week extra owed (= weeklyFee). */
+  /** Extra owed on each double-pay date above the regular weekly fee (= weeklyFee). */
   perWeekExtra: number;
-  /** Total extra owed across the whole season (= dates.length * weeklyFee). */
-  totalExtra: number;
-  /** Extra already due as of today (= weeklyFee × dates already on/before today). */
-  pastExtra: number;
   /**
-   * True when the cumulative paid amount covers the full season
-   * (regular + all double-pay extras). Surfaced for parity with the
-   * old `finalTwoWeeks.isPaid` flag.
+   * Sum of the per-double-pay-date extras (= dates.length × weeklyFee).
+   * NOTE: this does NOT add to `fullSeasonAmount` — it represents the
+   * dollars that have been shifted forward from the last N regular
+   * bowling weeks.
    */
+  totalExtra: number;
+  /** Extras already due as of today (= weeklyFee × dates already on/before today). */
+  pastExtra: number;
+  /** True when the cumulative paid amount covers the full season. */
   isPaid: boolean;
 }
 
@@ -125,7 +132,11 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const perWeekExtra = league.weeklyFee;
   const totalExtra = doublePayDates.length * perWeekExtra;
 
-  const fullSeasonAmount = league.weeklyFee * totalWeeksInSeason + totalExtra;
+  // Redistribution model: fullSeasonAmount stays at weeklyFee × totalWeeks
+  // regardless of double-pay count. The doubled charges shift dollars from
+  // the last N regular weeks forward to the double-pay dates; they do not
+  // add to the season total.
+  const fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
   const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
   const isUpfront = league.paymentMode === 'upfront';
@@ -158,7 +169,11 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const pastDoublePayCount = doublePayDates.filter(d => d <= todayStr).length;
   const pastExtra = pastDoublePayCount * perWeekExtra;
 
-  const totalDueToDateRaw = league.weeklyFee * weeksPassed + pastExtra;
+  // Last N bowling weeks aren't billed (their money was collected earlier
+  // on the double-pay dates), so cap chargeable weeks at totalWeeks - N.
+  const billableWeeks = Math.max(0, totalWeeksInSeason - doublePayDates.length);
+  const chargedWeeks = Math.min(weeksPassed, billableWeeks);
+  const totalDueToDateRaw = league.weeklyFee * chargedWeeks + pastExtra;
   const totalDueToDate = Math.min(totalDueToDateRaw, fullSeasonAmount);
   const amountPastDue = Math.max(0, totalDueToDate - totalPaid);
 
@@ -221,8 +236,8 @@ export function calculateBowlerViewFinancials(
     const doublePayDates = (league.doublePayDates ?? [])
       .map(d => d.slice(0, 10))
       .filter(Boolean);
-    const totalExtra = doublePayDates.length * league.weeklyFee;
-    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason + totalExtra;
+    // Redistribution model — see calculateFinancials for full notes.
+    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
 
     if (league.paymentMode === "upfront") {
       // Upfront leagues: full season is due immediately. "Amount due to date"
@@ -236,8 +251,10 @@ export function calculateBowlerViewFinancials(
       const today = startOfToday();
       const todayStr = toIsoDateStr(today);
       const pastExtra = doublePayDates.filter(d => d <= todayStr).length * league.weeklyFee;
+      const billableWeeks = Math.max(0, totalWeeksInSeason - doublePayDates.length);
+      const chargedWeeks = Math.min(weeksDue, billableWeeks);
       totalSeasonDues = Math.min(
-        league.weeklyFee * weeksDue + pastExtra,
+        league.weeklyFee * chargedWeeks + pastExtra,
         fullSeasonAmount,
       );
       amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
