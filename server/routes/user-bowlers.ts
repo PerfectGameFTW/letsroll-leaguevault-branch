@@ -41,9 +41,25 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
       return sendError(res, "This bowler is a minor and cannot be claimed", 403, "MINOR_BOWLER");
     }
 
-    // Check if user has access to this bowler based on organization
-    if (!(await hasAccessToBowler(req, bowlerId))) {
+    // Org membership gate.
+    if (!user.organizationId || bowler.organizationId !== user.organizationId) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+
+    // Email ownership proof — required for all targets, including blank-email
+    // bowlers. Without an email match, there is no shared secret to verify
+    // the caller owns this profile. An admin must set the bowler's email first.
+    if (!bowler.email || bowler.email.trim() === '') {
+      return sendError(res, "This bowler profile has no email address on record. Please contact your league administrator to link your account.", 403, 'FORBIDDEN');
+    }
+    if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+      return sendError(res, "You can only link a bowler profile that matches your email address", 403, 'FORBIDDEN');
+    }
+
+    // Reject if the bowler is already linked to another account.
+    const alreadyLinked = await storage.isBowlerLinked(bowlerId);
+    if (alreadyLinked) {
+      return sendError(res, "This bowler is already linked to another account", 400, "ALREADY_LINKED");
     }
 
     const updatedUser = await storage.linkUserToBowler(user.id, bowlerId);

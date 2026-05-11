@@ -51,7 +51,7 @@ const mockGetBowlerLeagues = vi.fn<(filter: unknown) => Promise<unknown[]>>(asyn
 const mockGetBowler = vi.fn<(id: number) => Promise<unknown>>();
 const mockUpdateBowler = vi.fn<(id: number, patch: unknown) => Promise<unknown>>();
 const mockGetUser = vi.fn<(id: number) => Promise<unknown>>();
-const mockGetOrganization = vi.fn<(id: number) => Promise<unknown>>(async () => null);
+const mockGetOrganization = vi.fn<(id: number) => Promise<unknown>>(async (id) => ({ id, name: 'Test Org' }));
 
 vi.mock('../../server/storage', () => ({
   storage: {
@@ -67,6 +67,9 @@ vi.mock('../../server/storage', () => ({
     updateBowler: (id: number, patch: unknown) => mockUpdateBowler(id, patch),
     getUser: (id: number) => mockGetUser(id),
     getOrganization: (id: number) => mockGetOrganization(id),
+    getLeagues: vi.fn(async (orgId: number) => [
+      { id: 10, name: 'Public League', organizationId: orgId, active: true, allowPublicSignup: true },
+    ]),
     setUserOrganization: vi.fn(async () => undefined),
     getLeague: vi.fn(async () => null),
     updateUser: vi.fn(async () => undefined),
@@ -161,6 +164,10 @@ beforeAll(async () => {
     Object.assign(req, {
       session: {},
       login: (_u: unknown, cb: (e: unknown) => void) => cb(null),
+      // Inject a synthetic subdomainOrg so the register route's
+      // subdomain context guard passes. organizationId '5' in
+      // REG_BODY_BASE is chosen to match this sentinel org.
+      subdomainOrg: { id: 5, name: 'Test Org' },
     });
     Object.defineProperty(req, 'ip', { value: '198.51.100.1', configurable: true });
     next();

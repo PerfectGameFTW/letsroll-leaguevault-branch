@@ -82,6 +82,7 @@ const PARALLEL_ISOLATED = [
   'tests/unit/app-domain-runtime.test.ts',
   'tests/unit/auth-no-token-leak.test.ts',
   'tests/unit/auth-register-phone-sync.test.ts',
+  'tests/unit/auth-security-boundaries.test.ts',
   'tests/unit/auth-user-payment-sync-status.test.ts',
   'tests/unit/backfill-double-pay-dates.test.ts',
   'tests/unit/bowler-attributes-arrays.test.ts',

@@ -123,6 +123,31 @@ export function registerAuthRoutes(app: Express): void {
         return sendError(res, "Sign-up requires an organization context.", 400, "ORG_REQUIRED");
       }
 
+      // Require a recognized subdomain org — registration must arrive through
+      // a known tenant context (set by subdomainDetection middleware).
+      if (!req.subdomainOrg) {
+        return sendError(res, "Sign-up requires a valid organization context.", 400, "ORG_REQUIRED");
+      }
+      if (organizationId !== req.subdomainOrg.id) {
+        return sendError(res, "Organization does not match the current context.", 400, "ORG_MISMATCH");
+      }
+
+      // Public-signup policy: require the org to have at least one active
+      // league with allowPublicSignup=true. If the client supplies a leagueId
+      // it must belong to this org and be publicly joinable.
+      const leagueIdRaw = req.body.leagueId ? parseInt(req.body.leagueId) : undefined;
+      const allOrgLeagues = await storage.getLeagues(organizationId);
+      const publicLeagues = allOrgLeagues.filter(l => l.active !== false && l.allowPublicSignup === true);
+      if (publicLeagues.length === 0) {
+        return sendError(res, "This organization does not currently allow public sign-up.", 403, "SIGNUP_NOT_ALLOWED");
+      }
+      if (leagueIdRaw && !Number.isNaN(leagueIdRaw)) {
+        const targetLeague = publicLeagues.find(l => l.id === leagueIdRaw);
+        if (!targetLeague) {
+          return sendError(res, "The selected league does not allow public sign-up.", 403, "SIGNUP_NOT_ALLOWED");
+        }
+      }
+
       const registrationData = {
         email: req.body.email,
         password: req.body.password,
@@ -610,10 +635,19 @@ export function registerAuthRoutes(app: Express): void {
         return sendError(res, "This bowler is a minor and cannot be claimed", 403, "MINOR_BOWLER");
       }
 
-      if (bowler.email && bowler.email.trim() !== '') {
-        if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
-          return sendError(res, "You can only claim a bowler profile that matches your email address", 403, "FORBIDDEN");
-        }
+      // Org membership gate.
+      if (!user.organizationId || bowler.organizationId !== user.organizationId) {
+        return sendError(res, "You don't have access to this bowler", 403, "FORBIDDEN");
+      }
+
+      // Email ownership proof — required for all targets, including blank-email
+      // bowlers. Without an email match, there is no shared secret to verify
+      // the caller owns this profile. An admin must set the bowler's email first.
+      if (!bowler.email || bowler.email.trim() === '') {
+        return sendError(res, "This bowler profile has no email address on record. Please contact your league administrator to link your account.", 403, "FORBIDDEN");
+      }
+      if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+        return sendError(res, "You can only claim a bowler profile that matches your email address", 403, "FORBIDDEN");
       }
 
       const alreadyLinked = await storage.isBowlerLinked(bowlerId);
