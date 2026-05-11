@@ -32,6 +32,7 @@ import bowlerLinkRespondRouter from './bowler-link-respond.js';
 import { bowlerGuardiansChildRouter, bowlerGuardiansRowRouter, bowlerGuardiansMyChildrenRouter } from './bowler-guardians.js';
 import leagueRegistrationQuestionsRouter from './league-registration-questions.js';
 import publicEmbedRegistrationRouter from './public-embed-registration.js';
+import leagueSecretariesRouter, { myLeagueSecretaryRouter } from './league-secretaries.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotated } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -165,6 +166,11 @@ export function registerRoutes(app: Express): void {
   // registration questions. Auth is enforced inside the router via
   // hasAccessToLeague + isOrgOrHigher.
   app.use('/api/leagues/:leagueId/registration-questions', requireAuth, leagueRegistrationQuestionsRouter);
+  // Task #735: per-league Secretary admin grants. Auth is enforced
+  // inside the router (org_admin only for grant/revoke; system_admin
+  // explicitly REJECTED).
+  app.use('/api/leagues/:leagueId/secretaries', requireAuth, leagueSecretariesRouter);
+  app.use('/api/me/league-secretary-leagues', requireAuth, myLeagueSecretaryRouter);
 
   log.info('API routes registered');
 }

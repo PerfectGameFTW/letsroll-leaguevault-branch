@@ -108,5 +108,56 @@ export async function installDbInvariants(db: AnyDb = defaultDb): Promise<void> 
       CREATE INDEX IF NOT EXISTS rate_limit_buckets_reset_at_idx
         ON rate_limit_buckets (reset_at);
     `);
+
+    // Task #735 (League Secretary): the route layer is responsible for
+    // setting `league_secretaries.organization_id` to the parent
+    // league's `organization_id`, but a buggy future caller, a stale
+    // copy/paste, or a direct SQL operation could quietly stamp it
+    // with a different org and grant cross-tenant powers (org A's
+    // secretary suddenly has admin powers on a league in org B). A
+    // BEFORE INSERT/UPDATE trigger keeps the matching-org invariant
+    // enforced at the DB layer regardless of which path inserted the
+    // row. Idempotent install per the file-level convention.
+    await tx.execute(sql`
+      CREATE OR REPLACE FUNCTION league_secretary_org_match_fn()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        league_org_id integer;
+      BEGIN
+        SELECT organization_id INTO league_org_id FROM leagues WHERE id = NEW.league_id;
+        IF league_org_id IS NULL THEN
+          RAISE EXCEPTION 'league_secretary_org_match: league % has no organization_id (org-less rows are not eligible for secretary grants)', NEW.league_id
+            USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.organization_id <> league_org_id THEN
+          RAISE EXCEPTION 'league_secretary_org_match: league_secretaries.organization_id (%) must match league %.organization_id (%)', NEW.organization_id, NEW.league_id, league_org_id
+            USING ERRCODE = 'check_violation';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+    `);
+    // The table may not yet exist on the very first boot after a fresh
+    // schema where `npm run db:push` has not run. Both the DROP and the
+    // CREATE reference `league_secretaries` and would error on a missing
+    // relation, so guard the entire drop/create pair with an existence
+    // check (DROP TRIGGER IF EXISTS still requires the table to exist).
+    await tx.execute(sql`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = current_schema() AND table_name = 'league_secretaries'
+        ) THEN
+          EXECUTE 'DROP TRIGGER IF EXISTS league_secretaries_org_match ON league_secretaries';
+          EXECUTE 'CREATE TRIGGER league_secretaries_org_match
+            BEFORE INSERT OR UPDATE ON league_secretaries
+            FOR EACH ROW
+            EXECUTE FUNCTION league_secretary_org_match_fn()';
+        END IF;
+      END $$;
+    `);
   });
 }

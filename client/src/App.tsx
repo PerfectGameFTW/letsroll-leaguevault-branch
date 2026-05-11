@@ -42,6 +42,8 @@ const ProfileSettingsPage = lazy(() => import("@/pages/profile-settings-page"));
 const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
 const RegistrationCompletePage = lazy(() => import("@/pages/registration-complete-page"));
 const AdminUnclaimedUsersPage = lazy(() => import("@/pages/admin-unclaimed-users-page"));
+const LeagueSecretariesPage = lazy(() => import("@/pages/league-secretaries-page"));
+const SecretaryLeaguesPage = lazy(() => import("@/pages/secretary-leagues-page"));
 const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy-page"));
@@ -180,6 +182,8 @@ function Router() {
         <Route path="/integrations">{guard('orgAdmin', <IntegrationsPage />)}</Route>
         <Route path="/messaging">{guard('orgAdmin', <MessagingPage />)}</Route>
         <Route path="/admin/unclaimed-users">{guard('orgAdmin', <AdminUnclaimedUsersPage />)}</Route>
+        <Route path="/leagues/:leagueId/secretaries">{guard('orgAdmin', <LeagueSecretariesPage />)}</Route>
+        <Route path="/my-leagues">{guard('auth', <SecretaryLeaguesPage />)}</Route>
 
         {/* System Admin routes */}
         <Route path="/organizations">{guard('systemAdmin', <OrganizationsPage />)}</Route>

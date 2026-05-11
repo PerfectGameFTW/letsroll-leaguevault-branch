@@ -90,6 +90,21 @@ export type { BowlerPaymentLink, InsertBowlerPaymentLink, LinkStatus } from "./b
 export { bowlerGuardians, insertBowlerGuardianSchema, updateBowlerGuardianSchema, GUARDIAN_RELATIONSHIPS } from "./bowler-guardians";
 export type { BowlerGuardian, InsertBowlerGuardian, UpdateBowlerGuardian, GuardianRelationship } from "./bowler-guardians";
 
+export {
+  leagueSecretaries,
+  leagueSecretaryAudits,
+  insertLeagueSecretarySchema,
+  insertLeagueSecretaryAuditSchema,
+  LEAGUE_SECRETARY_ACTIONS,
+} from "./league-secretaries";
+export type {
+  LeagueSecretary,
+  InsertLeagueSecretary,
+  LeagueSecretaryAudit,
+  InsertLeagueSecretaryAudit,
+  LeagueSecretaryAction,
+} from "./league-secretaries";
+
 export { rateLimitBuckets } from "./rate-limit-buckets";
 
 export {
@@ -111,6 +126,6 @@ export type {
   RegistrationStatus,
 } from "./league-registrations";
 
-export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, bowlerGuardianRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
+export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, bowlerGuardianRelations, leagueSecretaryRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
 export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse, BowlerWithAccount } from "./api-types";

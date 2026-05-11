@@ -52,6 +52,94 @@ export function requireOrganizationAccess(req: Request, resourceOrgId: number | 
   return req.user.organizationId === resourceOrgId;
 }
 
+/**
+ * Task #735: returns true iff the requesting user has been granted the
+ * League Secretary role for `leagueId` via the `league_secretaries`
+ * join table. The lookup goes directly to the DB on every call — these
+ * grants are intentionally NOT memoised on the `req.user` session so
+ * that an org_admin's revoke takes effect immediately on the very next
+ * request from the affected user (no session refresh required).
+ *
+ * Returns false for unauthenticated callers, system_admin (who already
+ * has cross-tenant access via other gates), and for any user whose grant
+ * row's organization_id does not match the league's organization_id.
+ * The DB-level invariant in `server/db-invariants.ts` enforces the
+ * matching-org constraint at write time, so a stamp mismatch is treated
+ * as a data-integrity bug — the access check fails closed.
+ */
+export async function isLeagueSecretaryFor(req: Request, leagueId: number): Promise<boolean> {
+  if (!req.user) return false;
+  // System admin is intentionally NOT a secretary — they have wider
+  // cross-tenant powers via other gates and `system_admin` is excluded
+  // from `league_secretaries` to keep the per-league admin surface
+  // strictly an org-level construct.
+  if (req.user.role === 'system_admin') return false;
+  const league = await storage.getLeague(leagueId);
+  if (!league || league.organizationId === null) return false;
+  // Defence in depth: even if a stale grant survives a league
+  // org-reassignment, only honour grants whose stamped org matches the
+  // league's current org.
+  const grant = await storage.getLeagueSecretary(req.user.id, leagueId);
+  if (!grant) return false;
+  return grant.organizationId === league.organizationId;
+}
+
+/**
+ * Task #735: combined "may act as an admin on this league" gate.
+ * Returns true for: system_admin, org_admin of the league's owning org,
+ * or any user with a current league-secretary grant for this league.
+ *
+ * Use this for read/write gates that should be open to all three admin
+ * tiers but still respect the org-less deny rule. Sensitive surfaces
+ * that must be HIDDEN from secretaries (saved cards, payment provider
+ * config, league delete, location/payment-provider mutations) must
+ * continue to use `requireOrganizationAccess` or `isOrgOrHigher` instead
+ * of this helper.
+ */
+export async function hasAdminAccessToLeague(req: Request, leagueId: number): Promise<boolean> {
+  if (!req.user) return false;
+  const league = await storage.getLeague(leagueId);
+  if (!league) return false;
+  if (league.organizationId === null) {
+    log.debug(`league ${leagueId} has no organization — denying admin access to user ${req.user.id} (role=${req.user.role})`);
+    return false;
+  }
+  if (isSystemAdmin(req.user)) return true;
+  if (req.user.role === 'org_admin' && req.user.organizationId === league.organizationId) {
+    return true;
+  }
+  // Fall through to the secretary check.
+  const grant = await storage.getLeagueSecretary(req.user.id, leagueId);
+  return !!grant && grant.organizationId === league.organizationId;
+}
+
+/**
+ * Task #735: returns true iff the requesting user is a league secretary
+ * for at least one league the bowler is rostered into (and that league's
+ * org matches the secretary grant's stamped org). The secretary's view
+ * of bowlers is strictly scoped to their granted leagues — a bowler in
+ * a sibling league of the same org is NOT visible.
+ *
+ * Returns false for system_admin (use `hasAccessToBowler` instead) and
+ * for any caller without at least one matching grant.
+ */
+export async function hasSecretaryAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
+  if (!req.user) return false;
+  if (req.user.role === 'system_admin') return false;
+  const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+  if (grantedLeagueIds.length === 0) return false;
+  const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
+  if (bowlerLeagueEntries.length === 0) return false;
+  const grantedSet = new Set(grantedLeagueIds);
+  const overlap = bowlerLeagueEntries.find((bl) => grantedSet.has(bl.leagueId));
+  if (!overlap) return false;
+  // Verify org match defensively.
+  const league = await storage.getLeague(overlap.leagueId);
+  if (!league || league.organizationId === null) return false;
+  if (req.user.organizationId !== league.organizationId) return false;
+  return true;
+}
+
 export async function hasAccessToLeague(req: Request, leagueId: number): Promise<boolean> {
   if (!req.user) {
     return false;
