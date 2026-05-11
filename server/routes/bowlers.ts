@@ -14,6 +14,7 @@ import {
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers, hasSelfOrAdminAccessToBowler } from '../utils/access-control.js';
+import { canUserPayForBowler } from '../utils/bowler-payment-authz.js';
 import { bowlerSearchLimiter } from '../middleware/rate-limit.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from '../services/bowlnow-retry-flag.js';
@@ -262,10 +263,20 @@ router.get("/:id/details", async (req, res) => {
 
     const includePayments = req.query.includePayments === 'true';
     if (includePayments) {
-      // Payment data is sensitive: require self-access or admin role
-      // (task #732 — ordinary same-org users must not see financial records).
-      if (!await hasSelfOrAdminAccessToBowler(req, id)) {
-        return sendError(res, "You don't have access to this bowler's payment data", 403, 'FORBIDDEN');
+      // Payment data is sensitive: require self-access, admin role, OR
+      // partner-pay authorization (accepted bowler-payment-link or
+      // guardian-of-minor in the same org). Partner-pay surfaces in the
+      // bowler dashboard need each linked partner's payment history to
+      // compute eligibility and combined past-due totals — task #732
+      // tightened this to self-or-admin only and accidentally broke
+      // that flow. canUserPayForBowler enforces the same org + accepted
+      // -link rules used everywhere else partner-pay is gated.
+      const selfOrAdmin = await hasSelfOrAdminAccessToBowler(req, id);
+      if (!selfOrAdmin) {
+        const payAuthz = await canUserPayForBowler(req, id);
+        if (!payAuthz.allowed) {
+          return sendError(res, "You don't have access to this bowler's payment data", 403, 'FORBIDDEN');
+        }
       }
     } else if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToBowler(req, id);
