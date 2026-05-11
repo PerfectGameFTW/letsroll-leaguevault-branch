@@ -19,13 +19,24 @@
  *     DATABASE TEMPLATE path even when API creds are present).
  *
  * Connection-URL construction:
- *   The API returns an endpoint hostname per branch; we reuse the
- *   role/password/db from the calling process's existing
- *   `DATABASE_URL` (Neon roles are project-scoped — the same password
- *   works for every branch in the project). This avoids logging the
- *   API-returned `connection_uris` payload (which contains the
- *   plaintext password) and means we never need to call the
- *   `reveal_password` endpoint.
+ *   The API returns an endpoint hostname per branch. The role name
+ *   and db segments come from the calling process's existing
+ *   `DATABASE_URL` (the role name and db are the same on every
+ *   branch in the project). The **password**, however, is fetched
+ *   per branch from the control-plane reveal-password endpoint
+ *   (`GET /projects/{p}/branches/{b}/roles/{role}/reveal_password`).
+ *   We used to assume `DATABASE_URL`'s password worked on every
+ *   branch (Neon role passwords are notionally project-scoped), but
+ *   in practice the per-compute SCRAM verifier on a long-suspended
+ *   parent compute can lag a project-wide password rotation. Any
+ *   branch created from that parent inherits the stale verifier, so
+ *   opening a `pg.Pool` against the worker-branch URL with
+ *   `DATABASE_URL`'s current password fails 28P01 (Task #727).
+ *   Calling `reveal_password` per branch and composing the URL with
+ *   the verifier-correct value sidesteps this entirely and makes the
+ *   test infra robust to any future password drift. The reveal
+ *   response is treated as a secret — never logged, never echoed in
+ *   error messages.
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -221,21 +232,31 @@ export async function deleteBranch(cfg: NeonConfig, branchId: string): Promise<v
 
 /**
  * Build a connection URL for a branch by composing the API-returned
- * endpoint host with the role/password/db from the calling process's
- * `DATABASE_URL`. Neon roles are project-scoped, so the same
- * credentials work against every branch.
+ * endpoint host with the role/db from the calling process's
+ * `DATABASE_URL` and an explicit `password` (typically the value
+ * returned by `revealEndpointPassword` for the branch's endpoint).
  *
- * Pass `pooled: false` (default) for the worker-DB URL — tests
- * frequently use `pg_advisory_lock` (and `installDbInvariants` does
- * too), and PgBouncer transaction-mode pooling silently breaks
- * session-scoped advisory locks. A direct connection avoids the
- * footgun. The dev/prod app paths still use pooled URLs through
- * their own `DATABASE_URL`.
+ * The `password` parameter exists because Neon role passwords are
+ * notionally project-scoped but the per-compute SCRAM verifier on a
+ * long-suspended parent compute can lag a project-wide rotation —
+ * any branch created from that parent then rejects `DATABASE_URL`'s
+ * current password with 28P01 (Task #727). Callers who really do
+ * want to reuse `DATABASE_URL`'s password (e.g. unit tests, or
+ * legacy code paths) may omit `password` to fall back to it.
+ *
+ * The returned URL uses the **direct** endpoint host (we strip any
+ * `-pooler` suffix) — tests frequently use `pg_advisory_lock` (and
+ * `installDbInvariants` does too), and PgBouncer transaction-mode
+ * pooling silently breaks session-scoped advisory locks.
  */
-export function buildBranchUrl(endpointHost: string, baseDatabaseUrl?: string): string {
+export function buildBranchUrl(
+  endpointHost: string,
+  password?: string,
+  baseDatabaseUrl?: string,
+): string {
   const base = baseDatabaseUrl ?? process.env.DATABASE_URL;
   if (!base) {
-    throw new Error('buildBranchUrl: DATABASE_URL must be set to derive role/password');
+    throw new Error('buildBranchUrl: DATABASE_URL must be set to derive role/db');
   }
   const u = new URL(base);
   // Strip "-pooler" suffix if present so we get the direct endpoint
@@ -243,7 +264,80 @@ export function buildBranchUrl(endpointHost: string, baseDatabaseUrl?: string): 
   // returns is always the direct host; we just normalise the input.
   u.hostname = endpointHost.replace('-pooler.', '.');
   u.port = '';
+  if (password !== undefined) {
+    // Neon passwords are URL-safe in practice, but `URL.password`
+    // setter percent-encodes anything that isn't, which is the
+    // correct behaviour for `pg.Pool({ connectionString })`.
+    u.password = password;
+  }
   return u.toString();
+}
+
+/**
+ * Per-`(branchId, roleName)` cache of revealed passwords. Lifetime
+ * is the calling process — both the main vitest process (preclone)
+ * and each spawned worker fork keep their own cache. Worker forks
+ * inherit the per-pool URL (already containing the password) via
+ * `process.env`, so they generally don't need to call this at all.
+ */
+const revealCache = new Map<string, Promise<string>>();
+
+/** Extract the SQL role name from a Postgres connection URL. */
+function roleFromUrl(databaseUrl: string): string {
+  const u = new URL(databaseUrl);
+  const role = decodeURIComponent(u.username);
+  if (!role) {
+    throw new Error('reveal_password: DATABASE_URL has no role/user segment');
+  }
+  return role;
+}
+
+/**
+ * Fetch the actual password the branch's compute will accept for the
+ * given role. Memoised per `(branchId, roleName)` for the calling
+ * process. Treats the response as a secret — never logged, never
+ * included verbatim in error messages.
+ */
+export async function revealBranchRolePassword(
+  cfg: NeonConfig,
+  branchId: string,
+  roleName: string,
+): Promise<string> {
+  const key = `${branchId}/${roleName}`;
+  const cached = revealCache.get(key);
+  if (cached) return cached;
+  const promise = (async () => {
+    try {
+      const r = await neonRequest<{ password: string }>(
+        cfg,
+        'GET',
+        `/projects/${cfg.projectId}/branches/${branchId}/roles/${encodeURIComponent(
+          roleName,
+        )}/reveal_password`,
+      );
+      if (!r || typeof r.password !== 'string' || r.password.length === 0) {
+        throw new Error('empty body');
+      }
+      return r.password;
+    } catch (err) {
+      // Drop the cached failed promise so the next caller can retry,
+      // and surface a generic message that doesn't echo any payload
+      // Neon may have returned (which could include the password on
+      // a partial/malformed response).
+      revealCache.delete(key);
+      const code = err instanceof Error ? err.message.split(':')[0] : 'unknown';
+      throw new Error(
+        `could not reveal password for branch ${branchId} role ${roleName} (${code})`,
+      );
+    }
+  })();
+  revealCache.set(key, promise);
+  return promise;
+}
+
+/** Test-only hook to clear the reveal cache between cases. */
+export function __resetRevealPasswordCacheForTests(): void {
+  revealCache.clear();
 }
 
 export interface CreatedBranch {
@@ -272,7 +366,9 @@ export async function createBranchWithEndpoint(
   if (!endpoint?.host || !endpoint.id) {
     throw new Error(`createBranch ${name}: API returned no endpoint host/id`);
   }
-  const url = buildBranchUrl(endpoint.host);
+  const role = roleFromUrl(process.env.DATABASE_URL ?? '');
+  const password = await revealBranchRolePassword(cfg, result.branch.id, role);
+  const url = buildBranchUrl(endpoint.host, password);
   console.log(
     `[lv-perf] neon createBranch name=${name} branchId=${result.branch.id}` +
       ` endpoint=${endpoint.id} state=${result.branch.current_state ?? '?'}` +
@@ -296,10 +392,12 @@ export async function createBranchWithEndpoint(
 export async function resolveBranchUrl(cfg: NeonConfig, branchId: string): Promise<string> {
   const endpoints = await getBranchEndpoints(cfg, branchId);
   const ep = endpoints.find((e) => e.type === 'read_write');
-  if (!ep?.host) {
+  if (!ep?.host || !ep.id) {
     throw new Error(`resolveBranchUrl: branch ${branchId} has no read_write endpoint`);
   }
-  return buildBranchUrl(ep.host);
+  const role = roleFromUrl(process.env.DATABASE_URL ?? '');
+  const password = await revealBranchRolePassword(cfg, branchId, role);
+  return buildBranchUrl(ep.host, password);
 }
 
 let cachedTemplateBranchId: string | null = null;
