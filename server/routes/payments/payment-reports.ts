@@ -132,6 +132,32 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, []);
     }
 
+    // Task #735: secretary-listing scope. A caller who is neither
+    // system_admin nor an org_admin (i.e. plain `user` role acting via
+    // a league_secretary grant) MUST be SQL-scoped to their granted
+    // leagueIds for every filter combination — without this, a
+    // secretary could call `/api/payments` (no leagueId) or
+    // `/api/payments?bowlerId=X` and get org-wide results that include
+    // leagues they were not granted on. We compute the grant list once
+    // here and pass it to the storage layer as an `IN (...)` filter.
+    let secretaryScopedLeagueIds: number[] | undefined;
+    if (!isSystemAdmin && req.user?.role !== 'org_admin') {
+      const grantedIds = req.user?.id
+        ? await storage.getSecretaryLeagueIdsForUser(req.user.id)
+        : [];
+      // If a leagueId filter is supplied, the per-leagueId grant check
+      // above already ran. Otherwise we collapse the visible set down
+      // to the granted leagues — empty list is honoured as "no rows".
+      if (leagueId === undefined) {
+        secretaryScopedLeagueIds = grantedIds;
+      } else if (!grantedIds.includes(leagueId)) {
+        // Defence in depth: hasAdminAccessToLeague already handled
+        // this above, but if we reach here without a grant entry the
+        // user is not a secretary on the requested league — return [].
+        secretaryScopedLeagueIds = [];
+      }
+    }
+
     const baseFilters = {
       bowlerId,
       leagueId,
@@ -152,7 +178,11 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, sanitizePayments(payments, nameMap));
     }
 
-    const filters = { ...baseFilters, organizationId: effectiveOrgId! };
+    const filters = {
+      ...baseFilters,
+      organizationId: effectiveOrgId!,
+      ...(secretaryScopedLeagueIds !== undefined ? { leagueIds: secretaryScopedLeagueIds } : {}),
+    };
 
     if (paginationParams) {
       const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);

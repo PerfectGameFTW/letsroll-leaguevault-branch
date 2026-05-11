@@ -384,6 +384,25 @@ describe('League Secretary grants (Task #735)', () => {
       );
       expect(res.status).toBe(200);
     });
+
+    it('secretary listing /api/payments (no leagueId) is SQL-scoped to granted leagues only', async () => {
+      const res = await apiGet<Array<{ leagueId: number }>>(
+        '/api/payments',
+        secretarySession,
+      );
+      expect(res.status).toBe(200);
+      const granted = await apiGet<LeagueLite[]>(
+        '/api/me/league-secretary-leagues',
+        secretarySession,
+      );
+      const grantedIds = new Set(
+        (Array.isArray(granted.data.data) ? granted.data.data : []).map((l) => l.id),
+      );
+      const rows = Array.isArray(res.data.data) ? res.data.data : [];
+      for (const p of rows) {
+        expect(grantedIds.has(p.leagueId)).toBe(true);
+      }
+    });
   });
 
   describe('DB invariant', () => {
