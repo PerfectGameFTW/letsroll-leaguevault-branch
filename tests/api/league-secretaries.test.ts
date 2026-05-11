@@ -27,6 +27,7 @@ import {
   login,
   apiGet,
   apiPost,
+  apiPatch,
   apiDelete,
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
@@ -407,6 +408,40 @@ describe('League Secretary grants (Task #735)', () => {
       for (const id of visibleIds) {
         expect(grantedIds.has(id)).toBe(true);
       }
+    });
+
+    it('secretary CANNOT delete/archive/restore/patch the league (admin-only)', async () => {
+      const patchRes = await apiPatch(
+        `/api/leagues/${orgALeagueId}`,
+        { name: 'secretary-rename-attempt' },
+        secretarySession,
+      );
+      expect(patchRes.status).toBe(403);
+
+      const archiveRes = await apiPatch(
+        `/api/leagues/${orgALeagueId}/archive`,
+        {},
+        secretarySession,
+      );
+      expect(archiveRes.status).toBe(403);
+
+      const restoreRes = await apiPatch(
+        `/api/leagues/${orgALeagueId}/restore`,
+        {},
+        secretarySession,
+      );
+      expect(restoreRes.status).toBe(403);
+
+      const deleteRes = await apiDelete(
+        `/api/leagues/${orgALeagueId}`,
+        secretarySession,
+      );
+      expect(deleteRes.status).toBe(403);
+
+      // And the league still exists / unchanged.
+      const after = await apiGet<{ name: string }>(`/api/leagues/${orgALeagueId}`, orgAAdmin);
+      expect(after.status).toBe(200);
+      expect(after.data.data?.name).not.toBe('secretary-rename-attempt');
     });
 
     it('secretary GET /api/leagues/:id on a non-granted league returns 403', async () => {
