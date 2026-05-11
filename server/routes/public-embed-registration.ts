@@ -291,16 +291,33 @@ router.post("/registrations", embedSubmitLimiter, async (req, res) => {
         unassigned = created;
       }
 
-      // Create / reuse the guardian user (only when supplied).
+      // Create the guardian user (only when supplied).
+      //
+      // SECURITY: We must NOT reuse an existing account here. This
+      // endpoint is unauthenticated — anyone on the internet can supply
+      // any email address.  If we looked up an existing user by email
+      // and immediately set them as the guardian, a malicious registrant
+      // could bind a child to any existing account (parent, staff, etc.)
+      // without that person's knowledge or consent.  That hijacked
+      // relationship then surfaces in `GET /api/my-children` and gates
+      // guardian-level payment authorization via `bowler-payment-authz`.
+      //
+      // Correct policy:
+      //   • Email not in DB → create a new account and link it.  Safe
+      //     because the form submitter is the one creating this account
+      //     and must prove inbox ownership via the password-set flow.
+      //   • Email already in DB → do NOT link.  Leave guardianUserId
+      //     null and let the admin use the invite flow
+      //     (POST /api/bowlers/:id/guardians/invite) which sends a
+      //     confirmation email before creating the bowler_guardians row.
       let guardianUserId: number | null = null;
       if (data.guardian) {
         const existing = await tx
-          .select()
+          .select({ id: users.id })
           .from(users)
           .where(eq(users.email, data.guardian.email.toLowerCase()));
-        if (existing[0]) {
-          guardianUserId = existing[0].id;
-        } else {
+        if (!existing[0]) {
+          // Brand-new email: safe to create an account and link immediately.
           // Random unset-able placeholder password; the guardian must
           // use the forgot-password flow to set a real one. Marking
           // mustChangePassword=true keeps them on the rotate gate
@@ -322,6 +339,8 @@ router.post("/registrations", embedSubmitLimiter, async (req, res) => {
             .returning();
           guardianUserId = u.id;
         }
+        // existing[0] branch intentionally omitted: do not auto-link an
+        // account the registrant does not demonstrably own.
       }
 
       const bowlerIds: number[] = [];
