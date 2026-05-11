@@ -103,6 +103,7 @@ vi.mock('../../server/utils/access-control', () => ({
   hasAccessToLeague: () => Promise.resolve(true),
   hasAccessToTeam: () => Promise.resolve(true),
   hasAccessToBowler: () => Promise.resolve(true),
+  hasSelfOrAdminAccessToBowler: () => Promise.resolve(true),
   isOrgOrHigher: () => true,
 }));
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentScheduleSchema, DEFAULT_TIMEZONE } from '@shared/schema';
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
-import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
+import { hasAccessToLeague, hasSelfOrAdminAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
@@ -90,7 +90,8 @@ router.post('/', adminWriteLimiter, async (req, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    if (!await hasAccessToBowler(req, req.body.bowlerId)) {
+    // Sensitive write: creating a schedule requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, req.body.bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
@@ -211,7 +212,8 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
       return sendError(res, 'Invalid bowler or league ID', 400, 'INVALID_ID');
     }
 
-    if (!await hasAccessToBowler(req, bowlerId)) {
+    // Sensitive read (autopay schedule): requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
@@ -251,7 +253,8 @@ router.delete('/:id', adminWriteLimiter, async (req, res) => {
       return sendError(res, 'Payment schedule not found', 404, 'NOT_FOUND');
     }
 
-    if (!await hasAccessToBowler(req, schedule.bowlerId)) {
+    // Sensitive write: requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, schedule.bowlerId)) {
       return sendError(res, "You don't have access to this schedule", 403, 'FORBIDDEN');
     }
 
@@ -283,7 +286,8 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
       return sendError(res, 'Active payment schedule not found', 404, 'NOT_FOUND');
     }
 
-    if (!await hasAccessToBowler(req, schedule.bowlerId)) {
+    // Sensitive write: requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, schedule.bowlerId)) {
       return sendError(res, "You don't have access to this schedule", 403, 'FORBIDDEN');
     }
 

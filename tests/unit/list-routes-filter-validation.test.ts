@@ -61,6 +61,7 @@ vi.mock('../../server/utils/access-control', () => ({
   hasAccessToTeam: vi.fn().mockResolvedValue(true),
   hasAccessToBowler: vi.fn().mockResolvedValue(true),
   hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+  hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../../server/utils/access-control.js', () => ({
@@ -69,6 +70,7 @@ vi.mock('../../server/utils/access-control.js', () => ({
   hasAccessToTeam: vi.fn().mockResolvedValue(true),
   hasAccessToBowler: vi.fn().mockResolvedValue(true),
   hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+  hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
 }));
 
 // `filterByOrganization` is the only middleware leagues.ts mounts;

@@ -13,7 +13,7 @@ import {
 } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
-import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
+import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers, hasSelfOrAdminAccessToBowler } from '../utils/access-control.js';
 import { bowlerSearchLimiter } from '../middleware/rate-limit.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from '../services/bowlnow-retry-flag.js';
@@ -260,7 +260,14 @@ router.get("/:id/details", async (req, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
 
-    if (req.user?.role !== 'system_admin') {
+    const includePayments = req.query.includePayments === 'true';
+    if (includePayments) {
+      // Payment data is sensitive: require self-access or admin role
+      // (task #732 — ordinary same-org users must not see financial records).
+      if (!await hasSelfOrAdminAccessToBowler(req, id)) {
+        return sendError(res, "You don't have access to this bowler's payment data", 403, 'FORBIDDEN');
+      }
+    } else if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToBowler(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
@@ -274,7 +281,6 @@ router.get("/:id/details", async (req, res) => {
 
     const leagueIds = [...new Set(bowlerLeagues.map(bl => bl.leagueId))];
     const teamIds = [...new Set(bowlerLeagues.filter(bl => bl.teamId).map(bl => bl.teamId!))];
-    const includePayments = req.query.includePayments === 'true';
 
     const [leagues, teams] = await Promise.all([
       leagueIds.length > 0 ? storage.getLeaguesByIds(leagueIds) : Promise.resolve([]),
@@ -484,12 +490,11 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
     
-    // Check organization access
-    if (req.user?.role !== 'system_admin') {
-      const hasAccess = await hasAccessToBowler(req, id);
-      if (!hasAccess) {
-        return sendError(res, "You don't have access to update this bowler", 403, 'FORBIDDEN');
-      }
+    // Sensitive write: requires self-access or admin role (org_admin/system_admin).
+    // A plain "user"-role caller in the same org is NOT allowed to modify
+    // another bowler's profile (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, id)) {
+      return sendError(res, "You don't have access to update this bowler", 403, 'FORBIDDEN');
     }
 
     const merged = { ...bowler, ...update };
@@ -625,12 +630,11 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
     
-    // Check organization access
-    if (req.user?.role !== 'system_admin') {
-      const hasAccess = await hasAccessToBowler(req, id);
-      if (!hasAccess) {
-        return sendError(res, "You don't have access to delete this bowler", 403, 'FORBIDDEN');
-      }
+    // Sensitive write: requires self-access or admin role (org_admin/system_admin).
+    // A plain "user"-role caller in the same org is NOT allowed to delete
+    // another bowler's profile (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, id)) {
+      return sendError(res, "You don't have access to delete this bowler", 403, 'FORBIDDEN');
     }
 
     await storage.deleteBowler(id);

@@ -9,7 +9,7 @@
 import { Router } from 'express';
 import { storage } from '../../storage';
 import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.js';
-import { hasAccessToBowler } from '../../utils/access-control.js';
+import { hasSelfOrAdminAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import {
   getPaymentProvider,
@@ -33,7 +33,8 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
     }
 
-    if (!await hasAccessToBowler(req, bowlerId)) {
+    // Sensitive write: requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
@@ -104,7 +105,8 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Invalid bowler ID', 400);
     }
 
-    if (!await hasAccessToBowler(req, bowlerId)) {
+    // Sensitive read (card vault): requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
@@ -168,7 +170,8 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       return sendError(res, 'Invalid card ID', 400);
     }
 
-    if (!await hasAccessToBowler(req, bowlerId)) {
+    // Sensitive write: requires self-access or admin role (task #732).
+    if (!await hasSelfOrAdminAccessToBowler(req, bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 

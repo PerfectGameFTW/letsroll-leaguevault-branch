@@ -37,10 +37,10 @@ const mockStorage = {
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
 const mockHasAccessToLeague = vi.fn();
-const mockHasAccessToBowler = vi.fn();
+const mockHasSelfOrAdminAccessToBowler = vi.fn();
 vi.mock('../../server/utils/access-control', () => ({
   hasAccessToLeague: (...a: unknown[]) => mockHasAccessToLeague(...a),
-  hasAccessToBowler: (...a: unknown[]) => mockHasAccessToBowler(...a),
+  hasSelfOrAdminAccessToBowler: (...a: unknown[]) => mockHasSelfOrAdminAccessToBowler(...a),
 }));
 
 const mockGetAcceptedPartnerBowlerIds = vi.fn();
@@ -178,14 +178,14 @@ async function postSchedule(body: unknown) {
 beforeEach(() => {
   for (const fn of Object.values(mockStorage)) (fn as ReturnType<typeof vi.fn>).mockReset();
   mockHasAccessToLeague.mockReset();
-  mockHasAccessToBowler.mockReset();
+  mockHasSelfOrAdminAccessToBowler.mockReset();
   mockGetAcceptedPartnerBowlerIds.mockReset();
   mockAddSchedule.mockReset();
   paidByBowler.clear();
   lastWhereBowlerId = null;
 
   mockHasAccessToLeague.mockResolvedValue(true);
-  mockHasAccessToBowler.mockResolvedValue(true);
+  mockHasSelfOrAdminAccessToBowler.mockResolvedValue(true);
   mockStorage.getPaymentSchedule.mockResolvedValue(undefined);
   mockGetAcceptedPartnerBowlerIds.mockResolvedValue([PARTNER]);
 });

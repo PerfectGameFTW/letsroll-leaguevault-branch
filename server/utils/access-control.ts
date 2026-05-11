@@ -391,6 +391,54 @@ export async function hasAccessToBowlers(
   return result;
 }
 
+/**
+ * Strict single-bowler access check for WRITE operations and SENSITIVE READ
+ * operations (payment data, saved cards, autopay schedules). This helper is
+ * intentionally narrower than `hasAccessToBowler`: it denies ordinary
+ * authenticated "user"-role callers who share the same organization as the
+ * target bowler but are NOT the bowler themselves.
+ *
+ * Allowed:
+ *  - Self-access: the caller's linked bowlerId matches the target.
+ *  - org_admin whose organizationId matches the bowler's org stamp.
+ *  - system_admin (unconditional, org stamp still must be non-null for
+ *    org-less-row safety).
+ *
+ * Denied for everyone:
+ *  - Unauthenticated callers.
+ *  - Bowler row not found or org-less (null organizationId stamp) — treated
+ *    as orphaned data per the file-level policy, even for system_admin.
+ *  - Ordinary "user"-role callers accessing another user's bowler record,
+ *    even if both belong to the same organization.
+ *
+ * Use this instead of `hasAccessToBowler` on all routes that expose
+ * financial data, modify bowler profiles, or manage saved cards / autopay.
+ */
+export async function hasSelfOrAdminAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
+  if (!req.user) return false;
+
+  // Self-access: the caller IS the target bowler — always allowed regardless
+  // of role so a linked user can always manage their own record.
+  if (req.user.bowlerId === bowlerId) return true;
+
+  // Only org_admin and system_admin may access OTHER bowlers' sensitive data.
+  if (!isOrgOrHigher(req.user)) return false;
+
+  // system_admin is unconditionally allowed, but we still load the row to
+  // apply the org-less deny policy (orphaned rows are blocked for all roles).
+  const bowlerRow = await storage.getBowler(bowlerId);
+  if (!bowlerRow) return false;
+  if (bowlerRow.organizationId === null) {
+    log.debug(`bowler ${bowlerId} has no organization — denying sensitive access to user ${req.user.id} (role=${req.user.role})`);
+    return false;
+  }
+
+  if (isSystemAdmin(req.user)) return true;
+
+  // org_admin: must share the same organization as the target bowler.
+  return req.user.organizationId === bowlerRow.organizationId;
+}
+
 export async function hasAccessToPayment(req: Request, paymentId: number): Promise<boolean> {
   if (!req.user) {
     return false;

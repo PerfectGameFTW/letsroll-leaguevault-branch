@@ -52,9 +52,9 @@ const mockStorage = {
 };
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
-const mockHasAccessToBowler = vi.fn();
+const mockHasSelfOrAdminAccessToBowler = vi.fn();
 vi.mock('../../server/utils/access-control', () => ({
-  hasAccessToBowler: (...a: unknown[]) => mockHasAccessToBowler(...a),
+  hasSelfOrAdminAccessToBowler: (...a: unknown[]) => mockHasSelfOrAdminAccessToBowler(...a),
 }));
 
 const mockProvider = {
@@ -123,12 +123,12 @@ afterAll(async () => {
 
 beforeEach(() => {
   for (const fn of Object.values(mockStorage)) (fn as ReturnType<typeof vi.fn>).mockReset();
-  mockHasAccessToBowler.mockReset();
+  mockHasSelfOrAdminAccessToBowler.mockReset();
   mockGetPaymentProvider.mockReset();
   mockGetProviderForLeague.mockReset();
   mockProvider.disableCard.mockReset();
 
-  mockHasAccessToBowler.mockResolvedValue(true);
+  mockHasSelfOrAdminAccessToBowler.mockResolvedValue(true);
   mockStorage.getBowler.mockResolvedValue({
     id: 42, name: 'Pat', email: 'pat@example.com', squareCustomerId: 'sq_cust_1',
   });
