@@ -71,8 +71,32 @@ const RootRedirectHandler: FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Task #735: secretary-first landing. A plain `user`-role caller
+  // who is not a bowler but holds at least one league_secretary grant
+  // should land on /my-leagues (their granted-leagues admin surface),
+  // not the bowler dashboard or a generic /leagues page they cannot
+  // act on. We only fire the lookup for that narrow shape so the
+  // common-case redirect is not delayed by an extra round-trip.
+  const user = currentUserResponse?.data ?? null;
+  const isPlainOrgUser =
+    !!user &&
+    user.role === 'user' &&
+    !user.bowlerId &&
+    !!user.organizationId;
+  const { data: secretaryLeaguesResponse, isLoading: secretaryLoading } = useQuery<
+    ApiResponse<Array<{ id: number }>>
+  >({
+    queryKey: ['/api/me/league-secretary-leagues'],
+    enabled: isPlainOrgUser,
+    staleTime: 1000 * 60 * 5,
+  });
+  const hasSecretaryGrant =
+    isPlainOrgUser &&
+    Array.isArray(secretaryLeaguesResponse?.data) &&
+    secretaryLeaguesResponse.data.length > 0;
+
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !(isPlainOrgUser && secretaryLoading)) {
       if (error || !currentUserResponse?.data) {
         navigate('/login');
       } else {
@@ -94,6 +118,8 @@ const RootRedirectHandler: FC = () => {
           navigate('/home');
         } else if (user.bowlerId) {
           navigate('/bowler-dashboard');
+        } else if (hasSecretaryGrant) {
+          navigate('/my-leagues');
         } else if (user.organizationId) {
           navigate('/leagues');
         } else {
@@ -101,7 +127,7 @@ const RootRedirectHandler: FC = () => {
         }
       }
     }
-  }, [isLoading, error, currentUserResponse, navigate]);
+  }, [isLoading, error, currentUserResponse, navigate, isPlainOrgUser, secretaryLoading, hasSecretaryGrant]);
 
   if (isLoading) {
     return <PageLoader />;
