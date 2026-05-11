@@ -30,7 +30,7 @@ export default function LeaguePastDuePage() {
     }
   });
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
@@ -92,7 +92,7 @@ export default function LeaguePastDuePage() {
   }
 
   // Get teams for this league
-  const teams = teamsResponse?.data?.data || [];
+  const teams = teamsResponse?.data || [];
   const leagueTeams = teams.filter(team => team.leagueId === leagueId) || [];
 
   // Get bowlers, bowler leagues and payments
