@@ -552,6 +552,96 @@ describe('League Secretary grants (Task #735)', () => {
       expect(res.status).toBe(403);
     });
 
+    it('secretary GET /api/bowlers is SQL-scoped to granted leagues only (no cross-league leak)', async () => {
+      const res = await apiGet<Array<{ id: number }>>('/api/bowlers', secretarySession);
+      expect(res.status).toBe(200);
+      const visibleBowlers = Array.isArray(res.data.data) ? res.data.data : [];
+
+      // Resolve the union of bowler-ids actually rostered into the
+      // secretary's granted leagues (via admin's view of bowler_leagues).
+      const granted = await apiGet<LeagueLite[]>(
+        '/api/me/league-secretary-leagues',
+        secretarySession,
+      );
+      const grantedIds = new Set(
+        (Array.isArray(granted.data.data) ? granted.data.data : []).map((l) => l.id),
+      );
+
+      // Admin's full org-A bowler list — anything in here that is NOT
+      // in a granted league must NOT appear in `visibleBowlers`.
+      const adminBowlers = await apiGet<Array<{ id: number }>>(
+        '/api/bowlers',
+        orgAAdmin,
+      );
+      const adminBowlerIds = new Set(
+        (Array.isArray(adminBowlers.data.data) ? adminBowlers.data.data : []).map(
+          (b) => b.id,
+        ),
+      );
+
+      // Pull bowler→league mapping from the DB directly so the
+      // assertion doesn't depend on any other route's scoping.
+      const { bowlerLeagues: blTable } = await import('@shared/schema');
+      const allBl = await db
+        .select()
+        .from(blTable)
+        .where(inArray(blTable.bowlerId, [...adminBowlerIds]));
+      const leaguesByBowler = new Map<number, Set<number>>();
+      for (const bl of allBl) {
+        const s = leaguesByBowler.get(bl.bowlerId) ?? new Set<number>();
+        s.add(bl.leagueId);
+        leaguesByBowler.set(bl.bowlerId, s);
+      }
+
+      for (const b of visibleBowlers) {
+        const ls = leaguesByBowler.get(b.id) ?? new Set<number>();
+        const overlap = [...ls].some((lid) => grantedIds.has(lid));
+        expect(overlap).toBe(true);
+      }
+
+      const orgABowlersOutsideGrant = [...adminBowlerIds].filter((bid) => {
+        const ls = leaguesByBowler.get(bid) ?? new Set<number>();
+        if (ls.size === 0) return false;
+        return ![...ls].some((lid) => grantedIds.has(lid));
+      });
+      const visibleIds = new Set(visibleBowlers.map((b) => b.id));
+      for (const bid of orgABowlersOutsideGrant) {
+        expect(visibleIds.has(bid)).toBe(false);
+      }
+    });
+
+    it('secretary GET /api/bowlers/:id on a non-granted league bowler returns 403', async () => {
+      // Find a bowler in org A who is not rostered into the secretary's
+      // granted league. If the fixture has no such bowler the test
+      // is a soft no-op (expected on minimal fixtures).
+      const adminBowlers = await apiGet<Array<{ id: number }>>(
+        '/api/bowlers',
+        orgAAdmin,
+      );
+      const adminBowlerIds = (
+        Array.isArray(adminBowlers.data.data) ? adminBowlers.data.data : []
+      ).map((b) => b.id);
+      if (adminBowlerIds.length === 0) return;
+      const { bowlerLeagues: blTable2 } = await import('@shared/schema');
+      const allBl = await db
+        .select()
+        .from(blTable2)
+        .where(inArray(blTable2.bowlerId, adminBowlerIds));
+      const blByBowler = new Map<number, Set<number>>();
+      for (const bl of allBl) {
+        const s = blByBowler.get(bl.bowlerId) ?? new Set<number>();
+        s.add(bl.leagueId);
+        blByBowler.set(bl.bowlerId, s);
+      }
+      const target = adminBowlerIds.find((bid) => {
+        const ls = blByBowler.get(bid) ?? new Set<number>();
+        return ls.size > 0 && !ls.has(orgALeagueId);
+      });
+      if (target == null) return;
+      const res = await apiGet(`/api/bowlers/${target}`, secretarySession);
+      expect(res.status).toBe(403);
+    });
+
     it('secretary listing /api/payments (no leagueId) is SQL-scoped to granted leagues only', async () => {
       const res = await apiGet<Array<{ leagueId: number }>>(
         '/api/payments',

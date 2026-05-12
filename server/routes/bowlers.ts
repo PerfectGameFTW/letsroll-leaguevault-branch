@@ -13,7 +13,7 @@ import {
 } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
-import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers, hasSelfOrAdminAccessToBowler } from '../utils/access-control.js';
+import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers, hasSelfOrAdminAccessToBowler, isOrgOrHigher } from '../utils/access-control.js';
 import { canUserPayForBowler } from '../utils/bowler-payment-authz.js';
 import { bowlerSearchLimiter } from '../middleware/rate-limit.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
@@ -181,7 +181,44 @@ router.get("/", async (req, res) => {
     if (isSystemAdmin && effectiveOrgId === null) {
       bowlers = await storage.getAllBowlersSystemAdmin();
     } else if (effectiveOrgId !== null) {
-      bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId });
+      // Task #735: a non-admin "user"-role caller (the only role
+      // that can hold a league_secretary grant without already being
+      // an admin) must not see every bowler in the org. SQL-scope
+      // the result to bowlers rostered into:
+      //   - any league the caller is themselves a bowler in
+      //     (preserves the long-standing bowler-self UX)
+      //   - any league the caller holds an active secretary grant on
+      // If the caller has neither, return [] — they have no
+      // legitimate roster surface in this org.
+      // Admin callers (and a `teamId` filter, which already gates via
+      // hasAccessToTeam above) keep the unscoped org-wide query.
+      if (req.user && !isSystemAdmin && !isOrgOrHigher(req.user) && !teamId) {
+        const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+        const selfLeagueIds: number[] = req.user?.bowlerId
+          ? (await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId })).map((bl) => bl.leagueId)
+          : [];
+        const visibleLeagueIds = [...new Set([...grantedLeagueIds, ...selfLeagueIds])];
+        if (visibleLeagueIds.length === 0) {
+          return sendSuccess(res, []);
+        }
+        const blEntries = await Promise.all(
+          visibleLeagueIds.map((leagueId) => storage.getBowlerLeagues({ leagueId })),
+        );
+        const visibleBowlerIds = [
+          ...new Set(blEntries.flat().map((bl) => bl.bowlerId)),
+        ];
+        if (visibleBowlerIds.length === 0) {
+          return sendSuccess(res, []);
+        }
+        const fetched = await storage.getBowlersByIds(visibleBowlerIds);
+        // Defence in depth: drop any row whose org stamp doesn't match
+        // the caller's org (should be impossible if league.org_id
+        // matches, but the trigger only enforces league⇄grant org
+        // match, not bowler⇄league).
+        bowlers = fetched.filter((b) => b.organizationId === effectiveOrgId);
+      } else {
+        bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId });
+      }
     } else {
       return sendSuccess(res, []);
     }

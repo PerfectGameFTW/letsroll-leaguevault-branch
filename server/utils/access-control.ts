@@ -273,12 +273,24 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     if (isSystemAdmin(req.user)) {
       return true;
     }
-    if (req.user.organizationId && req.user.organizationId === bowlerRow.organizationId) {
+    // Task #735 hardening: org-stamp match alone is NOT sufficient
+    // for plain `user`-role callers. Previously any user whose
+    // `organizationId` matched the bowler's org could read every
+    // bowler in the org, which leaked sibling-league bowler data and
+    // turned league_secretary scoping into a no-op. The org-match
+    // shortcut is now restricted to org_admin/system_admin; non-admin
+    // callers must qualify via the secretary scoping (below) or the
+    // bowler-self league overlap rule in the league scan.
+    if (
+      isOrgOrHigher(req.user) &&
+      req.user.organizationId &&
+      req.user.organizationId === bowlerRow.organizationId
+    ) {
       return true;
     }
-    // Stamp mismatch. Only fall through if the caller is a non-admin
-    // "user" who might still share a league with the target bowler.
-    // For admins, deny authoritatively.
+    // Admin from a different org → DENIED authoritatively (no league
+    // fallback for admins). Non-admin "user" → fall through to the
+    // secretary check + league scan below.
     if (isOrgOrHigher(req.user)) {
       return false;
     }
@@ -321,7 +333,16 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     if (userIsSystemAdmin) {
       return true;
     }
-    if (req.user.organizationId && req.user.organizationId === league.organizationId) {
+    // Task #735 hardening: same rule as the bowler-row stamp gate
+    // above — only org_admin / system_admin get the org-wide league
+    // shortcut. Plain `user` callers must qualify via the bowler-self
+    // membership rule (handled at the top of the loop) or the
+    // secretary scoping rule (handled before this scan).
+    if (
+      isOrgOrHigher(req.user) &&
+      req.user.organizationId &&
+      req.user.organizationId === league.organizationId
+    ) {
       return true;
     }
   }
@@ -421,13 +442,21 @@ export async function hasAccessToBowlers(
         result.set(id, true);
         continue;
       }
-      if (callerOrgIdShort !== null && callerOrgIdShort === stamp) {
+      // Task #735 hardening: org-stamp match shortcut restricted to
+      // admins. Non-admin "user" callers must qualify via the league
+      // self-membership rule below (or the secretary scoping rule
+      // applied at the route layer / via hasAccessToBowler).
+      if (
+        callerIsOrgOrHigher &&
+        callerOrgIdShort !== null &&
+        callerOrgIdShort === stamp
+      ) {
         result.set(id, true);
         continue;
       }
-      // Stamp mismatch. Admins are denied authoritatively. Non-admin
-      // users fall through to the league scan for the self-membership
-      // rule.
+      // Stamp mismatch (or non-admin same-org with no league
+      // overlap). Admins are denied authoritatively. Non-admin users
+      // fall through to the league scan for the self-membership rule.
       if (callerIsOrgOrHigher) {
         // result already initialized to false above; keep as-is and
         // do NOT add to stillToCheck.
@@ -511,13 +540,46 @@ export async function hasAccessToBowlers(
         allowed = true;
         break;
       }
-      if (userOrgId !== null && userOrgId === league.organizationId) {
+      // Task #735 hardening: only org_admin / system_admin get the
+      // org-wide league shortcut. Plain `user` callers must qualify
+      // via the userBowlerId league self-membership rule (handled at
+      // the top of the loop) or the secretary scoping rule.
+      if (
+        isOrgOrHigher(req.user) &&
+        userOrgId !== null &&
+        userOrgId === league.organizationId
+      ) {
         allowed = true;
         break;
       }
     }
 
     result.set(bowlerId, allowed);
+  }
+
+  // Task #735: a non-admin user may also access bowlers via a
+  // league_secretary grant. Resolve the remaining `false`s through
+  // the secretary scoping check, which itself confirms the bowler is
+  // rostered into one of the caller's granted leagues. Single small
+  // batched lookup keyed off the caller, not per-bowler.
+  if (!callerIsSystemAdmin && !isOrgOrHigher(req.user)) {
+    const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+    if (grantedLeagueIds.length > 0) {
+      const grantedSet = new Set(grantedLeagueIds);
+      for (const bowlerId of stillToCheck) {
+        if (result.get(bowlerId)) continue;
+        const bowlerLeagueIds = leagueIdsByBowler.get(bowlerId);
+        if (!bowlerLeagueIds) continue;
+        for (const leagueId of bowlerLeagueIds) {
+          if (!grantedSet.has(leagueId)) continue;
+          const league = leagueMap.get(leagueId);
+          if (!league || league.organizationId === null) continue;
+          if (req.user.organizationId !== league.organizationId) continue;
+          result.set(bowlerId, true);
+          break;
+        }
+      }
+    }
   }
 
   return result;
