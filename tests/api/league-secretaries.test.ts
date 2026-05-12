@@ -642,6 +642,11 @@ describe('League Secretary grants (Task #735)', () => {
       expect(res.status).toBe(403);
     });
 
+    it('secretary GET /api/locations returns 403 (org-level admin surface)', async () => {
+      const res = await apiGet('/api/locations', secretarySession);
+      expect(res.status).toBe(403);
+    });
+
     it('secretary POST /api/payments-provider/customers on a granted-league team returns 403', async () => {
       // Find a team in the granted league. If none exist (minimal
       // fixture) the test is a soft no-op.
