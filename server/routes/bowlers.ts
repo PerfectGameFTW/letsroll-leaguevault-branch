@@ -279,9 +279,43 @@ router.get("/search", bowlerSearchLimiter, async (req, res) => {
 
     const excludeIds = parseOptionalIntListParam(req.query.excludeIds) ?? [];
     const results = await storage.searchBowlersByName(q, orgId, 10);
-    const filtered = excludeIds.length > 0
+    let filtered = excludeIds.length > 0
       ? results.filter((r) => !excludeIds.includes(r.id))
       : results;
+
+    // Task #735: secretary-scope the search result. A non-admin
+    // caller may only see bowlers rostered into a league they have
+    // direct visibility into (their own bowler-leagues ∪ their
+    // league_secretary grants). Admin callers (org_admin /
+    // system_admin) get the org-wide search unchanged. Empty visible
+    // set → empty result.
+    if (!isSysAdmin && user.role !== 'org_admin' && filtered.length > 0) {
+      const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(user.id);
+      const selfLeagueIds: number[] = user.bowlerId
+        ? (await storage.getBowlerLeagues({ bowlerId: user.bowlerId })).map((bl) => bl.leagueId)
+        : [];
+      const visibleLeagueIds = new Set<number>([...grantedLeagueIds, ...selfLeagueIds]);
+      if (visibleLeagueIds.size === 0) {
+        filtered = [];
+      } else {
+        const ids = filtered.map((r) => r.id);
+        const blEntries = await storage.getBowlerLeaguesByBowlerIds(ids);
+        const leaguesByBowler = new Map<number, Set<number>>();
+        for (const bl of blEntries) {
+          const s = leaguesByBowler.get(bl.bowlerId) ?? new Set<number>();
+          s.add(bl.leagueId);
+          leaguesByBowler.set(bl.bowlerId, s);
+        }
+        filtered = filtered.filter((r) => {
+          // The caller can always find themselves in search.
+          if (user.bowlerId && r.id === user.bowlerId) return true;
+          const ls = leaguesByBowler.get(r.id);
+          if (!ls) return false;
+          for (const lid of ls) if (visibleLeagueIds.has(lid)) return true;
+          return false;
+        });
+      }
+    }
     return sendSuccess(res, filtered);
   } catch (error) {
     log.error('Error searching bowlers:', error);
@@ -322,10 +356,32 @@ router.get("/:id/details", async (req, res) => {
       }
     }
 
-    const [hasAccount, bowlerLeagues] = await Promise.all([
+    const [hasAccount, bowlerLeaguesAll] = await Promise.all([
       storage.isBowlerLinked(id),
       storage.getBowlerLeagues({ bowlerId: id }),
     ]);
+
+    // Task #735: secretary-scope the bowler↔league/team membership
+    // payload. A non-admin caller (anyone who is NOT system_admin /
+    // org_admin) must only see league/team membership for leagues
+    // they have direct visibility into:
+    //   - leagues they are themselves a bowler in (bowler-self UX), ∪
+    //   - leagues they hold an active league_secretary grant on, ∪
+    //   - the bowler's own profile (self-access — they always see all
+    //     of their own memberships).
+    // Admin callers (org_admin / system_admin) keep the full view.
+    let bowlerLeagues = bowlerLeaguesAll;
+    const callerIsAdmin =
+      req.user?.role === 'system_admin' || req.user?.role === 'org_admin';
+    const callerIsSelf = req.user?.bowlerId === id;
+    if (req.user && !callerIsAdmin && !callerIsSelf) {
+      const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
+      const selfLeagueIds: number[] = req.user.bowlerId
+        ? (await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId })).map((bl) => bl.leagueId)
+        : [];
+      const visibleLeagueIds = new Set<number>([...grantedLeagueIds, ...selfLeagueIds]);
+      bowlerLeagues = bowlerLeaguesAll.filter((bl) => visibleLeagueIds.has(bl.leagueId));
+    }
 
     const leagueIds = [...new Set(bowlerLeagues.map(bl => bl.leagueId))];
     const teamIds = [...new Set(bowlerLeagues.filter(bl => bl.teamId).map(bl => bl.teamId!))];
