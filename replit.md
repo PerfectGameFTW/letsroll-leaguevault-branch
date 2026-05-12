@@ -81,6 +81,11 @@ A full-stack bowling league management application with multi-tenant support for
 - Run the full repo-wide checks (typecheck + the relevant test suites) at the end of every task.
 - If anything is failing, fix it as part of the same task before calling `mark_task_complete`.
 - The only acceptable exceptions are: (a) a failure that genuinely cannot be reproduced locally and clearly belongs to infrastructure rather than code, or (b) a failure that requires user input the agent does not have. Both must be called out explicitly in the task completion notes.
+- **Reviewer scope-creep policy**: When the code reviewer rejects a task with findings that are NOT in the task's stated contract, do not silently absorb them.
+  - **In-scope** (fix immediately, no question): real bugs, contract violations, or security gaps in what was actually built.
+  - **Out-of-scope** (stop and ask the user before doing): new product surface area (exposing pages/features to a new role, new routes, new UI workflows), new test files or test catalogs beyond what the contract implies, broad cross-cutting "audit every X" expansions, refactors of code paths the task didn't touch, "while you're in there" extensions.
+  - **Ambiguous middle** (e.g., consistency/parity fixes one hop from the contract): make the call, do it, and call it out explicitly in the completion notes so the user can see what was decided and why.
+  - Do not keep grinding rejection rounds trying to satisfy a moving target. After one round of out-of-scope asks, surface a short summary to the user with a yes/no and either fold it in or mark complete with `skip_validation_reason` explaining the rationale.
 
 ## Gotchas
 
