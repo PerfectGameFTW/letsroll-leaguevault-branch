@@ -132,31 +132,40 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    // Task #735: secretary-listing scope. A caller who is neither
-    // system_admin nor an org_admin (i.e. plain `user` role acting via
-    // a league_secretary grant) MUST be SQL-scoped to their granted
-    // leagueIds for every filter combination — without this, a
-    // secretary could call `/api/payments` (no leagueId) or
-    // `/api/payments?bowlerId=X` and get org-wide results that include
-    // leagues they were not granted on. We compute the grant list once
-    // here and pass it to the storage layer as an `IN (...)` filter.
-    // Apply only when the caller is acting as a secretary (i.e. has at
-    // least one active grant). A bowler with no grants must continue to
-    // hit the unchanged self-payments path; injecting an empty `IN ()`
-    // for them would render bowler payment history empty.
+    // Task #735: SQL-scope listing for non-admin callers. With a
+    // grant set: restrict to those leagues. Without a grant set:
+    // restrict to the caller's own bowler payments (or empty when
+    // the user is not a bowler). An explicit leagueId is gated above
+    // by hasAdminAccessToLeague.
     let secretaryScopedLeagueIds: number[] | undefined;
+    let scopedBowlerId: number | null | undefined = bowlerId;
     if (!isSystemAdmin && req.user?.role !== 'org_admin' && req.user?.id) {
       const grantedIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);
-      if (grantedIds.length > 0 && leagueId === undefined) {
-        secretaryScopedLeagueIds = grantedIds;
+      if (leagueId === undefined) {
+        if (grantedIds.length > 0) {
+          secretaryScopedLeagueIds = grantedIds;
+          if (bowlerId == null && req.user.bowlerId) {
+            // No bowlerId filter: union grant-leagues with self-payments
+            // by also returning the caller's own bowler rows.
+            // Storage `bowlerId` filter is single-valued; when grants
+            // exist we keep the leagueIds filter and let self-rows
+            // surface through bowler-detail/dashboard endpoints, since
+            // mixing self-rows here would require a new storage shape.
+          }
+        } else {
+          if (!req.user.bowlerId) {
+            return sendSuccess(res, []);
+          }
+          if (bowlerId != null && bowlerId !== req.user.bowlerId) {
+            return sendSuccess(res, []);
+          }
+          scopedBowlerId = req.user.bowlerId;
+        }
       }
-      // If a `leagueId` IS supplied, `hasAdminAccessToLeague` upstream
-      // has already gated the secretary case; we don't override the
-      // bowler-self / org-wide path for the no-grant scenario here.
     }
 
     const baseFilters = {
-      bowlerId,
+      bowlerId: scopedBowlerId,
       leagueId,
       teamId,
       weekOf,
