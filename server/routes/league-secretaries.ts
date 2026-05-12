@@ -6,8 +6,8 @@
  *
  * Authorization policy:
  *   - GET (list)    — visible to org_admin of the league's owning org
- *                     or system_admin only. Secretaries do not see the
- *                     roster of their own league (admin surface).
+ *                     ONLY. system_admin is rejected for parity with
+ *                     grant/revoke (secretary management is org-scoped).
  *   - POST (grant)  — org_admin of the league's owning org ONLY.
  *                     system_admin is REJECTED with 403 SYSTEM_ADMIN_DENIED;
  *                     secretaries cannot grant other secretaries.
@@ -94,14 +94,12 @@ router.get('/', async (req: Request, res: Response) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Per task #735: managing the secretary roster is an org-admin /
-    // system-admin surface. A secretary listing the roster of their
-    // own league is not part of the contract — they would also need
-    // grant/revoke powers to act on it, and those are explicitly
-    // org_admin-only. Tighten to admin-only.
-    if (!isSystemAdmin(req.user)
-        && !(req.user?.role === 'org_admin'
-             && req.user.organizationId === league.organizationId)) {
+    // Per task #735: secretary roster management is org-scoped.
+    // Only the org_admin of the league's owning org may list, for
+    // parity with the grant/revoke policy (system_admin is rejected
+    // there too).
+    if (!(req.user?.role === 'org_admin'
+          && req.user.organizationId === league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
