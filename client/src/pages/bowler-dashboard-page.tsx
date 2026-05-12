@@ -19,6 +19,28 @@ import { useSelectedLeague } from "@/hooks/use-selected-league";
 
 const STALE_TIME = 1000 * 60 * 5;
 
+// Task #735: render-on-demand toggle that fetches the caller's
+// league_secretary grants and only paints a button when at least one
+// grant exists. Side-effect-free (the same lookup is cached against
+// queryKey ['/api/me/league-secretary-leagues'] on /my-leagues so
+// switching surfaces is instant after the first hop).
+const SecretaryToggleButton: FC<{ enabled: boolean }> = ({ enabled }) => {
+  const { data } = useQuery<ApiResponse<Array<{ id: number }>>>({
+    queryKey: ['/api/me/league-secretary-leagues'],
+    enabled,
+    staleTime: STALE_TIME,
+  });
+  const grants = data?.data ?? [];
+  if (!enabled || grants.length === 0) return null;
+  return (
+    <div className="mb-6">
+      <Button asChild variant="outline" size="sm" data-testid="link-my-leagues">
+        <Link href="/my-leagues">Switch to secretary view</Link>
+      </Button>
+    </div>
+  );
+};
+
 function ErrorCard({ title, description, onRetry }: { title: string; description: string; onRetry?: () => void }) {
   return (
     <Card className="mx-auto max-w-md mt-8">
@@ -293,6 +315,13 @@ export const BowlerDashboardPage: FC = () => {
       leagueName={leagueName}
       currentLeagueId={activeBowlerLeague?.leagueId}
     >
+      {/* Task #735: bowler ↔ secretary toggle. A user who holds at
+          least one league_secretary grant gets a one-click switch to
+          their secretary surface. The toggle button on /my-leagues
+          provides the reciprocal link back. We render only when the
+          /api/me/league-secretary-leagues lookup returned at least
+          one row so non-secretaries see no extra UI. */}
+      <SecretaryToggleButton enabled={!isSystemAdmin} />
       {isSystemAdmin && (
         <div className="mb-6">
           <Button asChild variant="outline" className="flex items-center gap-2">

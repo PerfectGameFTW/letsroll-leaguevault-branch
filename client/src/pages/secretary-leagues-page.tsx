@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
-import type { League } from "@shared/schema";
+import type { League, User, ApiResponse } from "@shared/schema";
 
 export default function SecretaryLeaguesPage() {
   const { data, isLoading, error } = useQuery<{ success: true; data: League[] }>({
@@ -14,6 +15,14 @@ export default function SecretaryLeaguesPage() {
       return res.json();
     },
   });
+  // Task #735: bowler ↔ secretary toggle. A user who is BOTH a bowler
+  // and a secretary should be able to switch between their two
+  // surfaces in one click. We surface the link only when bowlerId is
+  // present so non-bowlers don't see a dead-end button.
+  const { data: meResponse } = useQuery<ApiResponse<User>>({
+    queryKey: ["/api/user"],
+  });
+  const hasBowlerProfile = !!meResponse?.data?.bowlerId;
 
   if (isLoading) return <Layout><PageLoadingState /></Layout>;
   if (error) return <Layout><PageErrorState message="Failed to load your leagues" /></Layout>;
@@ -25,10 +34,19 @@ export default function SecretaryLeaguesPage() {
       <div className="container mx-auto p-4 sm:p-6 max-w-3xl">
         <Card>
           <CardHeader>
-            <CardTitle>My Leagues</CardTitle>
-            <CardDescription>
-              Leagues you administer as a secretary.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>My Leagues</CardTitle>
+                <CardDescription>
+                  Leagues you administer as a secretary.
+                </CardDescription>
+              </div>
+              {hasBowlerProfile && (
+                <Button asChild variant="outline" size="sm" data-testid="link-bowler-dashboard">
+                  <Link href="/bowler-dashboard">Bowler view</Link>
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {leagues.length === 0 ? (

@@ -307,14 +307,44 @@ router.patch("/:id", async (req: Request, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Task #735: PATCH /api/leagues/:id can mutate location_id and
-    // payment-provider-related fields, both of which are explicitly
-    // forbidden for league_secretary callers per the threat model.
-    // Restrict the entire PATCH surface to org_admin/system_admin
-    // (secretaries get league-scoped admin via hasAdminAccessToLeague
-    // on bowler/team/payment routes, not here).
-    if (!isOrgOrHigher(req.user) || !requireOrganizationAccess(req, league.organizationId, 'league', id)) {
-      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    // Task #735: PATCH /api/leagues/:id is allowed for org_admin /
+    // system_admin in the same org, OR for a league_secretary on this
+    // league, BUT secretaries may only mutate a narrow allowlist of
+    // fields. Forbidden for secretaries: organizationId, locationId,
+    // active (archive control), and every payment-provider /
+    // catalog-mapping field (square*, lineageItemVariationId,
+    // prizeFundItemVariationId). Any payload containing a forbidden
+    // key is rejected outright with 403 — we do NOT silently drop
+    // forbidden fields, so a buggy client can't think the change took.
+    const isAdminCaller =
+      isOrgOrHigher(req.user) && requireOrganizationAccess(req, league.organizationId, 'league', id);
+    let isSecretaryCaller = false;
+    if (!isAdminCaller) {
+      isSecretaryCaller = await hasAdminAccessToLeague(req, id);
+      if (!isSecretaryCaller) {
+        return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+      }
+      const SECRETARY_FORBIDDEN_FIELDS = new Set([
+        'organizationId',
+        'locationId',
+        'active',
+        'squareLineageItemId',
+        'lineageItemVariationId',
+        'squareLineageItemName',
+        'squarePrizeFundItemId',
+        'prizeFundItemVariationId',
+        'squarePrizeFundItemName',
+        'squareCategoryId',
+      ]);
+      const offending = Object.keys(req.body ?? {}).filter((k) => SECRETARY_FORBIDDEN_FIELDS.has(k));
+      if (offending.length > 0) {
+        return sendError(
+          res,
+          `League secretaries may not modify: ${offending.join(', ')}`,
+          403,
+          'SECRETARY_FORBIDDEN_FIELD',
+        );
+      }
     }
     
     // Non-admin users cannot change the organization of a league

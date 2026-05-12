@@ -467,14 +467,53 @@ describe('League Secretary grants (Task #735)', () => {
       expect(afterFresh.status).toBe(403);
     });
 
-    it('secretary CANNOT delete/archive/restore/patch the league (admin-only)', async () => {
-      const patchRes = await apiPatch(
+    it('secretary PATCH allowlist: name allowed, locationId/active/payment-provider/organizationId forbidden', async () => {
+      // Allowed field — name should succeed (200).
+      const newName = `Secretary Rename ${stamp}`;
+      const okRes = await apiPatch(
         `/api/leagues/${orgALeagueId}`,
-        { name: 'secretary-rename-attempt' },
+        { name: newName },
         secretarySession,
       );
-      expect(patchRes.status).toBe(403);
+      expect(okRes.status).toBe(200);
+      const nameCheck = await apiGet<{ name: string }>(
+        `/api/leagues/${orgALeagueId}`,
+        orgAAdmin,
+      );
+      expect(nameCheck.data.data?.name).toBe(newName);
 
+      // Forbidden fields — each must come back 403 with the
+      // SECRETARY_FORBIDDEN_FIELD code so the client knows it was an
+      // authorization decision, not a validation failure.
+      const forbiddenPayloads: Array<Record<string, unknown>> = [
+        { locationId: 1 },
+        { locationId: null },
+        { active: false },
+        { active: true },
+        { organizationId: 999999 },
+        { squareLineageItemId: 'item_x' },
+        { lineageItemVariationId: 'var_x' },
+        { squarePrizeFundItemId: 'item_y' },
+        { prizeFundItemVariationId: 'var_y' },
+        { squareCategoryId: 'cat_x' },
+        // Mixed: even if one allowed field rides along, the request is rejected.
+        { name: 'should-not-apply', locationId: null },
+      ];
+      for (const body of forbiddenPayloads) {
+        const res = await apiPatch(`/api/leagues/${orgALeagueId}`, body, secretarySession);
+        expect(res.status).toBe(403);
+        expect((res.data as { error?: { code?: string } }).error?.code).toBe('SECRETARY_FORBIDDEN_FIELD');
+      }
+
+      // The mixed-payload allowed field must NOT have been applied.
+      const reCheck = await apiGet<{ name: string }>(
+        `/api/leagues/${orgALeagueId}`,
+        orgAAdmin,
+      );
+      expect(reCheck.data.data?.name).toBe(newName);
+    });
+
+    it('secretary CANNOT delete/archive/restore the league (admin-only)', async () => {
       const archiveRes = await apiPatch(
         `/api/leagues/${orgALeagueId}/archive`,
         {},
@@ -495,10 +534,13 @@ describe('League Secretary grants (Task #735)', () => {
       );
       expect(deleteRes.status).toBe(403);
 
-      // And the league still exists / unchanged.
-      const after = await apiGet<{ name: string }>(`/api/leagues/${orgALeagueId}`, orgAAdmin);
+      // And the league still exists (archive/restore/delete were all rejected).
+      const after = await apiGet<{ name: string; active: boolean }>(
+        `/api/leagues/${orgALeagueId}`,
+        orgAAdmin,
+      );
       expect(after.status).toBe(200);
-      expect(after.data.data?.name).not.toBe('secretary-rename-attempt');
+      expect(after.data.data?.active).toBe(true);
     });
 
     it('secretary GET /api/leagues/:id on a non-granted league returns 403', async () => {
