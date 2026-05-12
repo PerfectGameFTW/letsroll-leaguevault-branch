@@ -11,7 +11,7 @@ import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { getProviderForLeague } from './shared.js';
-import { hasAdminAccessToLeague } from '../../utils/access-control';
+import { isOrgOrHigher } from '../../utils/access-control';
 
 const log = createLogger('Payments');
 
@@ -37,10 +37,13 @@ router.post('/customers', paymentLimiter, async (req, res) => {
         return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
       }
 
-      // Task #735: route admin/league-secretary access through the
-      // shared helper so per-league grants apply (and same-org plain
-      // users are denied).
-      const userHasAccess = await hasAdminAccessToLeague(req, team.leagueId);
+      // Task #735: payment-provider customer surfaces are explicitly
+      // off-limits to league secretaries (could expose provider
+      // customer IDs / vault metadata). Restrict to org_admin /
+      // system_admin in the league's owning org.
+      const userHasAccess =
+        req.user?.role === 'system_admin' ||
+        (isOrgOrHigher(req.user) && req.user?.organizationId === league.organizationId);
       if (!userHasAccess) {
         return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
       }

@@ -5,9 +5,9 @@
  * authenticated (mount-level `requireAuth` in `server/routes/index.ts`).
  *
  * Authorization policy:
- *   - GET (list)    — visible to org_admin of the league's owning org,
- *                     system_admin, or any current secretary on this
- *                     league. Read-only.
+ *   - GET (list)    — visible to org_admin of the league's owning org
+ *                     or system_admin only. Secretaries do not see the
+ *                     roster of their own league (admin surface).
  *   - POST (grant)  — org_admin of the league's owning org ONLY.
  *                     system_admin is REJECTED with 403 SYSTEM_ADMIN_DENIED;
  *                     secretaries cannot grant other secretaries.

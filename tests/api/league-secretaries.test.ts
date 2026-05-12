@@ -642,6 +642,24 @@ describe('League Secretary grants (Task #735)', () => {
       expect(res.status).toBe(403);
     });
 
+    it('secretary POST /api/payments-provider/customers on a granted-league team returns 403', async () => {
+      // Find a team in the granted league. If none exist (minimal
+      // fixture) the test is a soft no-op.
+      const { teams: teamsTable } = await import('@shared/schema');
+      const teamRows = await db
+        .select()
+        .from(teamsTable)
+        .where(eq(teamsTable.leagueId, orgALeagueId))
+        .limit(1);
+      if (teamRows.length === 0) return;
+      const res = await apiPost(
+        '/api/payments-provider/customers',
+        { teamId: teamRows[0].id, name: 'x', email: 'x@example.com' },
+        secretarySession,
+      );
+      expect(res.status).toBe(403);
+    });
+
     it('secretary listing /api/payments (no leagueId) is SQL-scoped to granted leagues only', async () => {
       const res = await apiGet<Array<{ leagueId: number }>>(
         '/api/payments',
