@@ -59,6 +59,54 @@ name: Post-deploy trust-proxy probe
 #                           workflow overrides to 30000 below — see
 #                           cold-start note.
 #
+# N-strikes-before-paging (task #737):
+#   Even with the cold-start mitigations below, a real edge incident or
+#   an unusually long cold start that beats the warmup can still slip
+#   one transient failure through. To stop a single isolated blip from
+#   paging on-call, scheduled runs gate the JOB's pass/fail on a rolling
+#   consecutive-failure streak instead of the immediate per-run result:
+#     - 1st failure in a row  → job exits 0 with a ::warning:: noting
+#                                "1st strike, suppressed"; no page.
+#     - Nth failure in a row  → job exits 1 with a ::error:: explicitly
+#                                labelled "N-strike alert"; pages.
+#     - Any success           → streak resets to 0.
+#   N is controlled by `STRIKE_THRESHOLD` (default 2). Manual
+#   `workflow_dispatch` runs BYPASS the streak counter entirely and
+#   fail/pass on the immediate result — an operator running this on
+#   demand is debugging in real time and wants the immediate signal.
+#
+#   Strike-state mechanism: GitHub Actions cache (`actions/cache`).
+#   Why this option over the alternatives:
+#     - Gist: requires a PAT with gist write scope and pulls in an
+#       extra credential to rotate; overkill for a single integer.
+#     - Workflow artifact across runs: requires `actions: read` and
+#       an API lookup to find the previous run's artifact; brittle
+#       around retention windows and concurrent runs.
+#     - Sentinel commit/branch: writes to the repo from CI, which
+#       this workflow's `permissions: contents: read` explicitly
+#       forbids; widening permissions for a counter is a worse
+#       trade than using the cache.
+#     - Cache: zero extra credentials, no extra permissions, built
+#       into the same `actions/*` family already in this workflow.
+#       The cache key embeds `${{ github.run_id }}` so each run
+#       writes a fresh entry (cache keys are immutable); the
+#       `restore-keys: probe-strike-` prefix loads the most recent
+#       prior entry. The workflow's existing
+#       `concurrency: post-deploy-trust-proxy` with
+#       `cancel-in-progress: false` serializes runs so two runs
+#       never race the counter. If GitHub evicts the cache (7 days
+#       of no access, or LRU pressure on the repo's 10GB cache
+#       quota) the streak silently resets to 0; the failure mode
+#       is "we tolerate one extra blip", not "we miss a real
+#       sustained outage".
+#
+#   Resetting the counter manually: trigger `workflow_dispatch` with
+#   the deploy URL responding healthy; a single manual success does
+#   NOT reset the streak (manual runs bypass it), but you can also
+#   force a reset by deleting the `probe-strike-*` cache entries
+#   from the repo's Actions → Caches UI, or by simply waiting for
+#   the next scheduled success.
+#
 # Cold-start tolerance (task #736):
 #   The probe's per-attempt timeout is deliberately TERMINAL — only
 #   HTTP 5xx and network errors get the retry budget. Combined with
@@ -154,6 +202,12 @@ jobs:
     # The probe is a single HTTP round-trip; 5 minutes is generous
     # ceiling that still kills a hung run before it eats CI budget.
     timeout-minutes: 5
+    env:
+      # Single source of truth for the N-strikes threshold (task #737).
+      # Change here to adjust how many consecutive scheduled failures
+      # are required before the job fails loudly. Both the streak-update
+      # step and the final-outcome step read this same value.
+      STRIKE_THRESHOLD: '2'
     steps:
       - name: Check out the repo
         uses: actions/checkout@v6
@@ -206,7 +260,30 @@ jobs:
             -w "[prewarm] http=%{http_code} total=%{time_total}s\n" \
             "${BASE_URL%/}/api/health" || echo "[prewarm] warmup failed (non-fatal); verifier will still run"
 
+      # Restore the consecutive-failure streak counter from the most
+      # recent prior scheduled run (task #737). Only restored on
+      # `schedule` runs — manual `workflow_dispatch` runs bypass the
+      # streak entirely and fail/pass on the immediate result.
+      # `restore-keys: probe-strike-` matches the most recent
+      # `probe-strike-<run_id>` cache entry. If no prior cache exists
+      # (first run, eviction, manual delete) the streak file is
+      # absent and the next step treats the prior streak as 0.
+      - name: Restore strike counter
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .probe-state
+          key: probe-strike-${{ github.run_id }}
+          restore-keys: |
+            probe-strike-
+
       - name: Run the trust-proxy verifier
+        id: verify
+        # `continue-on-error: true` so a failure does not short-circuit
+        # the streak-update + cache-save steps below. The job's final
+        # pass/fail is decided by the "Decide final outcome" step,
+        # which reads `steps.verify.outcome` and the streak.
+        continue-on-error: true
         env:
           BASE_URL: ${{ github.event.inputs.base_url_override || secrets.DEPLOY_BASE_URL }}
           # Token-based auth (preferred). When set, the script sends
@@ -227,3 +304,85 @@ jobs:
         # `package.json` scripts section is intentionally locked in
         # this environment so we cannot add an `npm run` shortcut).
         run: node node_modules/tsx/dist/cli.mjs scripts/verify-trust-proxy-deploy.ts
+
+      # Update the rolling consecutive-failure streak (task #737).
+      # Only runs on scheduled runs; manual runs skip the counter.
+      - name: Update strike counter
+        id: strike
+        if: github.event_name == 'schedule'
+        env:
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -eu
+          mkdir -p .probe-state
+          PREV=0
+          if [ -f .probe-state/streak ]; then
+            PREV=$(cat .probe-state/streak | tr -dc '0-9')
+            PREV=${PREV:-0}
+          fi
+          if [ "$VERIFY_OUTCOME" = "success" ]; then
+            echo "0" > .probe-state/streak
+            echo "[strike] verifier succeeded; resetting streak (was $PREV)"
+            echo "should_fail=false" >> "$GITHUB_OUTPUT"
+            echo "new_streak=0" >> "$GITHUB_OUTPUT"
+          else
+            NEW=$((PREV + 1))
+            echo "$NEW" > .probe-state/streak
+            echo "[strike] verifier failed; consecutive failure streak now $NEW (threshold: $STRIKE_THRESHOLD)"
+            echo "new_streak=$NEW" >> "$GITHUB_OUTPUT"
+            if [ "$NEW" -ge "$STRIKE_THRESHOLD" ]; then
+              echo "should_fail=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_fail=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # Persist the updated streak so the next scheduled run can read
+      # it via `restore-keys: probe-strike-`. Cache keys are immutable,
+      # so we write under a fresh per-run key. `if: always()` ensures
+      # we save even if an earlier step failed unexpectedly (so a
+      # transient infra hiccup in the cache step doesn't lose state).
+      - name: Save strike counter
+        if: github.event_name == 'schedule' && always()
+        uses: actions/cache/save@v4
+        with:
+          path: .probe-state
+          key: probe-strike-${{ github.run_id }}
+
+      # Final job pass/fail decision (task #737).
+      #   - schedule + success           → exit 0 (streak reset)
+      #   - schedule + 1st failure (<N)  → exit 0 + ::warning::
+      #     (suppressed; will fail loudly next time if it stays bad)
+      #   - schedule + Nth failure (>=N) → exit 1 + ::error:: labelled
+      #     "N-strike alert" so on-call can immediately tell this
+      #     isn't a one-off blip
+      #   - workflow_dispatch            → exit code mirrors verifier
+      #     (operator wants the immediate signal)
+      - name: Decide final outcome
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          SHOULD_FAIL: ${{ steps.strike.outputs.should_fail }}
+          NEW_STREAK: ${{ steps.strike.outputs.new_streak }}
+        run: |
+          set -eu
+          if [ "$EVENT_NAME" != "schedule" ]; then
+            echo "[outcome] manual run (event=$EVENT_NAME); bypassing strike counter"
+            if [ "$VERIFY_OUTCOME" = "success" ]; then
+              echo "[outcome] verifier succeeded"
+              exit 0
+            fi
+            echo "::error::Trust-proxy verifier failed on manual run; see verifier step output above."
+            exit 1
+          fi
+          if [ "$VERIFY_OUTCOME" = "success" ]; then
+            echo "[outcome] scheduled run succeeded; streak reset to 0"
+            exit 0
+          fi
+          if [ "$SHOULD_FAIL" = "true" ]; then
+            echo "::error::N-strike alert: trust-proxy verifier has now failed ${NEW_STREAK} consecutive scheduled runs (threshold: ${STRIKE_THRESHOLD}). This is NOT a one-off blip — investigate the live deploy's proxy/trust-proxy config now. See task #737 for context on the strike counter."
+            exit 1
+          fi
+          echo "::warning::Trust-proxy verifier failed (strike ${NEW_STREAK}/${STRIKE_THRESHOLD}); suppressing alert per task #737. If the next scheduled run also fails, this workflow will fail loudly. See verifier step output above for the failure detail."
+          exit 0
