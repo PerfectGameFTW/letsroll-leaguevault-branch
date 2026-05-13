@@ -55,7 +55,34 @@ name: Post-deploy trust-proxy probe
 #     PROBE_RETRY_BASE_MS   default 500. Base delay for exponential
 #                           backoff (attempt k waits base * 2^(k-1)
 #                           ± jitter).
-#     PROBE_TIMEOUT_MS      default 10000 (per attempt).
+#     PROBE_TIMEOUT_MS      default 10000 (per attempt). This
+#                           workflow overrides to 30000 below — see
+#                           cold-start note.
+#
+# Cold-start tolerance (task #736):
+#   The probe's per-attempt timeout is deliberately TERMINAL — only
+#   HTTP 5xx and network errors get the retry budget. Combined with
+#   the 30-min cron cadence, the live container is frequently cold-
+#   evicted by the Replit deploy edge / Cloud Run frontend, so the
+#   first probe request after a long idle has been observed to eat a
+#   cold-start hit > 10s and instantly fail with no retry. Two
+#   measures here eliminate that false-positive class without
+#   weakening any assertion:
+#     1. A best-effort pre-warm step hits the public `/api/health`
+#        endpoint with `curl --retry` BEFORE the verifier runs, so
+#        the container is awake by the time the assertion-bearing
+#        request goes out. The step is `continue-on-error: true` so
+#        a transient warmup failure never itself becomes a new
+#        false positive (the verifier still runs and decides).
+#     2. `PROBE_TIMEOUT_MS` is set to 30000 (vs the script default
+#        of 10000) as a safety margin so an unusually slow cold
+#        start still doesn't false-page even when warmup didn't
+#        fully wake the container. With max 4 attempts × 30s +
+#        ~3.5s backoff the worst case is well under
+#        `timeout-minutes: 5`.
+#   These measures only affect transport-level latency; every
+#   assertion-level failure still fails on the first observation
+#   exactly as documented above.
 #
 # Repository secrets required:
 #   DEPLOY_BASE_URL    — e.g. https://app.example.com (no trailing /)
@@ -147,6 +174,38 @@ jobs:
         # workflows in this repo.
         run: npm ci
 
+      - name: Pre-warm the live container (best-effort)
+        # Why this exists (task #736): the verifier's per-attempt
+        # timeout is terminal, and on a 30-min cron the container
+        # often goes cold between runs. A short warmup against the
+        # public `/api/health` endpoint wakes the container so the
+        # assertion-bearing probe runs against a warm instance.
+        # `continue-on-error: true` + the trailing `|| true` make
+        # this step strictly best-effort — a transient warmup
+        # failure must not become a new false positive; the
+        # verifier itself is the authoritative pass/fail signal.
+        # Connect timeout 5s, total per-attempt timeout 10s,
+        # 3 retries with backoff = ~30s worst case.
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url_override || secrets.DEPLOY_BASE_URL }}
+        run: |
+          set -u
+          if [ -z "${BASE_URL:-}" ]; then
+            echo "[prewarm] BASE_URL not set; skipping warmup"
+            exit 0
+          fi
+          echo "[prewarm] hitting ${BASE_URL%/}/api/health"
+          curl -fsS \
+            --connect-timeout 5 \
+            --max-time 10 \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            -o /dev/null \
+            -w "[prewarm] http=%{http_code} total=%{time_total}s\n" \
+            "${BASE_URL%/}/api/health" || echo "[prewarm] warmup failed (non-fatal); verifier will still run"
+
       - name: Run the trust-proxy verifier
         env:
           BASE_URL: ${{ github.event.inputs.base_url_override || secrets.DEPLOY_BASE_URL }}
@@ -157,6 +216,12 @@ jobs:
           # unset. Refresh manually when the session expires.
           ADMIN_COOKIE: ${{ secrets.DEPLOY_ADMIN_COOKIE }}
           EXPECTED_RESOLVED_IP: ${{ secrets.DEPLOY_EXPECTED_RESOLVED_IP }}
+          # Override the script's 10s default per-attempt timeout
+          # (task #736). 30s comfortably absorbs any residual
+          # cold-start latency the pre-warm step didn't eliminate.
+          # Worst-case wall time: 4 attempts × 30s + ~3.5s backoff
+          # = ~123s, still well under `timeout-minutes: 5`.
+          PROBE_TIMEOUT_MS: '30000'
         # Invoke `tsx` directly (mirrors the pattern in
         # `tests/unit/check-trust-proxy-coverage.test.ts` — the
         # `package.json` scripts section is intentionally locked in
