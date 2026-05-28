@@ -44,7 +44,7 @@ import {
   PaymentProviderError,
   ProviderNotConfiguredError,
   sanitizePaymentUserMessage,
-} from '../services/payment-provider-factory';
+} from '../services/payment-errors';
 
 export interface PaymentErrorResponse {
   status: number;

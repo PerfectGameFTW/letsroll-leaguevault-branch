@@ -32,9 +32,16 @@ const mockStorage = {
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
 const mockHasAccessToPayment = vi.fn();
-vi.mock('../../server/utils/access-control', () => ({
-  hasAccessToPayment: (...a: unknown[]) => mockHasAccessToPayment(...a),
-}));
+// Keep the real pure role-check helpers (isSystemAdmin, isOrgOrHigher) via
+// importOriginal; Task #735 added their usage to the refund route so a
+// bare partial mock drifts and throws "No <export> defined on mock".
+vi.mock('../../server/utils/access-control', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/access-control')>();
+  return {
+    ...actual,
+    hasAccessToPayment: (...a: unknown[]) => mockHasAccessToPayment(...a),
+  };
+});
 
 vi.mock('../../server/middleware/rate-limit', () => ({
   paymentWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),

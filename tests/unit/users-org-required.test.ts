@@ -243,12 +243,25 @@ describe('users_role_org_required invariant — storage', () => {
       // Bypass the storage helper and try to insert directly. The
       // `users_role_org_required` BEFORE-INSERT trigger should reject
       // this even when application-level guards are skipped.
-      await expect(
-        db.execute(
+      // Drizzle wraps the raw pg error as `Error('Failed query: <sql>')` and
+      // exposes the underlying Postgres error (whose message names the
+      // violated constraint) on `error.cause`. Match the whole chain so the
+      // assertion checks the real DB error, not the echoed SQL text.
+      let error: unknown;
+      try {
+        await db.execute(
           sql`INSERT INTO users (email, password, name, role, organization_id)
               VALUES (${email}, ${password}, 'Direct Insert', 'user', NULL)`,
-        ),
-      ).rejects.toThrow(/users_role_org_required|check constraint|non-admin users must have organization_id/i);
+        );
+      } catch (e) {
+        error = e;
+      }
+      expect(error, 'expected the direct INSERT to reject').toBeDefined();
+      const err = error as { message?: string; cause?: { message?: string } };
+      const combined = `${err?.message ?? ''} ${err?.cause?.message ?? ''}`;
+      expect(combined).toMatch(
+        /users_role_org_required|check constraint|non-admin users must have organization_id/i,
+      );
     });
   });
 });

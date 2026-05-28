@@ -53,6 +53,7 @@ import {
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import { ProviderNotConfiguredError } from '../../server/services/payment-errors';
 
 const mockStorage = {
   getLeague: vi.fn(),
@@ -71,10 +72,21 @@ vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
 const mockHasAccessToPayment = vi.fn();
 const mockRequireOrgAccess = vi.fn();
-vi.mock('../../server/utils/access-control', () => ({
-  hasAccessToPayment: (...a: unknown[]) => mockHasAccessToPayment(...a),
-  requireOrganizationAccess: (...a: unknown[]) => mockRequireOrgAccess(...a),
-}));
+const mockHasAdminAccessToLeague = vi.fn();
+// Keep the real pure role-check helpers (isSystemAdmin, isOrgOrHigher) via
+// importOriginal — only the DB-touching helpers are overridden. Task #735
+// added hasAdminAccessToLeague/isSystemAdmin/isOrgOrHigher usage to the
+// payment routes, so a hand-rolled partial mock drifts and throws
+// "No <export> defined on mock".
+vi.mock('../../server/utils/access-control', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/access-control')>();
+  return {
+    ...actual,
+    hasAccessToPayment: (...a: unknown[]) => mockHasAccessToPayment(...a),
+    requireOrganizationAccess: (...a: unknown[]) => mockRequireOrgAccess(...a),
+    hasAdminAccessToLeague: (...a: unknown[]) => mockHasAdminAccessToLeague(...a),
+  };
+});
 
 const mockRemoveSchedule = vi.fn();
 vi.mock('../../server/services/payment-scheduler', () => ({
@@ -82,16 +94,18 @@ vi.mock('../../server/services/payment-scheduler', () => ({
 }));
 
 const mockGetPaymentProvider = vi.fn();
-class FakeProviderNotConfiguredError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = 'ProviderNotConfiguredError';
-  }
-}
-vi.mock('../../server/services/payment-provider-factory', () => ({
-  getPaymentProvider: (...a: unknown[]) => mockGetPaymentProvider(...a),
-  ProviderNotConfiguredError: FakeProviderNotConfiguredError,
-}));
+// Mirror the real factory, which re-exports the error classes from
+// payment-errors. buildPaymentErrorResponse now imports the canonical
+// classes from payment-errors, so the thrown error must be a real
+// instance for the `instanceof` branch (→ 422) to match.
+vi.mock('../../server/services/payment-provider-factory', async () => {
+  const errs = await import('../../server/services/payment-errors');
+  return {
+    getPaymentProvider: (...a: unknown[]) => mockGetPaymentProvider(...a),
+    ProviderNotConfiguredError: errs.ProviderNotConfiguredError,
+    PaymentProviderError: errs.PaymentProviderError,
+  };
+});
 
 const mockSumQuery = vi.fn();
 vi.mock('../../server/db', () => ({
@@ -150,12 +164,14 @@ beforeEach(() => {
   for (const fn of Object.values(mockStorage)) (fn as ReturnType<typeof vi.fn>).mockReset();
   mockHasAccessToPayment.mockReset();
   mockRequireOrgAccess.mockReset();
+  mockHasAdminAccessToLeague.mockReset();
   mockRemoveSchedule.mockReset();
   mockGetPaymentProvider.mockReset();
   mockSumQuery.mockReset();
   // Sensible defaults; individual tests override.
   mockRequireOrgAccess.mockReturnValue(true);
   mockHasAccessToPayment.mockResolvedValue(true);
+  mockHasAdminAccessToLeague.mockResolvedValue(true);
   mockSumQuery.mockResolvedValue([{ total: 0 }]);
   // Task #454 added an existence pre-check on `payment.bowlerId` in
   // `payment-record.ts`. Default to a valid bowler so tests focused on
@@ -252,7 +268,10 @@ describe('POST /api/payments', () => {
 
   it('returns 403 when caller has no access to the league org', async () => {
     mockStorage.getLeague.mockResolvedValue(LEAGUE_OK);
-    mockRequireOrgAccess.mockReturnValue(false);
+    // Task #735: create now gates on hasAdminAccessToLeague (covers
+    // system_admin, org_admin, and active secretary grants) rather than
+    // the bare requireOrganizationAccess check.
+    mockHasAdminAccessToLeague.mockResolvedValue(false);
 
     const res = await post('/api/payments', basePayment());
     expect(res.status).toBe(403);
@@ -443,10 +462,16 @@ describe('POST /api/payments/:id/refund', () => {
   });
 
   it('rejects non-admins → 403', async () => {
+    // Task #735: refund access is now evaluated after the payment is
+    // fetched (a non-admin "user" falls through to the secretary check,
+    // which requires the payment's leagueId). A plain user with no
+    // secretary grant is denied.
+    mockStorage.getPaymentById.mockResolvedValue(cardPayment);
+    mockHasAdminAccessToLeague.mockResolvedValue(false);
     const res = await post('/api/payments/50/refund', {}, REGULAR_USER);
     expect(res.status).toBe(403);
     expect((await res.json()).error.message).toMatch(/admins/i);
-    expect(mockStorage.getPaymentById).not.toHaveBeenCalled();
+    expect(mockStorage.refundPayment).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the payment is already refunded', async () => {
@@ -474,7 +499,7 @@ describe('POST /api/payments/:id/refund', () => {
     mockStorage.getPaymentById.mockResolvedValue(cardPayment);
     mockStorage.getLeague.mockResolvedValue(LEAGUE_OK);
     mockGetPaymentProvider.mockRejectedValue(
-      new FakeProviderNotConfiguredError('no provider'),
+      new ProviderNotConfiguredError('no provider', null),
     );
 
     const res = await post('/api/payments/50/refund', {});

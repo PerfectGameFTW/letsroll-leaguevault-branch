@@ -12,21 +12,43 @@ import { sql } from 'drizzle-orm';
 import { getTestDb } from '../setup/test-db';
 const db = getTestDb();
 
+// Drizzle wraps the raw pg error as `Error('Failed query: <sql>')` and puts
+// the underlying Postgres error (whose message names the offending column /
+// constraint) on `error.cause`. Match against the whole chain so the
+// assertion checks the real DB error, not the echoed SQL text.
+async function expectRejectsMatching(
+  promise: Promise<unknown>,
+  pattern: RegExp,
+): Promise<void> {
+  let error: unknown;
+  try {
+    await promise;
+  } catch (e) {
+    error = e;
+  }
+  expect(error, 'expected the query to reject').toBeDefined();
+  const err = error as { message?: string; cause?: { message?: string } };
+  const combined = `${err?.message ?? ''} ${err?.cause?.message ?? ''}`;
+  expect(combined).toMatch(pattern);
+}
+
 describe('bowlers.organization_id NOT NULL constraint (task #407)', () => {
   it('rejects an INSERT that omits organization_id', async () => {
-    await expect(
+    await expectRejectsMatching(
       db.execute(
         sql`INSERT INTO bowlers (name) VALUES ('Vitest #407 Org-less Bowler')`,
       ),
-    ).rejects.toThrow(/organization_id/i);
+      /organization_id/i,
+    );
   });
 
   it('rejects an INSERT that explicitly sets organization_id = NULL', async () => {
-    await expect(
+    await expectRejectsMatching(
       db.execute(
         sql`INSERT INTO bowlers (name, organization_id) VALUES ('Vitest #407 Null Bowler', NULL)`,
       ),
-    ).rejects.toThrow(/organization_id/i);
+      /organization_id/i,
+    );
   });
 
   it('reports the column as NOT NULL in information_schema', async () => {

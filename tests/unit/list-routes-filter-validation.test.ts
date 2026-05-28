@@ -55,23 +55,34 @@ const mockStorage = {
 };
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
-vi.mock('../../server/utils/access-control', () => ({
-  requireOrganizationAccess: () => true,
-  hasAccessToLeague: vi.fn().mockResolvedValue(true),
-  hasAccessToTeam: vi.fn().mockResolvedValue(true),
-  hasAccessToBowler: vi.fn().mockResolvedValue(true),
-  hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
-  hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
-}));
+// Keep the real pure role-check helpers (isSystemAdmin, isOrgOrHigher) via
+// importOriginal — Task #735 added isOrgOrHigher usage to bowlers.ts so a
+// bare partial mock drifts and throws "No <export> defined on mock".
+vi.mock('../../server/utils/access-control', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/access-control')>();
+  return {
+    ...actual,
+    requireOrganizationAccess: () => true,
+    hasAccessToLeague: vi.fn().mockResolvedValue(true),
+    hasAccessToTeam: vi.fn().mockResolvedValue(true),
+    hasAccessToBowler: vi.fn().mockResolvedValue(true),
+    hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+    hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
+  };
+});
 
-vi.mock('../../server/utils/access-control.js', () => ({
-  requireOrganizationAccess: () => true,
-  hasAccessToLeague: vi.fn().mockResolvedValue(true),
-  hasAccessToTeam: vi.fn().mockResolvedValue(true),
-  hasAccessToBowler: vi.fn().mockResolvedValue(true),
-  hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
-  hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
-}));
+vi.mock('../../server/utils/access-control.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/access-control')>();
+  return {
+    ...actual,
+    requireOrganizationAccess: () => true,
+    hasAccessToLeague: vi.fn().mockResolvedValue(true),
+    hasAccessToTeam: vi.fn().mockResolvedValue(true),
+    hasAccessToBowler: vi.fn().mockResolvedValue(true),
+    hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+    hasSelfOrAdminAccessToBowler: vi.fn().mockResolvedValue(true),
+  };
+});
 
 // `filterByOrganization` is the only middleware leagues.ts mounts;
 // the validation logic under test runs after it, so a passthrough

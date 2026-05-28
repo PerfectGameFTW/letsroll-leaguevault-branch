@@ -39,9 +39,18 @@ const mockStorage = {
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
 const mockRequireOrgAccess = vi.fn();
-vi.mock('../../server/utils/access-control', () => ({
-  requireOrganizationAccess: (...a: unknown[]) => mockRequireOrgAccess(...a),
-}));
+const mockHasAdminAccessToLeague = vi.fn();
+// Keep the real pure role-check helpers (isSystemAdmin, isOrgOrHigher) and
+// any other exports via importOriginal; Task #735 added hasAdminAccessToLeague
+// usage to payment-reports so a bare partial mock drifts and throws.
+vi.mock('../../server/utils/access-control', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/access-control')>();
+  return {
+    ...actual,
+    requireOrganizationAccess: (...a: unknown[]) => mockRequireOrgAccess(...a),
+    hasAdminAccessToLeague: (...a: unknown[]) => mockHasAdminAccessToLeague(...a),
+  };
+});
 
 const paymentReportsRouter = (
   await import('../../server/routes/payments/payment-reports')
@@ -80,6 +89,8 @@ beforeEach(() => {
     (fn as ReturnType<typeof vi.fn>).mockReset();
   mockRequireOrgAccess.mockReset();
   mockRequireOrgAccess.mockReturnValue(true);
+  mockHasAdminAccessToLeague.mockReset();
+  mockHasAdminAccessToLeague.mockResolvedValue(true);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -212,7 +223,9 @@ describe('GET /api/payments — leagueId filter', () => {
 
   it('returns 403 when the caller has no access to the league\'s org', async () => {
     mockStorage.getLeague.mockResolvedValue(ORG_B_LEAGUE);
-    mockRequireOrgAccess.mockReturnValue(false);
+    // Task #735: the leagueId filter now gates on hasAdminAccessToLeague
+    // (covers system_admin, org_admin, and active secretary grants).
+    mockHasAdminAccessToLeague.mockResolvedValue(false);
 
     const res = await get('/api/payments?leagueId=22', ORG_A_USER);
     expect(res.status).toBe(403);
