@@ -55,6 +55,7 @@ const db = getTestDb();
 import { emailChangeRequests, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { applyConfirmEmailChangeTxn } from '../../server/routes/account';
+import { getPgErrorCode } from '../../server/utils/db-errors';
 import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -141,7 +142,8 @@ describe('applyConfirmEmailChangeTxn atomicity (task #494)', () => {
     // can map it to EMAIL_IN_USE. If a future refactor swallowed the
     // error inside the transaction, the route would silently 500.
     expect(caught).toBeDefined();
-    expect((caught as { code?: string } | null)?.code).toBe('23505');
+    // Drizzle wraps the pg error; the SQLSTATE lives on the cause chain.
+    expect(getPgErrorCode(caught)).toBe('23505');
 
     // The contract we care about: the token claim from step 1 must
     // have been rolled back. A `consumed_at` set here would mean the

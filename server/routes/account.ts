@@ -23,6 +23,7 @@ import { requireSystemAdmin } from '../middleware/auth';
 import { testBypassSkip } from '../middleware/rate-limit';
 import { syncBowlerForUser } from '../services/payment-customer-sync';
 import { maskEmail } from '../utils/pii';
+import { getPgErrorCode } from '../utils/db-errors';
 import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
 import { emailChangeRequests, users, type PaymentSyncStatus, type User } from '@shared/schema';
@@ -746,7 +747,7 @@ router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Requ
       // else between request and confirm. Transaction rolled back, so the
       // token is still pending; we explicitly consume it now so a page
       // refresh doesn't keep retrying the same losing race.
-      if ((err as { code?: string } | null)?.code === '23505') {
+      if (getPgErrorCode(err) === '23505') {
         // Consume only the specific token that just lost the race. Other
         // pending requests (e.g. one the user submitted after seeing the
         // first link sit in their inbox) are unaffected.

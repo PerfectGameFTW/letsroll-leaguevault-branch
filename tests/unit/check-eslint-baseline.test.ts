@@ -24,12 +24,16 @@ import { describe, expect, it } from 'vitest';
 
 const SCRIPT = join(process.cwd(), 'scripts/check-eslint-baseline.ts');
 
+// Use the locally-installed tsx binary directly rather than `npx tsx`:
+// in CI `npx` may try to resolve/install tsx over the network, and a
+// corrupted download pollutes stderr and leaves the script unrun.
+const TSX_BIN = join(process.cwd(), 'node_modules/.bin/tsx');
+
 function runIn(
   cwd: string,
   args: string[] = [],
 ): { status: number; stdout: string; stderr: string } {
-  // eslint-disable-next-line leaguevault/no-spawn-tsx-in-test -- script-as-subprocess pattern; converting to in-process invocation tracked under task #684.
-  const r = spawnSync('npx', ['tsx', SCRIPT, ...args], {
+  const r = spawnSync(TSX_BIN, [SCRIPT, ...args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, NODE_ENV: 'test' },

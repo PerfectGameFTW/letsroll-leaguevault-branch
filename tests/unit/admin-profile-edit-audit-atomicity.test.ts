@@ -67,6 +67,7 @@ import {
 import { hashPassword } from '../../server/lib/password';
 import * as adminProfileEditAuditModule from '../../server/storage/admin-profile-edit-audits';
 import { applyAdminProfileEditTxn } from '../../server/routes/account';
+import { getPgErrorCode } from '../../server/utils/db-errors';
 import { getBaselineOrgAId } from '../helpers';
 
 const SUFFIX = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -270,7 +271,8 @@ describe('applyAdminProfileEditTxn atomicity (task #496)', () => {
     // friendlier code). A swallowed error here would mask split-brain
     // states.
     expect(caught).toBeDefined();
-    expect((caught as { code?: string } | null)?.code).toBe('23505');
+    // Drizzle wraps the pg error; the SQLSTATE lives on the cause chain.
+    expect(getPgErrorCode(caught)).toBe('23505');
 
     // The contract: no audit row may have committed for this attempt.
     // Today the helper writes user-update-first / audit-second, so
