@@ -133,7 +133,7 @@ async function getCsrfToken(cookies: string): Promise<string> {
 }
 
 /**
- * Per-file in-memory cache of `login()` results, keyed by email.
+ * Per-file in-memory cache of `login()` results, keyed by test file + email.
  *
  * The auth round-trip (`POST /api/auth/login` + a follow-up
  * `GET /api/csrf-token` to mint the CSRF pair) is ~150-300ms each. The
@@ -162,6 +162,18 @@ async function getCsrfToken(cookies: string): Promise<string> {
  */
 const loginCache: Map<string, Promise<AuthSession>> = new Map();
 
+function getCallingTestFile(): string {
+  const stack = new Error().stack ?? '';
+  const match = stack.match(
+    /(?:^|\n)\s+at .*?([A-Za-z]:[\\/].*?tests[\\/].+?\.test\.[tj]sx?|\S*tests[\\/].+?\.test\.[tj]sx?)(?::\d+:\d+)?/,
+  );
+  return match?.[1]?.replaceAll('\\', '/') ?? '<unknown-test-file>';
+}
+
+function loginCacheKey(email: string): string {
+  return `${getCallingTestFile()}::${email}`;
+}
+
 /**
  * Drop the cached `login()` result for `email` so the next `login()`
  * call performs a real HTTP round-trip. Use this AFTER any flow that
@@ -171,11 +183,16 @@ const loginCache: Map<string, Promise<AuthSession>> = new Map();
  * session objects.
  */
 export function purgeSessionCache(email: string): void {
-  loginCache.delete(email);
+  for (const key of loginCache.keys()) {
+    if (key.endsWith(`::${email}`)) {
+      loginCache.delete(key);
+    }
+  }
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
-  const cached = loginCache.get(email);
+  const key = loginCacheKey(email);
+  const cached = loginCache.get(key);
   if (cached !== undefined) return cached;
 
   const promise = (async (): Promise<AuthSession> => {
@@ -204,10 +221,10 @@ export async function login(email: string, password: string): Promise<AuthSessio
   // Cache the in-flight promise so concurrent callers dedupe. Drop it
   // on rejection so a transient failure doesn't poison every later
   // call in the file with the original error.
-  loginCache.set(email, promise);
+  loginCache.set(key, promise);
   promise.catch(() => {
-    if (loginCache.get(email) === promise) {
-      loginCache.delete(email);
+    if (loginCache.get(key) === promise) {
+      loginCache.delete(key);
     }
   });
   return promise;
