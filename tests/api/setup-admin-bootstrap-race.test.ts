@@ -32,7 +32,25 @@ import { organizations, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { seedTestUsers } from '../setup/seed-test-users';
 
-const BASE_URL = process.env.SETUP_ADMIN_TEST_BASE_URL || 'http://localhost:5000';
+// Resolution order:
+//   1. `SETUP_ADMIN_TEST_BASE_URL` — explicit override (legacy CI behavior).
+//   2. `TEST_BASE_URL` — set by `tests/setup/per-worker-setup.ts` to point
+//      at the per-fork test app spawned on a random port. This is the
+//      path that fires under `bash scripts/test-race.sh` because vitest
+//      brings the per-worker app up alongside the test process; defaulting
+//      to `localhost:5000` instead would post to whatever (if anything)
+//      happens to be on :5000, while the in-process `db` import below
+//      writes to the per-worker DB — guaranteeing `beforeEach`'s admin
+//      reset hits a different database than the app under test and every
+//      test after the first one fails with 403 ADMIN_EXISTS.
+//   3. `https://$REPLIT_DEV_DOMAIN` — Replit-hosted dev runs.
+//   4. `http://localhost:5000` — last-resort local fallback (dev server
+//      explicitly started by the developer).
+const REPLIT_HOST = process.env.REPLIT_DEV_DOMAIN;
+const BASE_URL =
+  process.env.SETUP_ADMIN_TEST_BASE_URL ||
+  process.env.TEST_BASE_URL ||
+  (REPLIT_HOST ? `https://${REPLIT_HOST}` : 'http://localhost:5000');
 const SETUP_SECRET = process.env.SETUP_SECRET;
 const RUN = process.env.RUN_BOOTSTRAP_RACE_TESTS === '1';
 
