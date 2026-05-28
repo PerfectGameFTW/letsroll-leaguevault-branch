@@ -185,14 +185,14 @@ export default function PaymentsPage() {
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold">Payments</h1>
             <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Record Payment
             </Button>
           </div>
 
-          <div className="flex items-center space-x-2 mb-6">
+          <div className="flex items-center gap-x-2 mb-6">
             <div className="relative w-full max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Search by bowler name..."
@@ -254,7 +254,7 @@ export default function PaymentsPage() {
                   disabled={deletePaymentMutation.isPending}
                 >
                   {deletePaymentMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : "Delete"}
                 </Button>
               </DialogFooter>

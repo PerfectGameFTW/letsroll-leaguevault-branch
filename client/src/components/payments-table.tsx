@@ -129,7 +129,7 @@ export function PaymentsTable({
                           onClick={() => setResendTarget(payment)}
                           className={payment.receiptEmailMissing ? "text-amber-600" : ""}
                         >
-                          <Send className="h-4 w-4" />
+                          <Send className="size-4" />
                         </Button>
                       )}
                       {payment.status === "paid" && isCardPaymentType(payment.type) && isAdmin && (
@@ -140,7 +140,7 @@ export function PaymentsTable({
                           onClick={() => onRefund(payment)}
                           disabled={isRefundPending}
                         >
-                          <RotateCcw className="h-4 w-4 text-destructive" />
+                          <RotateCcw className="size-4 text-destructive" />
                         </Button>
                       )}
                       {(!isCardPaymentType(payment.type) || isAdmin) && (
@@ -152,9 +152,9 @@ export function PaymentsTable({
                           disabled={isDeletePending}
                         >
                           {isDeletePending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="size-4 animate-spin" />
                           ) : (
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <Trash2 className="size-4 text-destructive" />
                           )}
                         </Button>
                       )}

@@ -160,7 +160,7 @@ const ClaimBowlerPage: FC = () => {
           ) : (
             <>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name..."
                   value={searchQuery}
@@ -186,17 +186,17 @@ const ClaimBowlerPage: FC = () => {
                             Team {teamGroup.team.number} — {teamGroup.team.name}
                           </p>
                           {teamGroup.bowlers.map((bowler) => (
-                            <button
+                            <button type="button"
                               key={bowler.id}
                               onClick={() => handleSelectBowler(bowler)}
                               className="w-full flex items-center justify-between p-2 rounded-md hover:bg-accent transition-colors text-left group"
                               disabled={claimMutation.isPending}
                             >
                               <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-muted-foreground" />
+                                <User className="size-4 text-muted-foreground" />
                                 <span className="text-sm">{bowler.name}</span>
                               </div>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <ChevronRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                             </button>
                           ))}
                         </div>
@@ -213,7 +213,7 @@ const ClaimBowlerPage: FC = () => {
                   className="w-full text-muted-foreground"
                   disabled={claimMutation.isPending}
                 >
-                  <SkipForward className="h-4 w-4 mr-2" />
+                  <SkipForward className="size-4 mr-2" />
                   Skip — I'm not on a roster yet
                 </Button>
               </div>
@@ -235,8 +235,8 @@ const ClaimBowlerPage: FC = () => {
             <AlertDialogAction onClick={handleConfirmClaim} disabled={claimMutation.isPending}>
               {claimMutation.isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Linking...
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Linking…
                 </>
               ) : (
                 "Yes, that's me"

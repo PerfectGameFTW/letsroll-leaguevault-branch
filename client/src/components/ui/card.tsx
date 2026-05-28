@@ -34,7 +34,7 @@ const CardHeader = React.forwardRef<HTMLDivElement, CardHeaderProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("flex flex-col space-y-1.5", className)}
+      className={cn("flex flex-col gap-y-1.5", className)}
       {...props}
     />
   )

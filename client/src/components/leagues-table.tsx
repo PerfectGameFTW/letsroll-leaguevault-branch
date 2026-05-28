@@ -85,13 +85,13 @@ export function LeaguesTable({
                 </Badge>
               </TableCell>
               <TableCell>
-                <div className="flex space-x-2">
+                <div className="flex gap-x-2">
                   <Button variant="outline" size="sm" onClick={() => onEdit(league)}>
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="size-4" />
                   </Button>
                   {league.active ? (
                     <Button variant="outline" size="sm" onClick={() => onArchive(league.id)}>
-                      <Archive className="h-4 w-4" />
+                      <Archive className="size-4" />
                     </Button>
                   ) : (
                     <Button
@@ -100,11 +100,11 @@ export function LeaguesTable({
                       onClick={() => onRestore(league.id)}
                       disabled={isRestorePending}
                     >
-                      <RotateCcw className="h-4 w-4" />
+                      <RotateCcw className="size-4" />
                     </Button>
                   )}
                   <Button variant="destructive" size="sm" onClick={() => onDelete(league.id)}>
-                    <Trash className="h-4 w-4" />
+                    <Trash className="size-4" />
                   </Button>
                 </div>
               </TableCell>

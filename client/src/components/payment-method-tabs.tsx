@@ -56,7 +56,7 @@ export const PaymentMethodTabs: FC<PaymentMethodTabsProps> = ({
               value="credit" 
               className="flex items-center gap-2"
             >
-              <CreditCard className="h-4 w-4" />
+              <CreditCard className="size-4" />
               Credit Card
             </TabsTrigger>
           </TabsList>
@@ -64,7 +64,7 @@ export const PaymentMethodTabs: FC<PaymentMethodTabsProps> = ({
           <TabsContent value="credit">
             {squareLoadFailed ? (
               <Alert variant="destructive" className="mb-4">
-                <AlertTriangle className="h-4 w-4" />
+                <AlertTriangle className="size-4" />
                 <AlertTitle>Credit Card Processing Unavailable</AlertTitle>
                 <AlertDescription>
                   Credit card processing is temporarily unavailable. Please use cash or check payment methods instead.
@@ -75,7 +75,7 @@ export const PaymentMethodTabs: FC<PaymentMethodTabsProps> = ({
           
           <TabsContent value="cash">
             <Alert className="mb-4">
-              <Info className="h-4 w-4" />
+              <Info className="size-4" />
               <AlertDescription>
                 Recording a cash payment. The payment will be marked as paid immediately.
               </AlertDescription>
@@ -84,7 +84,7 @@ export const PaymentMethodTabs: FC<PaymentMethodTabsProps> = ({
           
           <TabsContent value="check">
             <Alert className="mb-4">
-              <Info className="h-4 w-4" />
+              <Info className="size-4" />
               <AlertDescription>
                 Recording a check payment. Don't forget to add the check number below.
               </AlertDescription>

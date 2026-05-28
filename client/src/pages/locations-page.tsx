@@ -101,7 +101,7 @@ export default function LocationsPage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Locations</h1>
           <Button onClick={handleAddClick}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="size-4 mr-2" />
             Add Location
           </Button>
         </div>
@@ -159,9 +159,9 @@ export default function LocationsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex space-x-2">
+                        <div className="flex gap-x-2">
                           <Button variant="outline" size="sm" onClick={() => handleEditClick(loc)}>
-                            <Edit className="h-4 w-4" />
+                            <Edit className="size-4" />
                           </Button>
                           {loc.active === false ? (
                             <Button
@@ -170,7 +170,7 @@ export default function LocationsPage() {
                               onClick={() => restoreMutation.mutate(loc.id)}
                               disabled={restoreMutation.isPending}
                             >
-                              <RotateCcw className="h-4 w-4" />
+                              <RotateCcw className="size-4" />
                             </Button>
                           ) : (
                             <Button
@@ -178,7 +178,7 @@ export default function LocationsPage() {
                               size="sm"
                               onClick={() => setArchiveConfirmId(loc.id)}
                             >
-                              <Archive className="h-4 w-4" />
+                              <Archive className="size-4" />
                             </Button>
                           )}
                           <Button
@@ -186,7 +186,7 @@ export default function LocationsPage() {
                             size="sm"
                             onClick={() => setDeleteConfirmId(loc.id)}
                           >
-                            <Trash className="h-4 w-4" />
+                            <Trash className="size-4" />
                           </Button>
                         </div>
                       </TableCell>

@@ -137,7 +137,7 @@ export default function EmailTemplatesPage() {
           <PageLoadingState fullPage={false} />
         ) : templates.length === 0 ? (
           <div className="rounded-lg border p-8 text-center">
-            <Mail className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <Mail className="size-10 text-muted-foreground mx-auto mb-3" />
             <h3 className="text-sm font-medium">No email templates</h3>
             <p className="text-sm text-muted-foreground mt-1">Email templates will appear here once they are created.</p>
           </div>
@@ -152,12 +152,12 @@ export default function EmailTemplatesPage() {
                     className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
                     onClick={() => setExpandedId(isExpanded ? null : template.id)}
                   >
-                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <Mail className="size-4 text-muted-foreground shrink-0" />
                     <span className="font-medium text-sm flex-1 truncate">{template.name}</span>
                     <Badge variant={template.active ? "default" : "secondary"} className="shrink-0">
                       {template.active ? "Active" : "Inactive"}
                     </Badge>
-                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    <ChevronDown className={`size-4 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                   </button>
                   {isExpanded && (
                     <div className="px-4 pb-4 pt-1 space-y-3 bg-muted/30">
@@ -174,7 +174,7 @@ export default function EmailTemplatesPage() {
                       </div>
                       <div className="flex items-center gap-3 pt-1">
                         <Button variant="outline" size="sm" onClick={() => openEditor(template)}>
-                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                          <Pencil className="size-3.5 mr-1.5" />
                           Edit Template
                         </Button>
                         <div className="flex items-center gap-2 ml-auto">
@@ -197,7 +197,7 @@ export default function EmailTemplatesPage() {
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
+                <Mail className="size-5" />
                 Edit: {editingTemplate?.name}
               </DialogTitle>
             </DialogHeader>
@@ -209,7 +209,7 @@ export default function EmailTemplatesPage() {
                   <Switch id="active-toggle" checked={editActive} onCheckedChange={setEditActive} />
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)}>
-                  {showPreview ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
+                  {showPreview ? <EyeOff className="size-4 mr-1.5" /> : <Eye className="size-4 mr-1.5" />}
                   {showPreview ? "Hide Preview" : "Show Preview"}
                 </Button>
               </div>
@@ -226,7 +226,7 @@ export default function EmailTemplatesPage() {
 
               <div className="rounded-lg border bg-muted/50 p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Info className="h-4 w-4 text-muted-foreground" />
+                  <Info className="size-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Available Template Variables</span>
                 </div>
                 <div className="grid gap-1.5">
@@ -272,7 +272,7 @@ export default function EmailTemplatesPage() {
 
             <div className="space-y-3">
               <Label className="flex items-center gap-2">
-                <Send className="h-4 w-4" />
+                <Send className="size-4" />
                 Send Test Email
               </Label>
               <div className="space-y-2">
@@ -288,9 +288,9 @@ export default function EmailTemplatesPage() {
                         <SelectItem key={org.id} value={String(org.id)}>
                           <span className="flex items-center gap-2">
                             {org.logo ? (
-                              <img src={org.logo} alt="" className="h-4 w-4 rounded object-contain" />
+                              <img src={org.logo} alt="" className="size-4 rounded object-contain" />
                             ) : (
-                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              <Building2 className="size-4 text-muted-foreground" />
                             )}
                             {org.name}
                           </span>
@@ -323,9 +323,9 @@ export default function EmailTemplatesPage() {
                       disabled={sendTestMutation.isPending || !testEmail}
                     >
                       {sendTestMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        <Loader2 className="size-4 mr-1.5 animate-spin" />
                       ) : (
-                        <Send className="h-4 w-4 mr-1.5" />
+                        <Send className="size-4 mr-1.5" />
                       )}
                       Send Test
                     </Button>
@@ -340,7 +340,7 @@ export default function EmailTemplatesPage() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditingTemplate(null)}>Cancel</Button>
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                {updateMutation.isPending && <Loader2 className="size-4 mr-1.5 animate-spin" />}
                 Save Changes
               </Button>
             </DialogFooter>

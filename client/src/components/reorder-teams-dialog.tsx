@@ -34,7 +34,7 @@ export function ReorderTeamsDialog({
 
   useEffect(() => {
     if (open) {
-      const sorted = [...teams].sort((a, b) => {
+      const sorted = teams.toSorted((a, b) => {
         if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
         return (a.number ?? 0) - (b.number ?? 0);
       });
@@ -150,7 +150,7 @@ export function ReorderTeamsDialog({
                   dragIndex === index ? "opacity-50 bg-muted" : ""
                 } ${dragOverIndex === index && dragIndex !== index ? "bg-accent" : ""}`}
               >
-                <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                <GripVertical className="size-4 text-muted-foreground shrink-0" />
                 <Input
                   type="number"
                   min={1}
@@ -186,8 +186,8 @@ export function ReorderTeamsDialog({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving…
                 </>
               ) : (
                 'Save Order'

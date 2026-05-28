@@ -108,12 +108,12 @@ export default function BowlersPage() {
               onClick={() => bnSyncAllMutation.mutate()}
               disabled={bnSyncAllMutation.isPending}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${bnSyncAllMutation.isPending ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-4 mr-2 ${bnSyncAllMutation.isPending ? "animate-spin" : ""}`} />
               {bnSyncAllMutation.isPending ? "Syncing..." : "Sync All to BowlNow"}
             </Button>
           )}
           <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="size-4 mr-2" />
             Add Bowler
           </Button>
         </div>
@@ -121,7 +121,7 @@ export default function BowlersPage() {
 
       <div className="space-y-4 mb-6">
         <div className="relative">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
           <Input
             placeholder="Search bowlers..."
             value={searchQuery}
@@ -129,11 +129,11 @@ export default function BowlersPage() {
             className="pl-8"
           />
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-x-2">
           {showInactive ? (
-            <Eye className="h-4 w-4 text-muted-foreground" />
+            <Eye className="size-4 text-muted-foreground" />
           ) : (
-            <EyeOff className="h-4 w-4 text-muted-foreground" />
+            <EyeOff className="size-4 text-muted-foreground" />
           )}
           <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
           <Switch
@@ -165,8 +165,8 @@ export default function BowlersPage() {
                   <TableCell colSpan={bnConfigured ? 7 : 6} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Loading bowler details...
+                        <Loader2 className="size-4 animate-spin mr-2" />
+                        Loading bowler details…
                       </div>
                     ) : (
                       "No bowlers found"
@@ -181,7 +181,7 @@ export default function BowlersPage() {
                     <TableRow key={bowler.id}>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className={`h-4 w-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                          <CheckCircle2 className={`size-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
                           <Link
                             href={`/bowlers/${bowler.id}?from=bowlers`}
                             className="hover:underline text-foreground"
@@ -192,14 +192,14 @@ export default function BowlersPage() {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {isLoadingRelatedData ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="size-4 animate-spin" />
                         ) : (
                           leagueName
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {isLoadingRelatedData ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="size-4 animate-spin" />
                         ) : (
                           teamName
                         )}
@@ -239,7 +239,7 @@ export default function BowlersPage() {
                           aria-label={`Edit ${bowler.name}`}
                           data-testid={`button-edit-bowler-${bowler.id}`}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="size-4" />
                         </Button>
                       </TableCell>
                     </TableRow>

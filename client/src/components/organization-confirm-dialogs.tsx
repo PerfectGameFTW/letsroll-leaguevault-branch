@@ -83,7 +83,7 @@ export function OrganizationConfirmDialogs({
         <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
+              <AlertTriangle className="size-5" />
               Permanently Delete Organization
             </AlertDialogTitle>
             <AlertDialogDescription asChild>

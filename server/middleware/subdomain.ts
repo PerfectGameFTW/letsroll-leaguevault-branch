@@ -158,7 +158,7 @@ export function orgSessionGuard(req: Request, res: Response, next: NextFunction)
   });
 }
 
-export function clearSubdomainCache(slug?: string) {
+function clearSubdomainCache(slug?: string) {
   if (slug) {
     orgCache.delete(slug);
   } else {

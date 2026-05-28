@@ -221,7 +221,7 @@ export default function SetPasswordPage() {
                   className="absolute right-0 top-0 h-full px-3"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
               </div>
             </div>
@@ -282,9 +282,9 @@ export default function SetPasswordPage() {
                 {requirements.map((req, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm">
                     {req.met ? (
-                      <Check className="h-3.5 w-3.5 text-green-600" />
+                      <Check className="size-3.5 text-green-600" />
                     ) : (
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      <X className="size-3.5 text-muted-foreground" />
                     )}
                     <span className={req.met ? 'text-green-600' : 'text-muted-foreground'}>{req.label}</span>
                   </div>
@@ -294,7 +294,7 @@ export default function SetPasswordPage() {
 
             {isThrottled && (
               <Alert variant="destructive" data-testid="alert-set-password-throttled">
-                <AlertTriangle className="h-4 w-4" />
+                <AlertTriangle className="size-4" />
                 <AlertTitle>Too many attempts</AlertTitle>
                 <AlertDescription>
                   To protect your account, we've paused password submissions
@@ -316,8 +316,8 @@ export default function SetPasswordPage() {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Setting password...
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Setting password…
                 </>
               ) : isThrottled ? (
                 `Try again in ${formatCountdown(remainingSeconds)}`

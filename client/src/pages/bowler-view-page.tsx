@@ -158,7 +158,7 @@ export default function BowlerViewPage() {
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
             data-testid={explicitBackLink.testid}
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="size-4 mr-2" />
             {explicitBackLink.label}
           </Link>
         ) : selectedAssociation ? (
@@ -167,7 +167,7 @@ export default function BowlerViewPage() {
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
             data-testid="link-back-to-team"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="size-4 mr-2" />
             Back to Team
           </Link>
         ) : null}
@@ -184,7 +184,7 @@ export default function BowlerViewPage() {
                 onClick={() => setShowEditDialog(true)}
                 data-testid="button-edit-bowler"
               >
-                <Pencil className="h-4 w-4 mr-2" />
+                <Pencil className="size-4 mr-2" />
                 Edit Bowler
               </Button>
             )}

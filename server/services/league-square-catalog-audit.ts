@@ -280,7 +280,7 @@ export class LeagueSquareCatalogAuditor {
   }
 }
 
-export const leagueSquareCatalogAuditor = new LeagueSquareCatalogAuditor();
+const leagueSquareCatalogAuditor = new LeagueSquareCatalogAuditor();
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -308,11 +308,11 @@ export function startLeagueSquareCatalogAudit(intervalMs: number = DEFAULT_INTER
   setTimeout(tick, 5_000).unref?.();
 }
 
-export function stopLeagueSquareCatalogAudit(): void {
+function stopLeagueSquareCatalogAudit(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
 }
 
-export const LEAGUE_SQUARE_MISSING_ALERT_KIND_PREFIX = ALERT_KIND_PREFIX;
+const LEAGUE_SQUARE_MISSING_ALERT_KIND_PREFIX = ALERT_KIND_PREFIX;

@@ -118,7 +118,7 @@ const AdminUnclaimedUsersPage: FC = () => {
                         onClick={() => setLinking(u)}
                         data-testid={`link-existing-${u.id}`}
                       >
-                        <Link2 className="h-4 w-4 mr-1" />
+                        <Link2 className="size-4 mr-1" />
                         Link Existing
                       </Button>
                       <Button
@@ -126,7 +126,7 @@ const AdminUnclaimedUsersPage: FC = () => {
                         onClick={() => setCreating(u)}
                         data-testid={`create-bowler-${u.id}`}
                       >
-                        <UserPlus className="h-4 w-4 mr-1" />
+                        <UserPlus className="size-4 mr-1" />
                         Create Bowler
                       </Button>
                       <Button
@@ -137,7 +137,7 @@ const AdminUnclaimedUsersPage: FC = () => {
                         data-testid={`delete-unclaimed-user-${u.id}`}
                         aria-label={`Delete ${u.name}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       </Button>
                     </div>
                   </div>
@@ -299,7 +299,7 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
             disabled={!leagueId || !teamId || mutation.isPending}
             data-testid="confirm-create-bowler"
           >
-            {mutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {mutation.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
             Create &amp; Link
           </Button>
         </DialogFooter>
@@ -452,7 +452,7 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
             disabled={!bowlerId || mutation.isPending || (leagueId !== "" && teamId === "")}
             data-testid="confirm-link-existing"
           >
-            {mutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {mutation.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
             Link Bowler
           </Button>
         </DialogFooter>

@@ -95,7 +95,7 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
                       onClick={() => unlink.mutate(l.id)}
                       disabled={unlink.isPending}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="size-4" />
                     </Button>
                   </div>
                 </div>

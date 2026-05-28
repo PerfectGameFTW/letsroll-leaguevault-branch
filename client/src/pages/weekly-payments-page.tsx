@@ -197,11 +197,11 @@ export default function WeeklyPaymentsPage() {
             href={`/leagues/${leagueId}`}
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="size-4 mr-2" />
             Back to {league.name}
           </Link>
 
-          <div className="flex flex-col space-y-4">
+          <div className="flex flex-col gap-y-4">
             <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
             <WeekNavigator
               selectedWeek={selectedWeek}

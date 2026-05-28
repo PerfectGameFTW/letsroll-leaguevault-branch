@@ -139,8 +139,8 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
       )}
       {isWalletProcessing && (
         <div className="flex items-center justify-center gap-2 py-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+          <Loader2 className="size-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Processing wallet payment…</span>
         </div>
       )}
       {showWallet && (
@@ -163,7 +163,7 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
             }}
             className="flex items-center gap-2"
           >
-            <Wallet className="h-4 w-4" />
+            <Wallet className="size-4" />
             Saved Card
           </Button>
           <Button
@@ -177,7 +177,7 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
             }}
             className="flex items-center gap-2"
           >
-            <CreditCard className="h-4 w-4" />
+            <CreditCard className="size-4" />
             New Card
           </Button>
         </div>
@@ -203,15 +203,15 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           <div ref={cardContainerRef} className="min-h-[200px] border rounded-lg bg-card p-4">
             {!isInitialized && (
               <div className="flex items-center justify-center p-4">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
                 <p className="ml-2 text-sm text-muted-foreground">
-                  Loading credit card form...
+                  Loading credit card form…
                 </p>
               </div>
             )}
           </div>
           {showStoreCardOption && (
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-x-3">
               <Checkbox
                 id="store-card-status"
                 checked={storeCard}

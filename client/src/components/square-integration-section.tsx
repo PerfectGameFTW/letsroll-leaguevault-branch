@@ -157,12 +157,12 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
           <div className="h-5 w-24 bg-muted animate-pulse rounded-full" />
         ) : isConfigured ? (
           <Badge className="bg-green-100 text-green-700 border-green-200">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
+            <CheckCircle2 className="size-3 mr-1" />
             Configured
           </Badge>
         ) : isPartial ? (
           <Badge className="bg-amber-100 text-amber-800 border-amber-200" data-testid="badge-square-partial">
-            <AlertTriangle className="h-3 w-3 mr-1" />
+            <AlertTriangle className="size-3 mr-1" />
             Partial setup
           </Badge>
         ) : (
@@ -170,7 +170,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
         )}
         {(isConfigured || isPartial) && !expanded ? (
           <Button variant="outline" size="sm" onClick={handleOpen}>
-            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            <Pencil className="size-3.5 mr-1.5" />
             {isPartial ? 'Finish setup' : 'Edit'}
           </Button>
         ) : !expanded ? (
@@ -179,7 +179,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
           </Button>
         ) : (
           <Button variant="ghost" size="sm" onClick={() => setExpanded(false)}>
-            <ChevronUp className="h-4 w-4" />
+            <ChevronUp className="size-4" />
           </Button>
         )}
       </div>
@@ -206,7 +206,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
               data-testid="alert-square-missing-fields-form"
             >
               <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <AlertTriangle className="size-4 mt-0.5 shrink-0" />
                 <div>
                   <div className="font-medium">Square is partially configured</div>
                   <div className="text-xs mt-1">
@@ -246,7 +246,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
                 onClick={() => setShowToken(!showToken)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
-                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -353,12 +353,12 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
           <div className="h-5 w-24 bg-muted animate-pulse rounded-full" />
         ) : isConfigured ? (
           <Badge className="bg-green-100 text-green-700 border-green-200">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
+            <CheckCircle2 className="size-3 mr-1" />
             Configured
           </Badge>
         ) : isPartial ? (
           <Badge className="bg-amber-100 text-amber-800 border-amber-200" data-testid="badge-clover-partial">
-            <AlertTriangle className="h-3 w-3 mr-1" />
+            <AlertTriangle className="size-3 mr-1" />
             Partial setup
           </Badge>
         ) : (
@@ -366,7 +366,7 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
         )}
         {(isConfigured || isPartial) && !expanded ? (
           <Button variant="outline" size="sm" onClick={handleOpen}>
-            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            <Pencil className="size-3.5 mr-1.5" />
             {isPartial ? 'Finish setup' : 'Edit'}
           </Button>
         ) : !expanded ? (
@@ -375,7 +375,7 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
           </Button>
         ) : (
           <Button variant="ghost" size="sm" onClick={() => setExpanded(false)}>
-            <ChevronUp className="h-4 w-4" />
+            <ChevronUp className="size-4" />
           </Button>
         )}
       </div>
@@ -402,7 +402,7 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
               data-testid="alert-clover-missing-fields-form"
             >
               <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <AlertTriangle className="size-4 mt-0.5 shrink-0" />
                 <div>
                   <div className="font-medium">Clover is partially configured</div>
                   <div className="text-xs mt-1">
@@ -442,7 +442,7 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
                 onClick={() => setShowToken(!showToken)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
-                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -534,11 +534,11 @@ function PaymentLocationCard({ location, highlighted }: PaymentLocationCardHighl
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isClover ? 'bg-emerald-600' : 'bg-black'}`}>
+            <div className={`size-10 rounded-lg flex items-center justify-center shrink-0 ${isClover ? 'bg-emerald-600' : 'bg-black'}`}>
               {isClover ? (
-                <CreditCard className="h-5 w-5 text-white" />
+                <CreditCard className="size-5 text-white" />
               ) : (
-                <SiSquare className="h-5 w-5 text-white" />
+                <SiSquare className="size-5 text-white" />
               )}
             </div>
             <div>
@@ -586,8 +586,8 @@ export function SquareSection({ orgId, highlightLocationId = null }: SquareSecti
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 mb-1">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-black to-blue-600 flex items-center justify-center shrink-0">
-          <CreditCard className="h-5 w-5 text-white" />
+        <div className="size-10 rounded-lg bg-gradient-to-br from-black to-blue-600 flex items-center justify-center shrink-0">
+          <CreditCard className="size-5 text-white" />
         </div>
         <div>
           <h3 className="text-sm font-semibold">Payment Processing</h3>
@@ -601,7 +601,7 @@ export function SquareSection({ orgId, highlightLocationId = null }: SquareSecti
             <Card key={i}>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+                  <div className="size-10 rounded-lg bg-muted animate-pulse" />
                   <div className="space-y-2">
                     <div className="h-4 w-32 bg-muted animate-pulse rounded" />
                     <div className="h-3 w-48 bg-muted animate-pulse rounded" />

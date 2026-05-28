@@ -74,12 +74,12 @@ const es: AccountLockoutStrings = {
   unknown: 'desconocido',
 };
 
-export const ACCOUNT_LOCKOUT_I18N: Record<string, AccountLockoutStrings> = {
+const ACCOUNT_LOCKOUT_I18N: Record<string, AccountLockoutStrings> = {
   en,
   es,
 };
 
-export const DEFAULT_ACCOUNT_LOCKOUT_LOCALE = 'en';
+const DEFAULT_ACCOUNT_LOCKOUT_LOCALE = 'en';
 
 /**
  * Resolve a user-supplied locale tag (or null) to a known set of

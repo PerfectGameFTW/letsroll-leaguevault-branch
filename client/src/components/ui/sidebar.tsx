@@ -292,6 +292,7 @@ const SidebarRail = React.forwardRef<
 
   return (
     <button
+      type="button"
       ref={ref}
       data-sidebar="rail"
       aria-label="Toggle Sidebar"
@@ -649,10 +650,10 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+  // Random width between 50 to 90%. Computed once per mount via lazy
+  // useState so the value is stable across re-renders without the
+  // useMemo overhead.
+  const [width] = React.useState(() => `${Math.floor(Math.random() * 40) + 50}%`)
 
   return (
     <div

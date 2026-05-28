@@ -210,8 +210,8 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           )}
           {isWalletProcessing && (
             <div className="flex items-center justify-center gap-2 py-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+              <Loader2 className="size-4 animate-spin" />
+              <span className="text-sm text-muted-foreground">Processing wallet payment…</span>
             </div>
           )}
           {showWallet && (
@@ -234,7 +234,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
                 }}
                 className="flex items-center gap-2"
               >
-                <Wallet className="h-4 w-4" />
+                <Wallet className="size-4" />
                 Saved Card
               </Button>
               <Button
@@ -247,7 +247,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
                 }}
                 className="flex items-center gap-2"
               >
-                <CreditCard className="h-4 w-4" />
+                <CreditCard className="size-4" />
                 New Card
               </Button>
             </div>
@@ -275,7 +275,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
                 ref={(el) => cardCallbackRef.current(el)}
                 className="min-h-[80px] rounded-md border p-3"
               />
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-x-3">
                 <Checkbox
                   id="store-card-history"
                   checked={storeCard}
@@ -324,12 +324,12 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Processing…
               </>
             ) : (
               <>
-                <CreditCard className="mr-2 h-4 w-4" />
+                <CreditCard className="mr-2 size-4" />
                 Pay {formatCurrency(dialogAmount)}
               </>
             )}

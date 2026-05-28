@@ -134,7 +134,7 @@ export function ReorderBowlersDialog({
                       onClick={() => moveItem(index, "up")}
                       disabled={index === 0 || isSubmitting}
                     >
-                      <ArrowUp className="h-4 w-4" />
+                      <ArrowUp className="size-4" />
                       <span className="sr-only">Move up</span>
                     </Button>
                     <Button
@@ -143,7 +143,7 @@ export function ReorderBowlersDialog({
                       onClick={() => moveItem(index, "down")}
                       disabled={index === orderedLeagues.length - 1 || isSubmitting}
                     >
-                      <ArrowDown className="h-4 w-4" />
+                      <ArrowDown className="size-4" />
                       <span className="sr-only">Move down</span>
                     </Button>
                   </div>
@@ -163,8 +163,8 @@ export function ReorderBowlersDialog({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving…
                 </>
               ) : (
                 'Save Order'

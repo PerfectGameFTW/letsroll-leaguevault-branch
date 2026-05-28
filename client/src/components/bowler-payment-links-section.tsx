@@ -104,7 +104,7 @@ export const BowlerPaymentLinksSection: FC<{
     <Card data-testid="card-payment-partners" className="mt-4">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Users className="h-4 w-4" /> Payment partners
+          <Users className="size-4" /> Payment partners
         </CardTitle>
         <CardDescription>
           Linked bowlers can pay for each other from a saved card.
@@ -141,7 +141,7 @@ export const BowlerPaymentLinksSection: FC<{
                         data-testid={`button-remove-partner-${l.id}`}
                         aria-label={`Remove payment partner ${l.partnerName}`}
                       >
-                        <Trash2 className="h-4 w-4 mr-1" />
+                        <Trash2 className="size-4 mr-1" />
                         Remove
                       </Button>
                     </span>
@@ -166,7 +166,7 @@ export const BowlerPaymentLinksSection: FC<{
                   className="flex items-center justify-between rounded border p-2 text-sm"
                 >
                   <span className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" /> {l.partnerName}
+                    <Mail className="size-4" /> {l.partnerName}
                     <Badge variant="outline">Pending</Badge>
                   </span>
                   <div className="flex items-center gap-1">
@@ -179,7 +179,7 @@ export const BowlerPaymentLinksSection: FC<{
                           disabled={respond.isPending}
                           onClick={() => respond.mutate({ id: l.id, action: "accept" })}
                         >
-                          <Check className="h-4 w-4" />
+                          <Check className="size-4" />
                         </Button>
                         <Button
                           size="sm"
@@ -188,7 +188,7 @@ export const BowlerPaymentLinksSection: FC<{
                           disabled={respond.isPending}
                           onClick={() => respond.mutate({ id: l.id, action: "decline" })}
                         >
-                          <X className="h-4 w-4" />
+                          <X className="size-4" />
                         </Button>
                       </>
                     )}
@@ -200,7 +200,7 @@ export const BowlerPaymentLinksSection: FC<{
                         disabled={unlink.isPending}
                         onClick={() => unlink.mutate(l.id)}
                       >
-                        <X className="h-4 w-4" />
+                        <X className="size-4" />
                       </Button>
                     )}
                   </div>
@@ -249,7 +249,7 @@ export const BowlerPaymentLinksSection: FC<{
                 }}
                 disabled={unlink.isPending}
               >
-                {unlink.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remove Partner"}
+                {unlink.isPending ? <Loader2 className="size-4 animate-spin" /> : "Remove Partner"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

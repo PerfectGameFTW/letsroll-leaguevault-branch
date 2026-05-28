@@ -254,7 +254,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
 
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
+            <Loader2 className="size-8 animate-spin" />
           </div>
         ) : (
           <Form {...form}>
@@ -367,7 +367,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                         </SelectTrigger>
                         <SelectContent>
                           {loadingTeams ? (
-                            <SelectItem value="loading" disabled>Loading teams...</SelectItem>
+                            <SelectItem value="loading" disabled>Loading teams…</SelectItem>
                           ) : teams.length === 0 ? (
                             <SelectItem value="none" disabled>No teams in this league</SelectItem>
                           ) : (
@@ -402,7 +402,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                 )}
               />
 
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-x-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -418,7 +418,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                 >
                   {mutation.isPending ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 size-4 animate-spin" />
                       {bowler ? "Updating..." : "Creating..."}
                     </>
                   ) : (
@@ -440,8 +440,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                     >
                       {deleteMutation.isPending ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Deleting...
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Deleting…
                         </>
                       ) : (
                         "Delete Bowler"
@@ -479,8 +479,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
             >
               {addExistingBowlerMutation.isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Adding…
                 </>
               ) : (
                 "Add to Team"

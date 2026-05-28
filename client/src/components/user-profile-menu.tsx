@@ -158,7 +158,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
             size={showName ? "sm" : "icon"}
             className={showName ? "flex items-center gap-2 px-2" : "rounded-full"}
           >
-            <Avatar className="h-10 w-10 flex-shrink-0 border border-muted">
+            <Avatar className="size-10 flex-shrink-0 border border-muted">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name || user.email} />
               ) : null}
@@ -179,14 +179,14 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
           <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer" onClick={openProfileDialog}>
             <div className="flex items-center gap-2">
-              <UserIcon className="h-4 w-4" />
+              <UserIcon className="size-4" />
               <span>Profile</span>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" onClick={triggerFileInput}>
             <div className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              <span>{isUploading ? "Uploading..." : "Change Avatar"}</span>
+              <Upload className="size-4" />
+              <span>{isUploading ? "Uploading…" : "Change Avatar"}</span>
             </div>
           </DropdownMenuItem>
           {user.bowlerId ? (
@@ -199,7 +199,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
               }}
             >
               <div className="flex items-center gap-2">
-                <UsersIcon className="h-4 w-4" />
+                <UsersIcon className="size-4" />
                 <span>Payment partners</span>
               </div>
             </DropdownMenuItem>
@@ -207,7 +207,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
           <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer" onClick={handleLogout}>
             <div className="flex items-center gap-2 text-destructive">
-              <LogOut className="h-4 w-4" />
+              <LogOut className="size-4" />
               <span>Logout</span>
             </div>
           </DropdownMenuItem>
@@ -243,8 +243,8 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
           <DialogHeader>
             <DialogTitle>User Profile</DialogTitle>
           </DialogHeader>
-          <div className="py-4 flex flex-col items-center space-y-4">
-            <Avatar className="h-24 w-24 border border-muted">
+          <div className="py-4 flex flex-col items-center gap-y-4">
+            <Avatar className="size-24 border border-muted">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name || user.email} />
               ) : null}
@@ -256,7 +256,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
             </div>
             <div className="flex gap-4">
               <Button variant="outline" size="sm" onClick={triggerFileInput}>
-                <Upload className="h-4 w-4 mr-2" />
+                <Upload className="size-4 mr-2" />
                 {isUploading ? "Uploading..." : "Change Avatar"}
               </Button>
             </div>

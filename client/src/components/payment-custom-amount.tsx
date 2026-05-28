@@ -43,7 +43,7 @@ export const PaymentCustomAmount: FC<PaymentCustomAmountProps> = ({
             {formatCurrency(fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks)} total
           </span>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-x-2">
           <Button
             type="button"
             variant="outline"
@@ -51,7 +51,7 @@ export const PaymentCustomAmount: FC<PaymentCustomAmountProps> = ({
             onClick={() => onWeekChange(selectedWeeks - 1)}
             disabled={selectedWeeks <= 1}
           >
-            <Minus className="h-4 w-4" />
+            <Minus className="size-4" />
           </Button>
           <input
             id="custom-weeks"
@@ -69,7 +69,7 @@ export const PaymentCustomAmount: FC<PaymentCustomAmountProps> = ({
             onClick={() => onWeekChange(selectedWeeks + 1)}
             disabled={selectedWeeks >= maxPayableWeeks}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
           </Button>
         </div>
       </div>

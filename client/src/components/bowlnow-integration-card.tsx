@@ -112,7 +112,7 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
+            <div className="size-10 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
               <img src={bowlnowLogo} alt="BowlNow" className="w-full h-full object-contain" />
             </div>
             <div>
@@ -122,12 +122,12 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
           <div className="flex items-center gap-3">
             {isConfigured ? (
               <Badge className="bg-green-100 text-green-700 border-green-200">
-                <CheckCircle2 className="h-3 w-3 mr-1" />
+                <CheckCircle2 className="size-3 mr-1" />
                 Connected
               </Badge>
             ) : config.apiKeyConfigured ? (
               <Badge variant="secondary">
-                <XCircle className="h-3 w-3 mr-1" />
+                <XCircle className="size-3 mr-1" />
                 Disabled
               </Badge>
             ) : (
@@ -144,7 +144,7 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
                 size="sm"
                 onClick={() => setExpanded(true)}
               >
-                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                <Pencil className="size-3.5 mr-1.5" />
                 Edit
               </Button>
             ) : (
@@ -153,7 +153,7 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
                 size="sm"
                 onClick={() => setExpanded(!expanded)}
               >
-                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </Button>
             )}
           </div>
@@ -185,7 +185,7 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
                   onClick={() => setShowApiKey(!showApiKey)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
-                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">

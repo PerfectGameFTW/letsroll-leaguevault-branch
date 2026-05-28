@@ -203,7 +203,7 @@ export default function UsersPage() {
               </p>
             </div>
             <Button onClick={() => setAddDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Add Admin
             </Button>
           </div>

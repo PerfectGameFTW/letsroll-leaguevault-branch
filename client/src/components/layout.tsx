@@ -218,7 +218,7 @@ function getParentLabel(path: string): { label: string; href: string } | null {
 
 const LeagueLoadingFallback = () => (
   <div className="w-[200px] p-4 flex items-center justify-center">
-    <Loader2 className="h-4 w-4 animate-spin" />
+    <Loader2 className="size-4 animate-spin" />
   </div>
 );
 
@@ -292,7 +292,7 @@ const LeaguesDropdownContent = () => {
 
 const LoadingFallback = () => (
   <div className="p-4 flex items-center justify-center">
-    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    <Loader2 className="size-6 animate-spin text-muted-foreground" />
   </div>
 );
 
@@ -374,7 +374,7 @@ function NavLeafRow({
     >
       <item.icon
         className={cn(
-          "w-5 h-5 shrink-0",
+          "size-5 shrink-0",
           isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
         )}
       />
@@ -447,7 +447,7 @@ function NavSubMenu({
           >
             <item.icon
               className={cn(
-                "w-5 h-5 shrink-0",
+                "size-5 shrink-0",
                 childActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
               )}
             />
@@ -502,7 +502,7 @@ function NavSubMenu({
         >
           <item.icon
             className={cn(
-              "w-5 h-5 shrink-0",
+              "size-5 shrink-0",
               childActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
             )}
           />
@@ -512,7 +512,7 @@ function NavSubMenu({
           )}
           <ChevronDown
             className={cn(
-              "w-4 h-4 shrink-0 text-slate-500 transition-transform",
+              "size-4 shrink-0 text-slate-500 transition-transform",
               userOpen ? "rotate-180" : "rotate-0",
               !userOpen && aggregatedBadge > 0 ? "ml-1" : "ml-auto"
             )}
@@ -589,7 +589,7 @@ function SidebarNav({
                     : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 )}
               >
-                <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
+                <item.icon className={cn("size-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
                 {item.label}
               </NavigationMenuTrigger>
               <NavigationMenuContent>
@@ -736,7 +736,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       className="w-full h-auto max-h-12 object-contain"
     />
   ) : (
-    <div className="w-10 h-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
+    <div className="size-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
       <span className="text-sm font-bold text-white">{orgInitials}</span>
     </div>
   );
@@ -754,11 +754,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {logoElement}
           </div>
           <div className="flex justify-end px-3 pb-2">
-            <button
+            <button type="button"
               onClick={toggleSidebar}
               className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
             >
-              <Menu className="w-4 h-4" />
+              <Menu className="size-4" />
             </button>
           </div>
         </div>
@@ -849,20 +849,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-expanded={mobileMenuOpen}
               className="p-2 -ml-2 rounded-md hover:bg-slate-100 text-slate-600 transition-colors md:hidden"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="size-5" />
             </button>
 
             <div className="hidden sm:flex items-center">
               {parentLabel ? (
                 <>
                   <Link href={parentLabel.href} className="text-sm font-medium hover:text-slate-900 transition-colors">{parentLabel.label}</Link>
-                  <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                  <ChevronRight className="size-4 mx-2 text-slate-300" />
                   <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
                 </>
               ) : (
                 <>
                   <Link href="/" className="text-sm font-medium hover:text-slate-900 transition-colors">Dashboard</Link>
-                  <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                  <ChevronRight className="size-4 mx-2 text-slate-300" />
                   <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
                 </>
               )}
@@ -873,8 +873,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 md:gap-5">
             <GlobalSearch />
 
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
-              <Bell className="w-5 h-5" />
+            <button type="button" className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
+              <Bell className="size-5" />
             </button>
           </div>
         </header>

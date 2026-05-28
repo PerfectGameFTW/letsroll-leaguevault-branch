@@ -115,7 +115,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
       <CardContent>
         {!showForm ? (
           <Button variant="outline" onClick={() => setShowForm(true)} className="flex items-center gap-2" data-testid="button-change-password-toggle">
-            <Lock className="h-4 w-4" />
+            <Lock className="size-4" />
             Change Password
           </Button>
         ) : (
@@ -123,7 +123,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
             <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-5">
               {isThrottled && (
                 <Alert variant="destructive" data-testid="alert-change-password-throttled">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="size-4" />
                   <AlertTitle>Too many attempts</AlertTitle>
                   <AlertDescription className="space-y-2">
                     <p>
@@ -187,7 +187,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
                   data-testid="button-change-password-submit"
                 >
                   {mutation.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</>
+                    <><Loader2 className="mr-2 size-4 animate-spin" />Updating…</>
                   ) : isThrottled ? (
                     `Try again in ${formatCountdown(remainingSeconds)}`
                   ) : "Update Password"}

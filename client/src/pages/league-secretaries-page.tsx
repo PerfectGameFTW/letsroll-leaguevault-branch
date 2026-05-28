@@ -86,7 +86,7 @@ export default function LeagueSecretariesPage() {
       <div className="container mx-auto p-4 sm:p-6 max-w-3xl space-y-4">
         <Button asChild variant="ghost" size="sm" data-testid="link-back-to-league">
           <Link href={`/leagues/${leagueId}`}>
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back to league
+            <ArrowLeft className="size-4 mr-1" /> Back to league
           </Link>
         </Button>
         <Card>
@@ -118,7 +118,7 @@ export default function LeagueSecretariesPage() {
                 data-testid="input-user-email"
               />
               <Button type="submit" disabled={grantMutation.isPending} data-testid="button-grant">
-                {grantMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Grant"}
+                {grantMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Grant"}
               </Button>
             </form>
 
@@ -145,7 +145,7 @@ export default function LeagueSecretariesPage() {
                       disabled={revokeMutation.isPending}
                       data-testid={`button-revoke-${row.userId}`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="size-4" />
                     </Button>
                   </li>
                 ))}

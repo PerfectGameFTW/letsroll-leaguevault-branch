@@ -99,13 +99,13 @@ const ConfirmEmailChangePage: FC = () => {
       <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
         <Card className="w-full max-w-md mt-4 sm:mt-0">
           <CardHeader className="space-y-1 pb-4 sm:pb-6 text-center">
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10">
               {status.kind === "pending" ? (
-                <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                <Loader2 className="size-6 text-primary animate-spin" />
               ) : status.kind === "success" ? (
-                <CheckCircle2 className="h-6 w-6 text-primary" />
+                <CheckCircle2 className="size-6 text-primary" />
               ) : (
-                <XCircle className="h-6 w-6 text-destructive" />
+                <XCircle className="size-6 text-destructive" />
               )}
             </div>
             <CardTitle className="text-2xl font-bold">
@@ -145,7 +145,7 @@ const ConfirmEmailChangePage: FC = () => {
                       className="text-left"
                       data-testid="alert-payment-sync-pending-retry"
                     >
-                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTriangle className="size-4" />
                       <AlertTitle>Payment record will be retried</AlertTitle>
                       <AlertDescription>
                         Your payment profile is temporarily out of date and
@@ -163,7 +163,7 @@ const ConfirmEmailChangePage: FC = () => {
               href="/login"
               className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="size-3.5" />
               Back to login
             </Link>
           </CardFooter>

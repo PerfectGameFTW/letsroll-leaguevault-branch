@@ -30,7 +30,7 @@ function ensureCleanup() {
   cleanupTimer.unref();
 }
 
-export function cacheGet<T>(key: string): T | undefined {
+function cacheGet<T>(key: string): T | undefined {
   const entry = store.get(key);
   if (!entry) return undefined;
   if (Date.now() >= entry.expiresAt) {
@@ -40,7 +40,7 @@ export function cacheGet<T>(key: string): T | undefined {
   return entry.data as T;
 }
 
-export function cacheSet<T>(key: string, data: T, ttlMs: number): void {
+function cacheSet<T>(key: string, data: T, ttlMs: number): void {
   ensureCleanup();
   store.set(key, { data, expiresAt: Date.now() + ttlMs });
 }

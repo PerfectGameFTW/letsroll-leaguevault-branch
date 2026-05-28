@@ -102,7 +102,7 @@ export function SquareCatalogCapBanner() {
       data-testid="banner-square-catalog-cap-alert"
       role="alert"
     >
-      <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+      <AlertTriangle className="size-5 mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium">
           Square catalog hit pagination cap — {alerts.length} alert{alerts.length === 1 ? '' : 's'} across{' '}
@@ -124,7 +124,7 @@ export function SquareCatalogCapBanner() {
         aria-label="Dismiss Square catalog cap alert banner"
         data-testid="button-dismiss-square-catalog-cap-alert"
       >
-        <X className="w-4 h-4" />
+        <X className="size-4" />
       </button>
     </div>
   );

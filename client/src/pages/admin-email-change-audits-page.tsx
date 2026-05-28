@@ -62,7 +62,7 @@ function PostConfirmCell({
     return (
       <div className="flex flex-col gap-1" data-testid="post-confirm-pending-retry">
         <Badge variant="destructive" className="gap-1 w-fit">
-          <AlertTriangle className="h-3 w-3" aria-hidden />
+          <AlertTriangle className="size-3" aria-hidden />
           Needs manual retry
         </Badge>
         {when && (

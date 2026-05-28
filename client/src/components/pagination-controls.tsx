@@ -62,12 +62,12 @@ export function PaginationControls({
       </div>
       <div className="flex items-center gap-1">
         <Button variant="outline" size="sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="size-4" />
           Previous
         </Button>
         {generatePageNumbers(page, totalPages).map((p, i) =>
           p === "..." ? (
-            <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">...</span>
+            <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
           ) : (
             <Button
               key={p}
@@ -82,7 +82,7 @@ export function PaginationControls({
         )}
         <Button variant="outline" size="sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
           Next
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="size-4" />
         </Button>
       </div>
     </div>

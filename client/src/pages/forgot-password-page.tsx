@@ -77,8 +77,8 @@ const ForgotPasswordPage: FC = () => {
         <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
           <Card className="w-full max-w-md mt-4 sm:mt-0">
             <CardHeader className="space-y-1 pb-4 sm:pb-6 text-center">
-              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                <Mail className="h-6 w-6 text-primary" />
+              <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Mail className="size-6 text-primary" />
               </div>
               <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
               <CardDescription>
@@ -87,7 +87,7 @@ const ForgotPasswordPage: FC = () => {
             </CardHeader>
             <CardFooter className="flex flex-col items-center gap-2 pt-0">
               <Link href="/login" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-                <ArrowLeft className="h-3.5 w-3.5" />
+                <ArrowLeft className="size-3.5" />
                 Back to login
               </Link>
             </CardFooter>
@@ -133,7 +133,7 @@ const ForgotPasswordPage: FC = () => {
               </div>
               {isThrottled && (
                 <Alert variant="destructive" data-testid="alert-forgot-throttled">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="size-4" />
                   <AlertTitle>Too many reset requests</AlertTitle>
                   <AlertDescription>
                     To protect your account, we've paused password reset
@@ -149,7 +149,7 @@ const ForgotPasswordPage: FC = () => {
               )}
               {error && !isThrottled && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <AlertCircle className="size-4 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
@@ -161,8 +161,8 @@ const ForgotPasswordPage: FC = () => {
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Sending…
                   </>
                 ) : isThrottled ? (
                   `Try again in ${formatCountdown(remainingSeconds)}`
@@ -174,7 +174,7 @@ const ForgotPasswordPage: FC = () => {
           </CardContent>
           <CardFooter className="flex flex-col items-center gap-2 pt-0">
             <Link href="/login" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="size-3.5" />
               Back to login
             </Link>
           </CardFooter>

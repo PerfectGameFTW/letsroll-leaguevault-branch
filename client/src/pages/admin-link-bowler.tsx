@@ -109,12 +109,12 @@ export default function AdminLinkBowlerPage() {
                   <span className="flex items-center">
                     {currentUser?.role === 'system_admin' ? (
                       <>
-                        <Check className="h-4 w-4 mr-1 text-green-500" />
+                        <Check className="size-4 mr-1 text-green-500" />
                         System Admin
                       </>
                     ) : currentUser?.role === 'org_admin' ? (
                       <>
-                        <Check className="h-4 w-4 mr-1 text-green-500" />
+                        <Check className="size-4 mr-1 text-green-500" />
                         Organization Admin
                       </>
                     ) : (
@@ -174,12 +174,12 @@ export default function AdminLinkBowlerPage() {
                     >
                       {isLinking ? (
                         <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Linking...
+                          <Loader2 className="size-4 mr-2 animate-spin" />
+                          Linking…
                         </>
                       ) : currentUser?.bowlerId === dudoKroppa.id ? (
                         <>
-                          <Check className="h-4 w-4 mr-2" />
+                          <Check className="size-4 mr-2" />
                           Already Linked
                         </>
                       ) : (
@@ -207,7 +207,7 @@ export default function AdminLinkBowlerPage() {
               disabled={!currentUser?.bowlerId}
             >
               Go to Payment History
-              <ExternalLink className="h-4 w-4 ml-2" />
+              <ExternalLink className="size-4 ml-2" />
             </Button>
           </div>
         </div>

@@ -141,13 +141,13 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                 <SelectContent>
                   <SelectItem value="user">
                     <span className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5" />
+                      <MapPin className="size-3.5" />
                       End User
                     </span>
                   </SelectItem>
                   <SelectItem value="admin">
                     <span className="flex items-center gap-1.5">
-                      <Shield className="h-3.5 w-3.5" />
+                      <Shield className="size-3.5" />
                       Admin
                     </span>
                   </SelectItem>
@@ -189,7 +189,7 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                     disabled={resendInviteMutation.isPending}
                     title="Resend invite email"
                   >
-                    <Send className="h-4 w-4" />
+                    <Send className="size-4" />
                   </Button>
                 )}
                 {user.id !== currentUser?.id
@@ -205,7 +205,7 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                       aria-label={`Change email for ${user.name || user.email}`}
                       data-testid={`button-change-email-${user.id}`}
                     >
-                      <Mail className="h-4 w-4" />
+                      <Mail className="size-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -215,7 +215,7 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                       aria-label={`Reset password for ${user.name || user.email}`}
                       data-testid={`button-reset-password-${user.id}`}
                     >
-                      <KeyRound className="h-4 w-4" />
+                      <KeyRound className="size-4" />
                     </Button>
                   </>
                 )}
@@ -226,7 +226,7 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                     onClick={() => onDeleteUser(user.id)}
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="size-4" />
                   </Button>
                 )}
               </div>

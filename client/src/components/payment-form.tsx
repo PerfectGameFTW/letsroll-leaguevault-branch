@@ -421,7 +421,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
         {(leagueInfo?.squareLineageItemName || leagueInfo?.squarePrizeFundItemName) && (
           <Alert>
-            <Info className="h-4 w-4" />
+            <Info className="size-4" />
             <AlertDescription>
               <div className="space-y-1">
                 <div>Weekly fee: <span className="font-medium">${(leagueInfo.weeklyFee / 100).toFixed(2)}</span></div>
@@ -440,7 +440,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {paymentError && (
               <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
+                <AlertCircle className="size-4" />
                 <AlertDescription>{paymentError}</AlertDescription>
               </Alert>
             )}
@@ -501,7 +501,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                     : "alert-square-not-configured"
                 }
               >
-                <AlertTriangle className="h-4 w-4" />
+                <AlertTriangle className="size-4" />
                 <AlertTitle>{providerLabel} isn't fully set up for this location</AlertTitle>
                 <AlertDescription>
                   <p className="text-sm">
@@ -579,7 +579,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               />
             )}
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end gap-x-2">
               <Button
                 type="button"
                 variant="outline"
@@ -607,8 +607,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               >
                 {form.formState.isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Processing…
                   </>
                 ) : (
                   "Submit Payment"

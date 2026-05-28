@@ -117,7 +117,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
             <label className="text-sm font-medium">Select Bowler</label>
             {isLoading ? (
               <div className="flex items-center justify-center p-4">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               </div>
             ) : (
               <Select
@@ -147,7 +147,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
             )}
           </div>
 
-          <div className="flex justify-end space-x-2">
+          <div className="flex justify-end gap-x-2">
             <Button
               type="button"
               variant="outline"
@@ -160,7 +160,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
               disabled={!selectedBowlerId || mutation.isPending}
             >
               {mutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
               )}
               Add to Team
             </Button>

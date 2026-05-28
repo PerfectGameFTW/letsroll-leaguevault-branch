@@ -45,10 +45,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       if (level === "inline") {
         return (
           <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <AlertTriangle className="size-4 shrink-0" />
             <span>Something went wrong</span>
             <Button variant="ghost" size="sm" onClick={this.handleReset} className="ml-auto h-7 px-2">
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="size-3" />
             </Button>
           </div>
         );
@@ -59,7 +59,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div className="flex min-h-[60vh] items-center justify-center p-8">
             <Card className="max-w-md w-full">
               <CardHeader className="text-center">
-                <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-2" />
+                <AlertTriangle className="size-10 text-destructive mx-auto mb-2" />
                 <CardTitle>Something went wrong</CardTitle>
               </CardHeader>
               <CardContent className="text-center space-y-4">
@@ -73,7 +73,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 )}
                 <div className="flex gap-2 justify-center">
                   <Button onClick={this.handleReset}>
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="mr-2 size-4" />
                     Try Again
                   </Button>
                   <Button variant="outline" onClick={() => window.location.reload()}>
@@ -89,7 +89,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       return (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="flex items-center gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+            <AlertTriangle className="size-5 text-destructive shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">This section encountered an error</p>
               {this.state.error && (
@@ -99,7 +99,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               )}
             </div>
             <Button variant="outline" size="sm" onClick={this.handleReset}>
-              <RefreshCw className="mr-1 h-3 w-3" />
+              <RefreshCw className="mr-1 size-3" />
               Retry
             </Button>
           </CardContent>

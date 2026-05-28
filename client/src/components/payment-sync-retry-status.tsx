@@ -108,12 +108,12 @@ export function PaymentSyncRetryStatus({
   // ops can tell at a glance which bowlers need a manual retry.
   const badge = givenUp ? (
     <Badge variant="destructive" data-testid={`badge-payment-sync-given-up-${bowler.id}`}>
-      <AlertTriangle className="h-3 w-3 mr-1" />
+      <AlertTriangle className="size-3 mr-1" />
       Sync given up
     </Badge>
   ) : (
     <Badge variant="secondary" data-testid={`badge-payment-sync-pending-${bowler.id}`}>
-      <Clock className="h-3 w-3 mr-1" />
+      <Clock className="size-3 mr-1" />
       Sync pending
     </Badge>
   );
@@ -161,9 +161,9 @@ export function PaymentSyncRetryStatus({
         data-testid={`button-retry-payment-sync-${bowler.id}`}
       >
         {retryMutation.isPending ? (
-          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          <Loader2 className="size-3 mr-1 animate-spin" />
         ) : (
-          <RefreshCw className="h-3 w-3 mr-1" />
+          <RefreshCw className="size-3 mr-1" />
         )}
         Retry sync
       </Button>

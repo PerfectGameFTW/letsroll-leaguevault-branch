@@ -129,9 +129,9 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose, locationId
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={isPending}>
             {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="size-4 animate-spin mr-2" />
             ) : (
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="size-4 mr-2" />
             )}
             Send Receipt
           </Button>

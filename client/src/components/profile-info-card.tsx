@@ -377,7 +377,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsEditing(true)} className="flex items-center gap-2">
-                <Pencil className="h-4 w-4" />
+                <Pencil className="size-4" />
                 Edit Profile
               </Button>
               {showRetry && (
@@ -389,9 +389,9 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
                   data-testid="button-retry-payment-sync"
                 >
                   {retryMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className="size-4" />
                   )}
                   Retry payment sync
                 </Button>
@@ -489,9 +489,9 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
               <div className="flex gap-2 pt-1">
                 <Button type="submit" disabled={mutation.isPending}>
                   {mutation.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
+                    <><Loader2 className="mr-2 size-4 animate-spin" />Saving…</>
                   ) : (
-                    <><Save className="mr-2 h-4 w-4" />Save Changes</>
+                    <><Save className="mr-2 size-4" />Save Changes</>
                   )}
                 </Button>
                 <Button

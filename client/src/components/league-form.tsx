@@ -202,12 +202,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
               onSubmit={form.handleSubmit(
                 (data) => mutation.mutate(data),
                 (errors) => {
-                  const messages = Object.entries(errors)
-                    .map(([field, err]) => {
-                      const msg = (err as { message?: string })?.message;
-                      return msg ? `${field}: ${msg}` : field;
-                    })
-                    .filter(Boolean);
+                  const messages = Object.entries(errors).flatMap(([field, err]) => {
+                    const msg = (err as { message?: string })?.message;
+                    const value = msg ? `${field}: ${msg}` : field;
+                    return value ? [value] : [];
+                  });
                   toast({
                     title: "Please fix the highlighted fields",
                     description: messages.length > 0
@@ -262,7 +261,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
               </div>
 
               <div className="shrink-0 bg-background px-6 pt-4 pb-6 border-t">
-                <div className="flex justify-end space-x-2">
+                <div className="flex justify-end gap-x-2">
                   <Button
                     type="button"
                     variant="outline"
@@ -272,7 +271,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   </Button>
                   <Button type="submit" disabled={mutation.isPending}>
                     {mutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 size-4 animate-spin" />
                     )}
                     {league ? "Update" : "Add"} League
                   </Button>
@@ -289,7 +288,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         disabled={deleteMutation.isPending}
                       >
                         {deleteMutation.isPending && (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="mr-2 size-4 animate-spin" />
                         )}
                         Delete League
                       </Button>

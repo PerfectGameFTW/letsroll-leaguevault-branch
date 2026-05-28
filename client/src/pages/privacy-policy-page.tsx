@@ -21,7 +21,7 @@ const PrivacyPolicyPage: FC = () => {
         <CardHeader className="space-y-1 pb-4">
           <div className="flex items-center gap-2 mb-2">
             <Button variant="ghost" size="sm" className="gap-1" onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4" />
               Back
             </Button>
           </div>

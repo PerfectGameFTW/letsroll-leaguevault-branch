@@ -212,7 +212,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
           {showPartnerPicker && (
             <div className="space-y-2" data-testid="recipient-picker">
               <Label className="flex items-center gap-2 text-sm font-medium">
-                <Users className="h-4 w-4 text-muted-foreground" /> Pay for
+                <Users className="size-4 text-muted-foreground" /> Pay for
               </Label>
               <Select
                 value={String(targetBowlerId)}
@@ -267,7 +267,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
           ) : paymentMode === 'autopay' && (
             <div className="rounded-md border bg-muted/30 p-4 space-y-3">
               <div className="flex items-center gap-3">
-                <CalendarDays className="h-5 w-5 text-muted-foreground shrink-0" />
+                <CalendarDays className="size-5 text-muted-foreground shrink-0" />
                 <div>
                   <p className="text-sm font-medium">Weekly auto-pay</p>
                   <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
@@ -293,7 +293,7 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
               data-testid="combined-autopay-group"
             >
               <Label className="flex items-center gap-2 text-sm font-medium">
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <Users className="size-4 text-muted-foreground" />
                 {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
                   ? 'Also charge me for these linked bowlers each week'
                   : 'Also pay for these linked bowlers in this transaction'}

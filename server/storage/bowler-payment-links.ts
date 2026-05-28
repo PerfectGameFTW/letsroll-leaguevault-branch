@@ -203,7 +203,7 @@ export async function getAcceptedPartnerBowlerIds(
   return rows.map((r) => (r.a === bowlerId ? r.b : r.a));
 }
 
-export async function countLinksForBowler(bowlerId: number): Promise<number> {
+async function countLinksForBowler(bowlerId: number): Promise<number> {
   const [row] = await db
     .select({ c: sql<number>`count(*)` })
     .from(bowlerPaymentLinks)

@@ -100,7 +100,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
           {financials.amountPastDue > 0 && (
             <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2">
               <span className="text-sm font-medium text-destructive flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
+                <AlertTriangle className="size-3.5" />
                 Past Due
               </span>
               <span className="text-sm font-bold text-destructive">{formatCurrency(financials.amountPastDue)}</span>
@@ -114,7 +114,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
 
           {financials.remainingBalance <= 0 && financials.totalPaid > 0 && (
             <div className="flex items-center justify-center gap-2 rounded-md bg-green-500/10 px-3 py-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <CheckCircle2 className="size-5 text-green-600" />
               <span className="text-sm font-semibold text-green-600">Season Paid in Full</span>
             </div>
           )}
@@ -143,7 +143,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
             <div className="rounded-md bg-emerald-500/10 px-3 py-2 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                  <CircleDollarSign className="h-3.5 w-3.5" />
+                  <CircleDollarSign className="size-3.5" />
                   Double-Pay Weeks
                 </span>
                 <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
@@ -193,7 +193,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
                 className="flex-1"
                 size="sm"
               >
-                {cancelScheduleMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {cancelScheduleMutation.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
                 Yes, Cancel
               </Button>
             </div>
@@ -204,7 +204,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
           <div className="space-y-2">
             <Button className="w-full" onClick={() => onSetupPayment('onetime')}>
               Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
-              <CreditCard className="ml-2 h-4 w-4" />
+              <CreditCard className="ml-2 size-4" />
             </Button>
           </div>
         )}
@@ -215,7 +215,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
               {financials.amountPastDue > 0
                 ? `Pay ${formatCurrency(financials.amountPastDue)} & Set Up Auto-Pay`
                 : 'Set Up Auto-Pay'}
-              <CreditCard className="ml-2 h-4 w-4" />
+              <CreditCard className="ml-2 size-4" />
             </Button>
             <Button variant="outline" onClick={() => onSetupPayment('onetime')} className="w-full">
               Make One-Time Payment

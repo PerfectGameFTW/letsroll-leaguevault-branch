@@ -168,7 +168,7 @@ const LoginPage: FC = () => {
               />
               {isThrottled && (
                 <Alert variant="destructive" data-testid="alert-login-throttled">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="size-4" />
                   <AlertTitle>Too many sign-in attempts</AlertTitle>
                   <AlertDescription className="space-y-2">
                     <p>
@@ -195,7 +195,7 @@ const LoginPage: FC = () => {
               )}
               {loginError && !isThrottled && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <AlertCircle className="h-4 size-4 shrink-0" />
                   <span>{loginError}</span>
                 </div>
               )}
@@ -207,8 +207,8 @@ const LoginPage: FC = () => {
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    <Loader2 className="mr-2 w-4 animate-spin" />
+                    Signing in…
                   </>
                 ) : isThrottled ? (
                   `Try again in ${formatCountdown(remainingSeconds)}`

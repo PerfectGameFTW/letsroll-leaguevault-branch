@@ -29,7 +29,7 @@ function LeagueHealthCard({ leagueId, name, bowlerCount, pastDueBowlerCount }: {
             {name}
           </div>
           <div
-            className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
+            className={`size-2.5 rounded-full shrink-0 mt-0.5 ${
               status === "green"
                 ? "bg-emerald-500"
                 : status === "amber"
@@ -39,7 +39,7 @@ function LeagueHealthCard({ leagueId, name, bowlerCount, pastDueBowlerCount }: {
           />
         </div>
         <div className="flex items-center gap-2 mb-3">
-          <Users className="w-3.5 h-3.5 text-slate-400" />
+          <Users className="size-3.5 text-slate-400" />
           <span className="text-sm text-slate-600">
             <span className="font-semibold text-slate-800">{bowlerCount}</span> bowlers
           </span>
@@ -202,7 +202,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex items-end justify-between">
                   <div className="text-2xl font-bold text-slate-900">{totalLeagues}</div>
-                  <Activity className="w-3.5 h-3.5 text-emerald-500 mb-1" />
+                  <Activity className="size-3.5 text-emerald-500 mb-1" />
                 </div>
               </div>
             </Link>
@@ -214,7 +214,7 @@ export default function HomePage() {
                 <div className="flex items-end justify-between">
                   <div className="text-2xl font-bold text-slate-900">{activeBowlers}</div>
                   <div className="text-xs font-medium text-emerald-600 flex items-center">
-                    <ArrowUpRight className="w-3 h-3 mr-0.5" />
+                    <ArrowUpRight className="size-3 mr-0.5" />
                   </div>
                 </div>
               </div>
@@ -236,7 +236,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex items-end justify-between">
                   <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalPrizeFundPaid)}</div>
-                  <DollarSign className="w-3.5 h-3.5 text-slate-400 mb-1" />
+                  <DollarSign className="size-3.5 text-slate-400 mb-1" />
                 </div>
               </div>
             </Link>

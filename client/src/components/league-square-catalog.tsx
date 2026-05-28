@@ -348,7 +348,7 @@ export function LeagueSquareCatalog({
           why some items are missing. */}
       {isCatalogTruncated && (
         <Alert variant="destructive" data-testid="alert-catalog-truncated">
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="size-4" />
           <AlertTitle>This catalog is too large to fully load</AlertTitle>
           <AlertDescription>
             We stopped loading after a safety limit (5,000 items) was reached, so some
@@ -361,7 +361,7 @@ export function LeagueSquareCatalog({
       <FormItem>
         <FormLabel>Search Items</FormLabel>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
             placeholder="Search by item name…"
@@ -379,7 +379,7 @@ export function LeagueSquareCatalog({
               aria-label="Clear search"
               data-testid="button-clear-catalog-search"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </button>
           )}
         </div>
@@ -439,7 +439,7 @@ export function LeagueSquareCatalog({
               role="status"
               data-testid="warn-lineage-missing-from-catalog"
             >
-              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              <AlertTriangle className="size-3" aria-hidden="true" />
               Not in Square catalog
             </span>
           )}
@@ -533,7 +533,7 @@ export function LeagueSquareCatalog({
               role="status"
               data-testid="warn-prize-fund-missing-from-catalog"
             >
-              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              <AlertTriangle className="size-3" aria-hidden="true" />
               Not in Square catalog
             </span>
           )}

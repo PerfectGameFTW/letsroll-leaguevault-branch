@@ -53,7 +53,7 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const excludeKey = useMemo(
-    () => (excludeIds ? [...excludeIds].sort((a, b) => a - b).join(",") : ""),
+    () => (excludeIds ? excludeIds.toSorted((a, b) => a - b).join(",") : ""),
     [excludeIds],
   );
 
@@ -124,7 +124,7 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
   return (
     <div className="relative w-full" ref={containerRef}>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => {
@@ -149,7 +149,7 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
         >
           {isFetching && results.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Searching…
+              <Loader2 className="size-3 animate-spin" /> Searching…
             </div>
           )}
           {!isFetching && results.length === 0 && (
@@ -170,7 +170,7 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
                 "flex w-full flex-col items-start rounded px-2 py-1.5 text-left text-sm hover:bg-accent",
                 i === highlight && "bg-accent",
               )}
-              aria-selected={i === highlight}
+              aria-pressed={i === highlight}
               data-testid={`${testIdPrefix}-result-${b.id}`}
             >
               <span className="font-medium">{b.name}</span>

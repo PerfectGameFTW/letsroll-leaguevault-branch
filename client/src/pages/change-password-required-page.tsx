@@ -23,7 +23,7 @@ export default function ChangePasswordRequiredPage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="w-full max-w-md space-y-4" data-testid="page-change-password-required">
           <Alert>
-            <ShieldAlert className="h-4 w-4" />
+            <ShieldAlert className="size-4" />
             <AlertTitle>Choose a new password to continue</AlertTitle>
             <AlertDescription>
               An administrator recently reset your password. For your
@@ -42,7 +42,7 @@ export default function ChangePasswordRequiredPage() {
               onClick={handleLogout}
               data-testid="button-change-password-required-logout"
             >
-              <LogOut className="h-4 w-4 mr-2" />
+              <LogOut className="size-4 mr-2" />
               Sign out instead
             </Button>
           </div>

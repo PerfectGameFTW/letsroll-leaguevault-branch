@@ -67,10 +67,10 @@ export function BetaBanner() {
       role="status"
       aria-live="polite"
       data-testid="beta-banner"
-      className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-amber-400 text-slate-900 text-xs font-semibold tracking-wide shadow-sm"
+      className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold tracking-wide shadow-sm"
       style={{ height: `${BANNER_HEIGHT_PX}px` }}
     >
-      <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+      <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
       <span>BETA ENVIRONMENT — test data only, payments use sandbox credentials</span>
       <span
         className="font-mono text-[11px] text-slate-700 hidden sm:inline"

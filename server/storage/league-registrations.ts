@@ -46,7 +46,7 @@ export async function replaceQuestions(
   });
 }
 
-export async function updateQuestion(
+async function updateQuestion(
   id: number,
   patch: UpdateLeagueRegistrationQuestion,
 ): Promise<LeagueRegistrationQuestion | undefined> {
@@ -58,7 +58,7 @@ export async function updateQuestion(
   return row;
 }
 
-export async function deleteQuestion(id: number): Promise<void> {
+async function deleteQuestion(id: number): Promise<void> {
   await db.delete(leagueRegistrationQuestions).where(eq(leagueRegistrationQuestions.id, id));
 }
 
@@ -70,7 +70,7 @@ export async function listRegistrations(leagueId: number): Promise<LeagueRegistr
     .orderBy(asc(leagueRegistrations.createdAt));
 }
 
-export async function createRegistration(
+async function createRegistration(
   input: InsertLeagueRegistration,
 ): Promise<LeagueRegistration> {
   const [row] = await db.insert(leagueRegistrations).values(input).returning();
@@ -82,7 +82,7 @@ export async function createRegistration(
  * submit path to enforce the optional `rosterCap` BEFORE creating any
  * bowler/user/payment records.
  */
-export async function countBowlerLeaguesForLeague(leagueId: number): Promise<number> {
+async function countBowlerLeaguesForLeague(leagueId: number): Promise<number> {
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(bowlerLeagues)

@@ -165,7 +165,7 @@ export default function BowlerScoresPage() {
           href={backHref}
           className="text-muted-foreground hover:text-foreground flex items-center"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="size-4 mr-2" />
           Back to Bowler
         </Link>
 

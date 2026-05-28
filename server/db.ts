@@ -108,7 +108,7 @@ export async function testConnection(
 }
 
 
-export async function testCleanup(): Promise<void> {
+async function testCleanup(): Promise<void> {
   log.info('Starting cleanup test...');
 
   const client = await pool.connect();

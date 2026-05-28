@@ -67,7 +67,7 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         {payments.length === 0 ? (
           <div className="p-8 text-center">
-            <Receipt className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+            <Receipt className="size-10 mx-auto mb-3 text-slate-300" />
             <p className="text-slate-500">No payments recorded</p>
           </div>
         ) : (
@@ -81,8 +81,8 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
               return (
                 <div key={payment.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-5 h-5 text-slate-500" />
+                    <div className="size-10 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <Icon className="size-5 text-slate-500" />
                     </div>
                     <div>
                       <div className="font-semibold text-slate-900">{formatCurrency(payment.amount)}</div>

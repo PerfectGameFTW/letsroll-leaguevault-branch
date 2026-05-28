@@ -21,7 +21,7 @@ const SIGNATURES: { mime: string; check: (buf: Buffer) => boolean }[] = [
   },
 ];
 
-export function detectImageMime(buf: Buffer): string | null {
+function detectImageMime(buf: Buffer): string | null {
   for (const sig of SIGNATURES) {
     if (sig.check(buf)) return sig.mime;
   }

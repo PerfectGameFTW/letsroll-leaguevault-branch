@@ -232,20 +232,20 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               <Label htmlFor="logo" className="md:text-right pt-2">Logo</Label>
               <div className="md:col-span-3 space-y-2">
                 {logoPreview ? (
-                  <div className="relative w-40 h-40 rounded-md overflow-hidden border">
+                  <div className="relative size-40 rounded-md overflow-hidden border">
                     <img src={logoPreview} alt="Organization logo" className="w-full h-full object-contain" />
                     <Button
                       type="button"
                       variant="destructive"
                       size="icon"
-                      className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                      className="absolute top-1 right-1 size-6 rounded-full"
                       onClick={() => {
                         setLogo(null);
                         setLogoPreview(null);
                         if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="size-4" />
                     </Button>
                   </div>
                 ) : (
@@ -284,20 +284,20 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               <Label htmlFor="darkLogo" className="md:text-right pt-2">Dark Logo</Label>
               <div className="md:col-span-3 space-y-2">
                 {darkLogoPreview ? (
-                  <div className="relative w-40 h-40 rounded-md overflow-hidden border bg-slate-900">
+                  <div className="relative size-40 rounded-md overflow-hidden border bg-slate-900">
                     <img src={darkLogoPreview} alt="Dark background logo" className="w-full h-full object-contain" />
                     <Button
                       type="button"
                       variant="destructive"
                       size="icon"
-                      className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                      className="absolute top-1 right-1 size-6 rounded-full"
                       onClick={() => {
                         setDarkLogo(null);
                         setDarkLogoPreview(null);
                         if (darkFileInputRef.current) darkFileInputRef.current.value = '';
                       }}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="size-4" />
                     </Button>
                   </div>
                 ) : (
@@ -336,20 +336,20 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               <Label htmlFor="appIcon" className="md:text-right pt-2">App Icon</Label>
               <div className="md:col-span-3 space-y-2">
                 {appIconPreview ? (
-                  <div className="relative w-40 h-40 rounded-md overflow-hidden border">
+                  <div className="relative size-40 rounded-md overflow-hidden border">
                     <img src={appIconPreview} alt="App icon" className="w-full h-full object-contain" />
                     <Button
                       type="button"
                       variant="destructive"
                       size="icon"
-                      className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                      className="absolute top-1 right-1 size-6 rounded-full"
                       onClick={() => {
                         setAppIcon(null);
                         setAppIconPreview(null);
                         if (appIconInputRef.current) appIconInputRef.current.value = '';
                       }}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="size-4" />
                     </Button>
                   </div>
                 ) : (

@@ -44,8 +44,8 @@ export interface AdminEmailChangeAuditRow extends AdminEmailChangeAudit {
 }
 
 // Hard cap protects the table renderer and DB from a runaway `?limit=`.
-export const MAX_LIST_LIMIT = 200;
-export const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 200;
+const DEFAULT_LIST_LIMIT = 50;
 
 // Exposed so the route can echo the *effective* (post-clamp) limit
 // back to the client — keeps pagination metadata honest when the

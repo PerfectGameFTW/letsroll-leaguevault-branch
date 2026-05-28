@@ -46,7 +46,7 @@ function ErrorCard({ title, description, onRetry }: { title: string; description
     <Card className="mx-auto max-w-md mt-8">
       <CardHeader>
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-destructive" />
+          <AlertTriangle className="size-5 text-destructive" />
           <CardTitle>{title}</CardTitle>
         </div>
         <CardDescription>{description}</CardDescription>
@@ -54,7 +54,7 @@ function ErrorCard({ title, description, onRetry }: { title: string; description
       {onRetry && (
         <CardContent>
           <Button variant="outline" onClick={onRetry} className="w-full flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
             Try Again
           </Button>
         </CardContent>
@@ -298,7 +298,7 @@ export const BowlerDashboardPage: FC = () => {
             Please try again later or contact support if the problem persists.
           </p>
           <Button variant="outline" onClick={handleRetry} className="w-full flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
             Try Again
           </Button>
         </CardContent>
@@ -326,7 +326,7 @@ export const BowlerDashboardPage: FC = () => {
         <div className="mb-6">
           <Button asChild variant="outline" className="flex items-center gap-2">
             <Link href="/">
-              <ArrowRight className="h-4 w-4 rotate-180" />
+              <ArrowRight className="size-4 rotate-180" />
               Back to Dashboard
             </Link>
           </Button>
@@ -341,12 +341,12 @@ export const BowlerDashboardPage: FC = () => {
             <p className="text-sm text-slate-400 mb-1">Viewing as System Administrator</p>
           )}
           {hasMultipleLeagues ? (
-            <button
+            <button type="button"
               onClick={() => setSheetOpen(true)}
               className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors"
             >
               <span>{leagueName}</span>
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="size-4" />
             </button>
           ) : (
             <p className="text-slate-500">{leagueName}</p>
@@ -354,12 +354,12 @@ export const BowlerDashboardPage: FC = () => {
 
           <div className="mt-4 flex flex-wrap gap-3">
             <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
-              <span className="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
+              <span className="size-2 rounded-full bg-indigo-500 mr-2"></span>
               {teamName}
             </div>
             {currentWeek !== null && (
               <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
-                <Calendar className="w-4 h-4 mr-1.5" />
+                <Calendar className="size-4 mr-1.5" />
                 Week {currentWeek} of {totalWeeks}
               </div>
             )}
@@ -412,7 +412,7 @@ const MyChildrenSection: FC = () => {
     <Card data-testid="card-my-children">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Users className="h-4 w-4" /> My Children
+          <Users className="size-4" /> My Children
         </CardTitle>
         <CardDescription>Bowlers you are a guardian for.</CardDescription>
       </CardHeader>

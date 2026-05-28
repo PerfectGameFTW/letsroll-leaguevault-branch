@@ -85,7 +85,7 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
+            <CreditCard className="size-5" />
             Saved Payment Methods
           </CardTitle>
           <CardDescription className="mt-1.5">Manage your saved credit cards</CardDescription>
@@ -93,8 +93,8 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
         <CardContent>
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading saved cards...
+              <Loader2 className="size-4 animate-spin" />
+              Loading saved cards…
             </div>
           ) : savedCards.length === 0 ? (
             <p className="text-sm text-muted-foreground">No saved cards on file. Cards saved during payment will appear here.</p>
@@ -103,7 +103,7 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
               {savedCards.map((card) => (
                 <div key={card.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="flex items-center gap-3">
-                    <CreditCard className="h-5 w-5 text-muted-foreground" />
+                    <CreditCard className="size-5 text-muted-foreground" />
                     <div>
                       <p className="text-sm font-medium">{card.brand} ending in {card.last4}</p>
                       <p className="text-xs text-muted-foreground">
@@ -118,7 +118,7 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
                     onClick={() => setCardToDelete(card)}
                     disabled={isDeleting}
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
+                    <Trash2 className="size-4 mr-1" />
                     Remove
                   </Button>
                 </div>
@@ -144,7 +144,7 @@ export function SavedPaymentMethodsCard({ bowlerId, locationId }: SavedPaymentMe
               onClick={() => { if (cardToDelete) handleDelete(cardToDelete); }}
             >
               {isDeleting ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Removing...</>
+                <><Loader2 className="size-4 animate-spin mr-2" /> Removing…</>
               ) : "Remove Card"}
             </AlertDialogAction>
           </AlertDialogFooter>

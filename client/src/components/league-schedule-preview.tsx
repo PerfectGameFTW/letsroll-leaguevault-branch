@@ -61,7 +61,7 @@ export function LeagueSchedulePreview({
             </span>
           )}
         </span>
-        {showSchedule ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        {showSchedule ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
       </button>
 
       {showSchedule && (
@@ -109,10 +109,10 @@ export function LeagueSchedulePreview({
                         : ''
                     }`}
                   >
-                    {week.type === 'skip' && <SkipForward className="mr-1 h-3 w-3" />}
-                    {week.type === 'cancelled' && <CalendarX className="mr-1 h-3 w-3" />}
-                    {week.type === 'double-pay' && <CircleDollarSign className="mr-1 h-3 w-3" />}
-                    {week.type === 'normal' && <Check className="mr-1 h-3 w-3" />}
+                    {week.type === 'skip' && <SkipForward className="mr-1 size-3" />}
+                    {week.type === 'cancelled' && <CalendarX className="mr-1 size-3" />}
+                    {week.type === 'double-pay' && <CircleDollarSign className="mr-1 size-3" />}
+                    {week.type === 'normal' && <Check className="mr-1 size-3" />}
                     {weekLabel}
                   </Badge>
                 </button>

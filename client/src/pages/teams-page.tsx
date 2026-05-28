@@ -150,7 +150,7 @@ export default function TeamsPage() {
           href={`/leagues/${leagueId}`}
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="size-4 mr-2" />
           Back to {league.name}
         </Link>
 
@@ -158,12 +158,12 @@ export default function TeamsPage() {
           <h1 className="text-2xl font-bold">{league.name}</h1>
           <div className="flex items-center gap-2">
             <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Add Team
             </Button>
             {activeTeams.length > 1 && (
               <Button variant="outline" onClick={() => setShowReorder(true)}>
-                <ArrowUpDown className="h-4 w-4 mr-2" />
+                <ArrowUpDown className="size-4 mr-2" />
                 Reorder Teams
               </Button>
             )}
@@ -206,20 +206,20 @@ export default function TeamsPage() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" className="size-8 p-0">
+                          <MoreHorizontal className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setArchiveTeam(team)}>
                           {team.active ? (
                             <>
-                              <Archive className="mr-2 h-4 w-4" />
+                              <Archive className="mr-2 size-4" />
                               Archive
                             </>
                           ) : (
                             <>
-                              <ArchiveRestore className="mr-2 h-4 w-4" />
+                              <ArchiveRestore className="mr-2 size-4" />
                               Restore
                             </>
                           )}
@@ -228,7 +228,7 @@ export default function TeamsPage() {
                           className="text-destructive focus:text-destructive"
                           onClick={() => setDeleteTeam(team)}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
+                          <Trash2 className="mr-2 size-4" />
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -273,7 +273,7 @@ export default function TeamsPage() {
                 onClick={() => archiveTeam && archiveMutation.mutate({ id: archiveTeam.id, active: !archiveTeam.active })}
                 disabled={archiveMutation.isPending}
               >
-                {archiveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {archiveMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 {archiveTeam?.active ? "Archive" : "Restore"}
               </Button>
             </DialogFooter>
@@ -297,7 +297,7 @@ export default function TeamsPage() {
                 onClick={() => deleteTeam && deleteMutation.mutate(deleteTeam.id)}
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {deleteMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Delete
               </Button>
             </DialogFooter>

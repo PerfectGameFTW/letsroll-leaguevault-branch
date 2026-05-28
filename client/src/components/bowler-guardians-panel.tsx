@@ -135,18 +135,18 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
   });
 
   const sortedGuardians = useMemo(
-    () => [...guardians].sort((a, b) => Number(b.isPrimaryContact) - Number(a.isPrimaryContact)),
+    () => guardians.toSorted((a, b) => Number(b.isPrimaryContact) - Number(a.isPrimaryContact)),
     [guardians],
   );
 
   return (
     <Card data-testid="card-bowler-guardians">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex-row items-center justify-between gap-y-0">
         <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="h-4 w-4" /> Guardians
+          <ShieldCheck className="size-4" /> Guardians
         </CardTitle>
         <Button size="sm" onClick={() => setInviteOpen(true)} data-testid="button-invite-guardian">
-          <Plus className="h-4 w-4 mr-1" /> Invite Guardian
+          <Plus className="size-4 mr-1" /> Invite Guardian
         </Button>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -156,7 +156,7 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
           </p>
         )}
         {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
         ) : sortedGuardians.length === 0 ? (
           <p className="text-sm text-muted-foreground">No guardians linked yet.</p>
         ) : (
@@ -199,7 +199,7 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
                     onClick={() => removeMutation.mutate(row.id)}
                     data-testid={`button-remove-guardian-${row.id}`}
                   >
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <Trash2 className="size-4 text-destructive" />
                   </Button>
                 </div>
               </li>
@@ -300,7 +300,7 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={inviteMutation.isPending} data-testid="button-submit-invite-guardian">
-                  {inviteMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  {inviteMutation.isPending && <Loader2 className="size-4 mr-1 animate-spin" />}
                   Send invite
                 </Button>
               </DialogFooter>

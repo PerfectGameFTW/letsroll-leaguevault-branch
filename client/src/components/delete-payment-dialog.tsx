@@ -29,7 +29,7 @@ export function DeletePaymentDialog({ open, onClose, onConfirm, isPending }: Pro
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

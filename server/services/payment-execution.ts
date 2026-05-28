@@ -36,7 +36,7 @@ export interface ChargeResult {
 
 export type PaymentResult = ChargeResult;
 
-export async function fetchBowlerPaymentInfo(bowlerId: number) {
+async function fetchBowlerPaymentInfo(bowlerId: number) {
   const bowler = await db.select().from(bowlers).where(eq(bowlers.id, bowlerId)).then(r => r[0]);
   return {
     buyerEmail: bowler?.email || undefined,
@@ -269,7 +269,7 @@ export function computePaymentSplit(
   return { lineageAmount, prizeFundAmount };
 }
 
-export async function createPaymentRecord(
+async function createPaymentRecord(
   scheduleRecord: PaymentSchedule,
   amount: number,
   status: 'paid' | 'failed',

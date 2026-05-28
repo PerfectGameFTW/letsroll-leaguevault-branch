@@ -47,7 +47,7 @@ export function PaymentSummaryCards({
       {isPaidInFull && (
         <Card className="md:col-span-3 border-green-500/50 bg-green-500/5">
           <CardContent className="flex items-center justify-center gap-3 py-4">
-            <CheckCircle2 className="h-6 w-6 text-green-600" />
+            <CheckCircle2 className="size-6 text-green-600" />
             <span className="text-lg font-semibold text-green-600">Season Paid in Full</span>
           </CardContent>
         </Card>
@@ -129,7 +129,7 @@ export function PaymentSummaryCards({
         <Card className="border-emerald-500/50 bg-emerald-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-              <CircleDollarSign className="h-5 w-5" />
+              <CircleDollarSign className="size-5" />
               Double-Pay Weeks
             </CardTitle>
             <CardDescription>

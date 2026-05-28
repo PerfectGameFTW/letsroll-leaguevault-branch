@@ -14,7 +14,7 @@ import {
 export function PageLoadingState({ message, fullPage = true }: { message?: string; fullPage?: boolean }) {
   return (
     <div className={`flex flex-col items-center justify-center ${fullPage ? "h-[50vh]" : "py-12"}`}>
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <Loader2 className="size-8 animate-spin text-primary" />
       {message && <p className="mt-4 text-sm text-muted-foreground">{message}</p>}
     </div>
   );
@@ -23,7 +23,7 @@ export function PageLoadingState({ message, fullPage = true }: { message?: strin
 export function PageErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
-      <AlertCircle className="h-5 w-5 shrink-0" />
+      <AlertCircle className="size-5 shrink-0" />
       <p className="flex-1">{message}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
@@ -126,10 +126,10 @@ export function LeaguesTableSkeleton() {
                 <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                 <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
                 <TableCell>
-                  <div className="flex space-x-2">
-                    <Skeleton className="h-8 w-8 rounded-md" />
-                    <Skeleton className="h-8 w-8 rounded-md" />
-                    <Skeleton className="h-8 w-8 rounded-md" />
+                  <div className="flex gap-x-2">
+                    <Skeleton className="size-8 rounded-md" />
+                    <Skeleton className="size-8 rounded-md" />
+                    <Skeleton className="size-8 rounded-md" />
                   </div>
                 </TableCell>
               </TableRow>

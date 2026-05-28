@@ -133,7 +133,7 @@ export default function OrganizationsPage() {
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <h1 className="text-2xl md:text-3xl font-bold">Organizations</h1>
           <Button onClick={() => { setEditOrg(null); setOpen(true); }} className="w-full sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" /> Add Organization
+            <Plus className="mr-2 size-4" /> Add Organization
           </Button>
         </div>
 
@@ -184,7 +184,7 @@ export default function OrganizationsPage() {
                     <TableRow key={org.id} className={org.active === false ? 'opacity-60' : ''}>
                       <TableCell className="font-medium">
                         {org.active !== false ? (
-                          <button
+                          <button type="button"
                             className="inline-flex items-center gap-1.5 text-left hover:text-primary hover:underline transition-colors cursor-pointer"
                             onClick={() => switchOrgMutation.mutate(org.id)}
                             disabled={switchOrgMutation.isPending}
@@ -206,9 +206,9 @@ export default function OrganizationsPage() {
                       <TableCell className="hidden md:table-cell">{org.email || '—'}</TableCell>
                       <TableCell className="hidden md:table-cell">{org.phone || '—'}</TableCell>
                       <TableCell>
-                        <div className="flex space-x-2">
+                        <div className="flex gap-x-2">
                           <Button variant="outline" size="sm" onClick={() => handleEditClick(org)}>
-                            <Edit className="h-4 w-4" />
+                            <Edit className="size-4" />
                           </Button>
                           {org.active === false ? (
                             <Button
@@ -217,7 +217,7 @@ export default function OrganizationsPage() {
                               onClick={() => restoreMutation.mutate(org.id)}
                               disabled={restoreMutation.isPending}
                             >
-                              <RotateCcw className="h-4 w-4" />
+                              <RotateCcw className="size-4" />
                             </Button>
                           ) : (
                             <Button
@@ -225,7 +225,7 @@ export default function OrganizationsPage() {
                               size="sm"
                               onClick={() => setArchiveConfirmId(org.id)}
                             >
-                              <Archive className="h-4 w-4" />
+                              <Archive className="size-4" />
                             </Button>
                           )}
                           <Button 
@@ -233,7 +233,7 @@ export default function OrganizationsPage() {
                             size="sm"
                             onClick={() => setDeleteConfirmId(org.id)}
                           >
-                            <Trash className="h-4 w-4" />
+                            <Trash className="size-4" />
                           </Button>
                         </div>
                       </TableCell>

@@ -37,11 +37,11 @@ export const LeagueBottomSheet: FC<LeagueBottomSheetProps> = ({
         <div className="bg-white rounded-t-2xl shadow-xl max-h-[70vh] overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <h3 className="text-lg font-semibold text-slate-900">Switch League</h3>
-            <button
+            <button type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
+              className="size-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="size-5" />
             </button>
           </div>
 
@@ -54,7 +54,7 @@ export const LeagueBottomSheet: FC<LeagueBottomSheetProps> = ({
               const currentWeek = currentWeekMap?.get(bl.leagueId);
 
               return (
-                <button
+                <button type="button"
                   key={bl.leagueId}
                   onClick={() => {
                     onSelectLeague(bl.leagueId);
@@ -76,8 +76,8 @@ export const LeagueBottomSheet: FC<LeagueBottomSheetProps> = ({
                     </div>
                   </div>
                   {isSelected && (
-                    <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 ml-3">
-                      <Check className="w-4 h-4 text-white" />
+                    <div className="size-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 ml-3">
+                      <Check className="size-4 text-white" />
                     </div>
                   )}
                 </button>

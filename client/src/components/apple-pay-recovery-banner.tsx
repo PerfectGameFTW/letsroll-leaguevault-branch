@@ -100,7 +100,7 @@ export function ApplePayRecoveryBanner() {
       data-testid="banner-apple-pay-recovery-alert"
       role="alert"
     >
-      <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+      <AlertTriangle className="size-5 mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium">
           Apple Pay recovery alert sent {formatTimeAgo(alert.sentAt)} —{' '}
@@ -131,7 +131,7 @@ export function ApplePayRecoveryBanner() {
         aria-label="Dismiss recovery alert banner"
         data-testid="button-dismiss-apple-pay-recovery-alert"
       >
-        <X className="w-4 h-4" />
+        <X className="size-4" />
       </button>
     </div>
   );

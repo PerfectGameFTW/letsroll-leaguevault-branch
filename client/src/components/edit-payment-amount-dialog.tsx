@@ -47,7 +47,7 @@ export function EditPaymentAmountDialog({ editingPayment, onChange, onSave, isPe
         <DialogFooter>
           <Button variant="outline" onClick={() => onChange(null)}>Cancel</Button>
           <Button onClick={() => editingPayment && onSave(editingPayment.id)} disabled={isPending}>
-            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save Changes"}
+            {isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : "Save Changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

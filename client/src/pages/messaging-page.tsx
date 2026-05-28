@@ -93,8 +93,8 @@ function MessagingContent({ orgId }: MessagingContentProps) {
     <>
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center">
-            <MessageSquare className="text-white h-5 w-5" />
+          <div className="size-10 rounded-lg bg-indigo-500 flex items-center justify-center">
+            <MessageSquare className="text-white size-5" />
           </div>
           <div>
             <h1 className="text-2xl font-bold" data-testid="page-title">Messaging</h1>
@@ -107,7 +107,7 @@ function MessagingContent({ orgId }: MessagingContentProps) {
 
       {noneConnected && (
         <Alert className="mb-6" data-testid="alert-no-platforms">
-          <Info className="h-4 w-4" />
+          <Info className="size-4" />
           <AlertTitle>No messaging platforms connected yet</AlertTitle>
           <AlertDescription>
             Connect Square or BowlNow on the{" "}
@@ -125,8 +125,8 @@ function MessagingContent({ orgId }: MessagingContentProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center">
-                  <CreditCard className="text-white h-5 w-5" />
+                <div className="size-10 rounded-lg bg-slate-900 flex items-center justify-center">
+                  <CreditCard className="text-white size-5" />
                 </div>
                 <CardTitle className="text-base">Square Marketing</CardTitle>
               </div>
@@ -184,7 +184,7 @@ function MessagingContent({ orgId }: MessagingContentProps) {
                 data-testid="link-square-dashboard"
               >
                 Open Square Dashboard
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="size-3.5" />
               </a>
             )}
           </CardContent>
@@ -195,8 +195,8 @@ function MessagingContent({ orgId }: MessagingContentProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-                  <Mail className="text-white h-5 w-5" />
+                <div className="size-10 rounded-lg bg-orange-500 flex items-center justify-center">
+                  <Mail className="text-white size-5" />
                 </div>
                 <CardTitle className="text-base">BowlNow Marketing</CardTitle>
               </div>
@@ -262,7 +262,7 @@ function MessagingContent({ orgId }: MessagingContentProps) {
       </div>
 
       <Alert className="mt-6">
-        <Info className="h-4 w-4" />
+        <Info className="size-4" />
         <AlertTitle>How attribute updates work</AlertTitle>
         <AlertDescription>
           Whenever a bowler joins, leaves, or moves leagues — or when a league

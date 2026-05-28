@@ -208,7 +208,7 @@ function ExecutionSummaryPanel({
           onClick={handleCopy}
           data-testid={`button-copy-summary-${requestId}`}
         >
-          <Copy className="h-3.5 w-3.5 mr-1.5" />
+          <Copy className="size-3.5 mr-1.5" />
           Copy JSON
         </Button>
         <Button
@@ -217,7 +217,7 @@ function ExecutionSummaryPanel({
           onClick={handleDownload}
           data-testid={`button-download-summary-${requestId}`}
         >
-          <Download className="h-3.5 w-3.5 mr-1.5" />
+          <Download className="size-3.5 mr-1.5" />
           Download .json
         </Button>
       </div>
@@ -234,11 +234,11 @@ function ExecutionSummaryPanel({
           <span className="text-muted-foreground">User account: </span>
           {summary.user.deleted ? (
             <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> deleted (id {summary.user.userId})
+              <CheckCircle2 className="size-3.5" /> deleted (id {summary.user.userId})
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="h-3.5 w-3.5" />
+              <AlertTriangle className="size-3.5" />
               {summary.user.reason || 'not deleted'}
             </span>
           )}
@@ -260,19 +260,19 @@ function ExecutionSummaryPanel({
           <span className="text-muted-foreground">Confirmation email: </span>
           {!summary.confirmationEmail ? (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <AlertTriangle className="h-3.5 w-3.5" /> not recorded (legacy run)
+              <AlertTriangle className="size-3.5" /> not recorded (legacy run)
             </span>
           ) : summary.confirmationEmail.suppressedByUser ? (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <CheckCircle2 className="h-3.5 w-3.5" /> suppressed by user choice
+              <CheckCircle2 className="size-3.5" /> suppressed by user choice
             </span>
           ) : summary.confirmationEmail.sent ? (
             <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> sent
+              <CheckCircle2 className="size-3.5" /> sent
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5" />
+              <AlertTriangle className="size-3.5" />
               failed to send
               {summary.confirmationEmail.error
                 ? ` — ${summary.confirmationEmail.error}`
@@ -303,7 +303,7 @@ function ExecutionSummaryPanel({
                 className="text-xs text-destructive flex items-start gap-2"
                 data-testid={`bowler-failed-${b.bowlerId}`}
               >
-                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
                 <span>
                   Bowler #{b.bowlerId}: failed to anonymize
                   {b.reason ? ` — ${b.reason}` : ''}
@@ -334,9 +334,9 @@ function ExecutionSummaryPanel({
                 data-testid={p.deleted ? `provider-ok-${i}` : `provider-failed-${i}`}
               >
                 {p.deleted ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <CheckCircle2 className="size-3.5 mt-0.5 shrink-0" />
                 ) : (
-                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
                 )}
                 <span>
                   <span className="font-mono">{p.providerName}</span> · location {p.locationId} ·
@@ -591,9 +591,9 @@ export default function DeletionRequestsPage() {
                                         onClick={() => toggleExpanded(req.id)}
                                       >
                                         {expanded ? (
-                                          <ChevronDown className="h-4 w-4" />
+                                          <ChevronDown className="size-4" />
                                         ) : (
-                                          <ChevronRight className="h-4 w-4" />
+                                          <ChevronRight className="size-4" />
                                         )}
                                         <span className="ml-1 text-xs">
                                           Execution details

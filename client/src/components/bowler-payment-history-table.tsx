@@ -53,7 +53,7 @@ export function BowlerPaymentHistoryTable({ payments, locationId }: Props) {
                           className="text-muted-foreground hover:text-foreground"
                           title="View in Square Dashboard"
                         >
-                          <ExternalLink className="h-4 w-4" />
+                          <ExternalLink className="size-4" />
                         </a>
                       </>
                     ) : (

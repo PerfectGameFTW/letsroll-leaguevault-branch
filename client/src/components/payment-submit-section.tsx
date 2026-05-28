@@ -91,8 +91,8 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Processing...
+              <Loader2 className="mr-2 size-4 animate-spin" />
+              Processing…
             </>
           ) : league.paymentMode === 'upfront' ? (
             `Pay ${formatCurrency(fullSeasonAmount * multiplier)}`

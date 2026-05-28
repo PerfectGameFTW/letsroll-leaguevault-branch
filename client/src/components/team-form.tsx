@@ -157,7 +157,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
               )}
             />
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end gap-x-2">
               <Button 
                 type="button" 
                 variant="outline" 
@@ -173,7 +173,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
                 disabled={mutation.isPending || loadingTeams}
               >
                 {(mutation.isPending || loadingTeams) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 size-4 animate-spin" />
                 )}
                 Add Team
               </Button>

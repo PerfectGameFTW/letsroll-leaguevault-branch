@@ -76,7 +76,7 @@ export const ProfileSettingsPage: FC = () => {
           <div className="mb-6">
             <Button asChild variant="outline" className="flex items-center gap-2">
               <Link href="/">
-                <ArrowRight className="h-4 w-4 rotate-180" />
+                <ArrowRight className="size-4 rotate-180" />
                 Back to Dashboard
               </Link>
             </Button>
@@ -106,9 +106,9 @@ export const ProfileSettingsPage: FC = () => {
                 className="flex items-center gap-2"
               >
                 {isLoggingOut ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" />Signing out...</>
+                  <><Loader2 className="size-4 animate-spin" />Signing out…</>
                 ) : (
-                  <><LogOut className="h-4 w-4" />Sign Out</>
+                  <><LogOut className="size-4" />Sign Out</>
                 )}
               </Button>
             </CardContent>
@@ -119,7 +119,7 @@ export const ProfileSettingsPage: FC = () => {
           <Card>
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2">
-                <Trash2 className="h-5 w-5 text-destructive" />
+                <Trash2 className="size-5 text-destructive" />
                 Delete Account
               </CardTitle>
               <CardDescription className="mt-1.5">Permanently delete your account and all associated data</CardDescription>
@@ -127,7 +127,7 @@ export const ProfileSettingsPage: FC = () => {
             <CardContent>
               <Button asChild variant="outline" className="text-destructive border-destructive hover:bg-destructive/10 flex items-center gap-2">
                 <Link href="/delete-account">
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="size-4" />
                   Request Account Deletion
                 </Link>
               </Button>

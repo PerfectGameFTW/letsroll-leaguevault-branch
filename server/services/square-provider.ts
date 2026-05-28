@@ -51,7 +51,7 @@ import {
   ProviderNotConfiguredError,
   PaymentProviderError,
   CardOwnershipMismatchError,
-} from './payment-provider-factory';
+} from './payment-errors';
 import {
   ensureDefinitions,
   repairDefinition,

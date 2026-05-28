@@ -27,11 +27,11 @@ export function WeekNavigator({
         <Button
           variant="outline"
           size="icon"
-          className="h-9 w-9"
+          className="size-9"
           onClick={() => onWeekChange(Math.max(1, (selectedWeek ?? 1) - 1))}
           disabled={selectedWeek === null || selectedWeek <= 1}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="size-4" />
         </Button>
         <Popover open={popoverOpen} onOpenChange={onPopoverOpenChange}>
           <PopoverTrigger asChild>
@@ -62,11 +62,11 @@ export function WeekNavigator({
         <Button
           variant="outline"
           size="icon"
-          className="h-9 w-9"
+          className="size-9"
           onClick={() => onWeekChange(Math.min(maxWeek, (selectedWeek ?? 1) + 1))}
           disabled={selectedWeek === null || selectedWeek >= maxWeek}
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="size-4" />
         </Button>
       </div>
       {selectedDate && (

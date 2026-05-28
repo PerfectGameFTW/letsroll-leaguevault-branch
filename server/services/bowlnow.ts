@@ -106,7 +106,7 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
   return { firstName, lastName };
 }
 
-export function isBNConfigured(): boolean {
+function isBNConfigured(): boolean {
   return !!getGlobalApiKey();
 }
 
@@ -115,11 +115,11 @@ export function isOrgBNConfigured(orgConfig: OrgIntegrations | null | undefined)
   return !!orgConfig.bowlnow.apiKey;
 }
 
-export async function getOrgBNConfig(orgId: number): Promise<OrgIntegrations | null> {
+async function getOrgBNConfig(orgId: number): Promise<OrgIntegrations | null> {
   return storage.getOrgIntegrations(orgId);
 }
 
-export async function findContactByEmail(email: string, orgConfig?: OrgIntegrations | null): Promise<BNContact | null> {
+async function findContactByEmail(email: string, orgConfig?: OrgIntegrations | null): Promise<BNContact | null> {
   try {
     const apiKey = resolveApiKey(orgConfig);
     if (!apiKey) return null;
@@ -152,7 +152,7 @@ export async function findContactByEmail(email: string, orgConfig?: OrgIntegrati
   }
 }
 
-export async function createContact(contactData: {
+async function createContact(contactData: {
   firstName: string;
   lastName: string;
   email?: string;
@@ -196,7 +196,7 @@ export async function createContact(contactData: {
   }
 }
 
-export async function updateContact(contactId: string, contactData: {
+async function updateContact(contactId: string, contactData: {
   firstName?: string;
   lastName?: string;
   email?: string;

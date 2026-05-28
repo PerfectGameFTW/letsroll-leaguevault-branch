@@ -79,7 +79,7 @@ const DeleteAccountPage: FC = () => {
         <Card className="w-full max-w-md mt-4 sm:mt-0">
           <CardHeader className="text-center space-y-2">
             <div className="flex justify-center">
-              <CheckCircle className="h-12 w-12 text-green-500" />
+              <CheckCircle className="size-12 text-green-500" />
             </div>
             <CardTitle className="text-xl">Request Received</CardTitle>
             <CardDescription>
@@ -105,12 +105,12 @@ const DeleteAccountPage: FC = () => {
         <CardHeader className="space-y-1 pb-4">
           <div className="flex items-center gap-2 mb-2">
             <Button variant="ghost" size="sm" className="gap-1" onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4" />
               Back
             </Button>
           </div>
           <CardTitle className="text-xl font-bold flex items-center gap-2">
-            <Trash2 className="h-5 w-5 text-destructive" />
+            <Trash2 className="size-5 text-destructive" />
             Request Account Deletion
           </CardTitle>
           <CardDescription>
@@ -187,8 +187,8 @@ const DeleteAccountPage: FC = () => {
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Submitting...
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Submitting…
                 </>
               ) : (
                 "Submit Deletion Request"

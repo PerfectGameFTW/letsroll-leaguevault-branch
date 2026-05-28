@@ -29,7 +29,7 @@ const RegistrationCompletePage: FC = () => {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center space-y-2">
             <div className="flex justify-center">
-              <CheckCircle2 className="h-12 w-12 text-green-500" />
+              <CheckCircle2 className="size-12 text-green-500" />
             </div>
             <CardTitle className="text-2xl font-bold">Account Created</CardTitle>
             <CardDescription>
@@ -38,7 +38,7 @@ const RegistrationCompletePage: FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-md border bg-muted/40 p-4 flex items-start gap-3">
-              <MailCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+              <MailCheck className="size-5 text-primary mt-0.5 shrink-0" />
               <div className="text-sm space-y-1">
                 <p className="font-medium">A league admin will finish your setup</p>
                 <p className="text-muted-foreground">

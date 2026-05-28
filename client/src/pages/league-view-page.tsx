@@ -181,9 +181,9 @@ export default function LeagueViewPage() {
             <AlertDialogTrigger asChild>
               <Button variant="outline" disabled={sendInvitesMutation.isPending}>
                 {sendInvitesMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="size-4 mr-2 animate-spin" />
                 ) : (
-                  <Mail className="h-4 w-4 mr-2" />
+                  <Mail className="size-4 mr-2" />
                 )}
                 Send Registration Invites
               </Button>
@@ -210,7 +210,7 @@ export default function LeagueViewPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-2">
-                <Mail className="h-5 w-5 text-primary" />
+                <Mail className="size-5 text-primary" />
                 <h3 className="font-semibold">Invite Results</h3>
               </div>
               <div className="grid grid-cols-3 gap-4 text-center">
@@ -237,7 +237,7 @@ export default function LeagueViewPage() {
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
                 <div className="flex justify-center mb-2">
-                  <Users className="h-6 w-6" />
+                  <Users className="size-6" />
                 </div>
                 <CardTitle>Roster Management</CardTitle>
                 <CardDescription>
@@ -253,7 +253,7 @@ export default function LeagueViewPage() {
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
                 <div className="flex justify-center mb-2">
-                  <CircleDollarSign className="h-6 w-6" />
+                  <CircleDollarSign className="size-6" />
                 </div>
                 <CardTitle>Weekly Payments</CardTitle>
                 <CardDescription>
@@ -274,7 +274,7 @@ export default function LeagueViewPage() {
               <Card className="hover:bg-accent transition-colors">
                 <CardHeader>
                   <div className="flex justify-center mb-2">
-                    <ShieldCheck className="h-6 w-6" />
+                    <ShieldCheck className="size-6" />
                   </div>
                   <CardTitle>Secretaries</CardTitle>
                   <CardDescription>
@@ -297,7 +297,7 @@ export default function LeagueViewPage() {
         {league.active && (
           <div className="flex justify-end">
             <Button variant="outline" onClick={() => setShowNewSeason(true)}>
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="size-4 mr-2" />
               Start New Season
             </Button>
           </div>
@@ -307,7 +307,7 @@ export default function LeagueViewPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <History className="h-5 w-5" />
+                <History className="size-5" />
                 <CardTitle className="text-lg">Season History</CardTitle>
               </div>
             </CardHeader>
@@ -371,9 +371,9 @@ export default function LeagueViewPage() {
                 disabled={!newSeasonStart || !newSeasonEnd || newSeasonMutation.isPending}
               >
                 {newSeasonMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <Loader2 className="size-4 animate-spin mr-2" />
                 ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
+                  <RefreshCw className="size-4 mr-2" />
                 )}
                 Create New Season
               </Button>
@@ -483,10 +483,10 @@ function EmbedAdminPanel({ league }: { league: League }) {
           >
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Code className="h-5 w-5" />
+                <Code className="size-5" />
                 <CardTitle className="text-lg flex-1">Embeddable registration form</CardTitle>
                 <ChevronDown
-                  className={`h-5 w-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+                  className={`size-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
                   aria-hidden="true"
                 />
               </div>
@@ -515,10 +515,10 @@ function EmbedAdminPanel({ league }: { league: League }) {
           <div className="flex gap-2">
             <Input readOnly value={embedUrl} data-testid="embed-direct-url" />
             <Button type="button" variant="outline" size="icon" onClick={() => copy(embedUrl)} aria-label="Copy URL">
-              <Copy className="h-4 w-4" />
+              <Copy className="size-4" />
             </Button>
             <Button type="button" variant="outline" size="icon" asChild aria-label="Open in new tab">
-              <a href={embedUrl} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /></a>
+              <a href={embedUrl} target="_blank" rel="noreferrer"><ExternalLink className="size-4" /></a>
             </Button>
           </div>
         </div>
@@ -528,7 +528,7 @@ function EmbedAdminPanel({ league }: { league: League }) {
           <div className="flex gap-2">
             <Textarea readOnly value={iframeSnippet} rows={3} className="font-mono text-xs" data-testid="embed-iframe-snippet" />
             <Button type="button" variant="outline" size="icon" onClick={() => copy(iframeSnippet)} aria-label="Copy snippet">
-              <Copy className="h-4 w-4" />
+              <Copy className="size-4" />
             </Button>
           </div>
         </div>
@@ -559,12 +559,14 @@ function EmbedAdminPanel({ league }: { league: League }) {
               onClick={() => {
                 const list = (domainsText ?? '')
                   .split(/\s+/)
-                  .map((s) => s.trim())
-                  .filter(Boolean);
+                  .flatMap((s) => {
+                    const t = s.trim();
+                    return t ? [t] : [];
+                  });
                 saveDomains.mutate(list);
               }}
             >
-              {saveDomains.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+              {saveDomains.isPending && <Loader2 className="size-3 mr-2 animate-spin" />}
               Save domains
             </Button>
           </div>
@@ -617,7 +619,7 @@ function EmbedAdminPanel({ league }: { league: League }) {
                 }
               }}
             >
-              {saveQuestions.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+              {saveQuestions.isPending && <Loader2 className="size-3 mr-2 animate-spin" />}
               Save questions
             </Button>
           </div>

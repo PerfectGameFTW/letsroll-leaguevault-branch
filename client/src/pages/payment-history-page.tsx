@@ -441,12 +441,12 @@ export default function PaymentHistoryPage() {
         <div>
           <h1 className="text-2xl font-bold mb-1">Payment History</h1>
           {hasMultipleLeagues ? (
-            <button
+            <button type="button"
               onClick={() => setLeagueSheetOpen(true)}
               className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors mb-4"
             >
               <span>{league.name}</span>
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="size-4" />
             </button>
           ) : (
             <p className="text-muted-foreground mb-4">

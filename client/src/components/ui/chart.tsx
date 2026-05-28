@@ -205,7 +205,7 @@ const ChartTooltipContent = React.forwardRef<
                       <div
                         className={cn(
                           "shrink-0 rounded-[2px] border-[--color-border] bg-[--color-bg]",
-                          "h-3.5 w-3.5"
+                          "size-3.5"
                         )}
                         style={
                           {
@@ -289,7 +289,7 @@ const ChartLegendContent = React.forwardRef<
             >
               {/* Always show a color box for consistency */}
               <div
-                className="h-3.5 w-3.5 shrink-0 rounded-[2px]"
+                className="size-3.5 shrink-0 rounded-[2px]"
                 style={{
                   backgroundColor: item.color,
                 }}

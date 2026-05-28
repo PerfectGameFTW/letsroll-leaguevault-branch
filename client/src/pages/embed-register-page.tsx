@@ -119,7 +119,7 @@ export default function EmbedRegisterPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -128,7 +128,7 @@ export default function EmbedRegisterPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <Alert variant="destructive" className="max-w-md">
-          <AlertCircle className="h-4 w-4" />
+          <AlertCircle className="size-4" />
           <AlertDescription>{(error as Error)?.message ?? "Registration is not available."}</AlertDescription>
         </Alert>
       </div>
@@ -145,7 +145,7 @@ export default function EmbedRegisterPage() {
           </CardHeader>
           <CardContent>
             <Alert>
-              <AlertCircle className="h-4 w-4" />
+              <AlertCircle className="size-4" />
               <AlertDescription>This league is currently full. Please check back later.</AlertDescription>
             </Alert>
           </CardContent>
@@ -160,7 +160,7 @@ export default function EmbedRegisterPage() {
         <Card className="max-w-md w-full">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-2">
-              <CheckCircle2 className="h-10 w-10 text-green-600" />
+              <CheckCircle2 className="size-10 text-green-600" />
             </div>
             <CardTitle>You're registered!</CardTitle>
             <CardDescription>
@@ -193,7 +193,7 @@ export default function EmbedRegisterPage() {
           <CardHeader>
             <div className="flex items-center gap-3">
               {info.organization.logo && (
-                <img src={`/api/organizations/slug/${info.organization.slug}/logo`} alt="" className="h-10 w-10 object-contain" />
+                <img src={`/api/organizations/slug/${info.organization.slug}/logo`} alt="" className="size-10 object-contain" />
               )}
               <div>
                 <CardTitle>{info.league.name}</CardTitle>
@@ -216,7 +216,7 @@ export default function EmbedRegisterPage() {
                     <h3 className="font-semibold">Bowler {children.length > 1 ? `#${i + 1}` : "info"}</h3>
                     {children.length > 1 && (
                       <Button type="button" variant="ghost" size="sm" onClick={() => removeChild(i)}>
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       </Button>
                     )}
                   </div>
@@ -265,7 +265,7 @@ export default function EmbedRegisterPage() {
 
               {children.length < 10 && (
                 <Button type="button" variant="outline" onClick={addChild} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="size-4 mr-2" />
                   Add another child
                 </Button>
               )}
@@ -315,13 +315,13 @@ export default function EmbedRegisterPage() {
 
               {submitError && (
                 <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertCircle className="size-4" />
                   <AlertDescription>{submitError}</AlertDescription>
                 </Alert>
               )}
 
               <Button type="submit" disabled={submit.isPending} className="w-full">
-                {submit.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {submit.isPending && <Loader2 className="size-4 animate-spin mr-2" />}
                 Submit registration
               </Button>
             </form>

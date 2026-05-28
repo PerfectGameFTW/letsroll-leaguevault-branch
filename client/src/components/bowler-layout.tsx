@@ -49,7 +49,7 @@ function buildNavItems(currentLeagueId?: number): NavItem[] {
 
 const LoadingFallback = () => (
   <div className="p-4 flex items-center justify-center">
-    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    <Loader2 className="size-6 animate-spin text-muted-foreground" />
   </div>
 );
 
@@ -95,7 +95,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
             className="h-10 w-auto max-w-[200px] object-contain"
           />
         ) : organization ? (
-          <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
+          <div className="size-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
             <span className="text-white font-bold text-sm tracking-wider">{orgInitials}</span>
           </div>
         ) : null}
@@ -108,7 +108,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               href="/"
               className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors mb-4 no-underline focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-sm"
             >
-              <ArrowLeft className="w-4 h-4 mr-1" />
+              <ArrowLeft className="size-4 mr-1" />
               Back to Admin Dashboard
             </Link>
           )}
@@ -139,7 +139,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
                   "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
                   isActive ? "bg-indigo-50" : "bg-transparent"
                 )}>
-                  <item.icon className="w-7 h-7" />
+                  <item.icon className="size-7" />
                 </div>
                 <span className={cn(
                   "text-[10px] tracking-wide",

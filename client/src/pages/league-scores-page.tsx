@@ -13,7 +13,7 @@ export default function LeagueScoresPage() {
           href={`/leagues/${leagueId}`}
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
-          <AlertCircle className="h-5 w-5 flex-shrink-0 mr-2" />
+          <AlertCircle className="size-5 flex-shrink-0 mr-2" />
           Scores viewing is being updated
         </Link>
         <div className="p-4 rounded-md bg-muted">

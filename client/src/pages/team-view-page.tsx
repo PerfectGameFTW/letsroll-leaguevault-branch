@@ -187,24 +187,24 @@ export default function TeamViewPage() {
           href={`/leagues/${team.leagueId}/teams`}
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="size-4 mr-2" />
           Back to Teams
         </Link>
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold flex-1">{team.name}</h1>
             <Button variant="ghost" size="sm" onClick={handleEditClick}>
-              <Pencil className="h-4 w-4" />
+              <Pencil className="size-4" />
               <span className="sr-only">Edit team name</span>
             </Button>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Create New Bowler
             </Button>
             <Button onClick={() => setShowAssignForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Add Existing Bowler
             </Button>
           </div>
@@ -228,7 +228,7 @@ export default function TeamViewPage() {
                 <TableRow key={bowlerLeague.id}>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className={`h-4 w-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                      <CheckCircle2 className={`size-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
                       <Link href={`/bowlers/${bowler.id}?from=team&fromTeamId=${teamId}`} className="hover:underline">
                         {bowler.name}
                       </Link>
@@ -250,7 +250,7 @@ export default function TeamViewPage() {
                           setShowForm(true);
                         }}
                       >
-                        <Pencil className="h-4 w-4 mr-2" />
+                        <Pencil className="size-4 mr-2" />
                         Edit
                       </Button>
                       <Button
@@ -258,7 +258,7 @@ export default function TeamViewPage() {
                         size="sm"
                         onClick={() => setShowRemoveDialog({ bowlerId: bowler.id, name: bowler.name })}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
+                        <Trash2 className="size-4 mr-2" />
                         Remove
                       </Button>
                     </div>
@@ -307,7 +307,7 @@ export default function TeamViewPage() {
               <div className="flex justify-end">
                 <Button type="submit" disabled={updateTeamMutation.isPending}>
                   {updateTeamMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 size-4 animate-spin" />
                   )}
                   Save
                 </Button>
@@ -366,7 +366,7 @@ export default function TeamViewPage() {
               disabled={removeBowlerMutation.isPending}
             >
               {removeBowlerMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
               ) : "Remove"}
             </Button>
           </DialogFooter>

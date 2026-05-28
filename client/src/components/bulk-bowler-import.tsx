@@ -202,7 +202,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5" />
+            <FileSpreadsheet className="size-5" />
             {step === "upload" && "Import Bowlers"}
             {step === "preview" && "Preview Import"}
             {step === "result" && "Import Complete"}
@@ -219,7 +219,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
         {step === "upload" && (
           <div className="space-y-6 py-4">
             <div className="border-2 border-dashed rounded-lg p-8 text-center space-y-4">
-              <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
+              <Upload className="size-10 mx-auto text-muted-foreground" />
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
                   Upload a CSV or XLSX file with bowler information
@@ -269,7 +269,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
 
             <div className="flex justify-between">
               <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="size-4 mr-2" />
                 Download Template
               </Button>
               <div className="flex gap-2">
@@ -282,8 +282,8 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                 >
                   {previewMutation.isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processing...
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Processing…
                     </>
                   ) : (
                     "Preview Import"
@@ -295,7 +295,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
         )}
 
         {step === "preview" && previewData && (
-          <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+          <div className="gap-y-4 flex-1 min-h-0 flex flex-col">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <SummaryCard
                 label="Total Rows"
@@ -321,7 +321,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
 
             {previewData.newTeamsToCreate > 0 && (
               <div className="flex items-center gap-2 text-sm bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 rounded-md px-3 py-2">
-                <Plus className="h-4 w-4 flex-shrink-0" />
+                <Plus className="size-4 flex-shrink-0" />
                 <span>
                   {previewData.newTeamsToCreate} new team
                   {previewData.newTeamsToCreate > 1 ? "s" : ""} will be created
@@ -359,13 +359,13 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                       </TableCell>
                       <TableCell>
                         {row.status === "valid" && (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <CheckCircle2 className="size-4 text-green-600" />
                         )}
                         {row.status === "error" && (
-                          <XCircle className="h-4 w-4 text-red-600" />
+                          <XCircle className="size-4 text-red-600" />
                         )}
                         {row.status === "duplicate" && (
-                          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                          <AlertTriangle className="size-4 text-yellow-600" />
                         )}
                       </TableCell>
                       <TableCell className="text-sm">{row.leagueName}</TableCell>
@@ -411,8 +411,8 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                 >
                   {importMutation.isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Importing…
                     </>
                   ) : (
                     `Import ${previewData.validRows} Bowler${previewData.validRows !== 1 ? "s" : ""}`
@@ -426,7 +426,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
         {step === "result" && importResult && (
           <div className="space-y-6 py-4">
             <div className="text-center space-y-2">
-              <CheckCircle2 className="h-12 w-12 mx-auto text-green-600" />
+              <CheckCircle2 className="size-12 mx-auto text-green-600" />
               <h3 className="text-lg font-semibold">Import Successful</h3>
             </div>
 
@@ -472,7 +472,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                     size="sm"
                     onClick={handleDownloadErrorReport}
                   >
-                    <Download className="h-3 w-3 mr-1" />
+                    <Download className="size-3 mr-1" />
                     Download Report
                   </Button>
                 </div>
@@ -493,7 +493,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
             )}
 
             <div className="flex justify-end">
-              <Button onClick={handleClose}>Done</Button>
+              <Button onClick={handleClose}>Close importer</Button>
             </div>
           </div>
         )}

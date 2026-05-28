@@ -117,9 +117,9 @@ export function ViewReceiptButton({ payment, variant = "icon", locationId }: Pro
         title={title}
       >
         {isFetching ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
         ) : (
-          <Receipt className="h-4 w-4" />
+          <Receipt className="size-4" />
         )}
         {hasReceipt ? "View" : "Look up"}
       </button>
@@ -135,9 +135,9 @@ export function ViewReceiptButton({ payment, variant = "icon", locationId }: Pro
       title={title}
     >
       {isFetching ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="size-4 animate-spin" />
       ) : (
-        <Receipt className="h-4 w-4 text-primary" />
+        <Receipt className="size-4 text-primary" />
       )}
     </Button>
   );

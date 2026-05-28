@@ -51,7 +51,7 @@ function IntegrationsContent({ orgId, highlightLocationId }: IntegrationsContent
           <Card key={i}>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+                <div className="size-10 rounded-lg bg-muted animate-pulse" />
                 <div className="space-y-2">
                   <div className="h-4 w-24 bg-muted animate-pulse rounded" />
                   <div className="h-3 w-48 bg-muted animate-pulse rounded" />
@@ -70,7 +70,7 @@ function IntegrationsContent({ orgId, highlightLocationId }: IntegrationsContent
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3 text-destructive">
-              <AlertCircle className="h-5 w-5 shrink-0" />
+              <AlertCircle className="size-5 shrink-0" />
               <div>
                 <p className="font-medium text-sm">Failed to load integrations</p>
                 <p className="text-xs text-muted-foreground mt-0.5">

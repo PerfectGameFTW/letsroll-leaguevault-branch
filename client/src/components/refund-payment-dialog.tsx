@@ -62,7 +62,7 @@ export function RefundPaymentDialog({ payment, onClose, onConfirm, isPending }: 
         </DialogHeader>
         {payment?.receiptEmailMissing && (
           <Alert>
-            <AlertTriangle className="h-4 w-4" />
+            <AlertTriangle className="size-4" />
             <AlertDescription>
               The original charge was processed without a buyer email, so
               Square will not auto-email a refund receipt either. Use
@@ -88,9 +88,9 @@ export function RefundPaymentDialog({ payment, onClose, onConfirm, isPending }: 
             disabled={isPending}
           >
             {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="size-4 animate-spin mr-2" />
             ) : (
-              <RotateCcw className="h-4 w-4 mr-2" />
+              <RotateCcw className="size-4 mr-2" />
             )}
             Process Refund
           </Button>

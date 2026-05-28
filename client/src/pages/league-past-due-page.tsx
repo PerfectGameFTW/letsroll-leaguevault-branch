@@ -144,7 +144,7 @@ export default function LeaguePastDuePage() {
       <ErrorBoundary level="section">
       <div className="space-y-6">
         <Link href="/reports" className="text-muted-foreground hover:text-foreground flex items-center">
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="size-4 mr-2" />
           Back to Reports
         </Link>
 
@@ -170,7 +170,7 @@ export default function LeaguePastDuePage() {
                 <TableRow key={item.bowler.id}>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className={`h-4 w-4 ${item.bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                      <CheckCircle2 className={`size-4 ${item.bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
                       <Link href={`/bowlers/${item.bowler.id}?from=league-past-due&fromLeagueId=${leagueId}`} className="hover:underline">
                         {item.bowler.name}
                       </Link>

@@ -143,11 +143,11 @@ export default function LeaguesPage() {
           <h1 className="text-2xl font-bold">Leagues</h1>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowBulkImport(true)}>
-              <Upload className="h-4 w-4 mr-2" />
+              <Upload className="size-4 mr-2" />
               Import Bowlers
             </Button>
             <Button onClick={() => { setSelectedLeague(undefined); setShowForm(true); }}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               Add League
             </Button>
           </div>

@@ -80,7 +80,7 @@ export function PaymentCreditCardSection({
   if (squareLoadFailed) {
     return (
       <Alert variant="destructive" className="mb-4">
-        <AlertTriangle className="h-4 w-4" />
+        <AlertTriangle className="size-4" />
         <AlertTitle>Credit Card Processing Unavailable</AlertTitle>
         <AlertDescription>
           Credit card processing is temporarily unavailable. Please use cash or check payment methods instead.
@@ -164,8 +164,8 @@ export function PaymentCreditCardSection({
         )}
         {isWalletProcessing && (
           <div className="flex items-center justify-center py-2">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-            <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+            <Loader2 className="size-4 animate-spin text-muted-foreground mr-2" />
+            <span className="text-sm text-muted-foreground">Processing wallet payment…</span>
           </div>
         )}
       </div>
@@ -199,7 +199,7 @@ export function PaymentCreditCardSection({
               setSelectedSavedCardId(savedCards[0].id);
             }}
           >
-            <Wallet className="h-4 w-4 mr-1" />
+            <Wallet className="size-4 mr-1" />
             Saved Card
           </Button>
           <Button
@@ -216,7 +216,7 @@ export function PaymentCreditCardSection({
               setSelectedSavedCardId('');
             }}
           >
-            <CreditCard className="h-4 w-4 mr-1" />
+            <CreditCard className="size-4 mr-1" />
             New Card
           </Button>
         </div>
@@ -240,7 +240,7 @@ export function PaymentCreditCardSection({
             </SelectContent>
           </Select>
           <Alert>
-            <Wallet className="h-4 w-4" />
+            <Wallet className="size-4" />
             <AlertDescription>
               Payment will be charged to the selected saved card.
             </AlertDescription>
@@ -253,9 +253,9 @@ export function PaymentCreditCardSection({
           <div ref={cardContainerRef} className="p-4" />
           {!isSquareReady && (
             <div className="flex items-center justify-center p-4">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
               <p className="ml-2 text-sm text-muted-foreground">
-                Loading credit card form...
+                Loading credit card form…
               </p>
             </div>
           )}
@@ -268,12 +268,12 @@ export function PaymentCreditCardSection({
           </div>
         )}
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-x-2">
           <FormField
             control={form.control}
             name="storeCard"
             render={({ field }) => (
-              <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+              <FormItem className="flex flex-row items-center gap-x-2 gap-y-0">
                 <FormControl>
                   <Checkbox
                     id="storeCard"
