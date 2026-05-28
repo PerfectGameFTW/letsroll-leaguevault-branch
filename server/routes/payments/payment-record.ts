@@ -19,6 +19,7 @@ import { db } from '../../db.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { payments as paymentsTable } from '@shared/schema';
 import { createLogger } from '../../logger';
+import { getPgErrorCode } from '../../utils/db-errors';
 
 const log = createLogger("Payments");
 
@@ -94,9 +95,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
     } catch (insertError: unknown) {
       if (
         payment.idempotencyKey &&
-        insertError instanceof Error &&
-        'code' in insertError &&
-        (insertError as Record<string, unknown>).code === '23505'
+        getPgErrorCode(insertError) === '23505'
       ) {
         const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
         if (existing && existing.leagueId === payment.leagueId) {
