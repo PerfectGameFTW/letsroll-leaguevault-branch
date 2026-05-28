@@ -16,7 +16,22 @@ import { checkSetupSecret } from '../../server/routes/setup-admin';
 // 5 req / 15 min / IP and we need `X-Forwarded-For` to actually reach
 // express-rate-limit's keyGenerator — only possible when we hit the
 // trusted local hop directly.
-const BASE_URL = process.env.SETUP_ADMIN_TEST_BASE_URL || 'http://localhost:5000';
+//
+// Resolution order (all local hops — no Replit HTTPS fallback on
+// purpose, see above):
+//   1. `SETUP_ADMIN_TEST_BASE_URL` — explicit override.
+//   2. `TEST_BASE_URL` — set by `tests/setup/per-worker-setup.ts` to
+//      `http://127.0.0.1:<port>` for the per-fork test app vitest spawns.
+//      Without this, the HTTP requests below default to `localhost:5000`
+//      and hit whatever (if anything) is listening there instead of the
+//      per-worker app, which is the same misrouting bug that broke
+//      setup-admin-bootstrap-race.test.ts under `bash scripts/test-race.sh`.
+//   3. `http://localhost:5000` — last-resort local fallback (dev server
+//      explicitly started by the developer).
+const BASE_URL =
+  process.env.SETUP_ADMIN_TEST_BASE_URL ||
+  process.env.TEST_BASE_URL ||
+  'http://localhost:5000';
 const SETUP_SECRET = process.env.SETUP_SECRET;
 
 let ipCounter = 0;
