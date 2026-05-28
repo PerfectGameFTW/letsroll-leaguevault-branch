@@ -59,17 +59,22 @@ export default async function setup() {
       process.env[RUN_ID_ENV] = randomBytes(4).toString('hex');
     }
     const t0 = Date.now();
-    // Cross-run sweep at startup. `minAgeMs` only affects Neon-branches
-    // mode: it skips any `test_worker_*` branch younger than 10 minutes
-    // so a concurrently-running sibling vitest process (different
-    // LV_TEST_RUN_ID, same Neon project) doesn't get its live branches
-    // deleted out from under it. Crashed-run leftovers are reliably
-    // older than 10 min by the time the next run starts, so the
-    // safety rail doesn't compromise cleanup. End-of-run cleanup
-    // (in `summary-reporter.ts`) passes a RUN_ID prefix and skips the
-    // age gate. Legacy CREATE-DATABASE-TEMPLATE mode ignores `minAgeMs`
-    // and uses its existing active-connection skip safeguard.
-    await cleanupTestDbs({ minAgeMs: 10 * 60 * 1000 });
+    // Cross-run sweep at startup. `connectionAware` (Task #742) makes
+    // this probe each `test_worker_*` branch's compute for live client
+    // connections rather than guessing from age: a branch with no
+    // active compute, or a warm compute with zero connections, is a
+    // crashed-run orphan and is reaped immediately — so your own
+    // killed-run branches get cleaned within seconds during rapid
+    // debug retries instead of lingering for 10 minutes. A branch with
+    // live connections is a concurrently-running sibling vitest process
+    // (different LV_TEST_RUN_ID, same Neon project) and is always kept.
+    // `minAgeMs` is retained only as a fallback for branches whose
+    // compute can't be probed. End-of-run cleanup (in
+    // `summary-reporter.ts`) passes a RUN_ID prefix and deletes its own
+    // still-warm branches unconditionally. Legacy
+    // CREATE-DATABASE-TEMPLATE mode ignores both options and uses its
+    // existing active-connection skip safeguard.
+    await cleanupTestDbs({ minAgeMs: 10 * 60 * 1000, connectionAware: true });
     const t1 = Date.now();
     await ensureTestTemplate();
     const t2 = Date.now();

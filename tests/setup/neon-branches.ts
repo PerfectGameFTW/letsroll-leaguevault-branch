@@ -61,7 +61,10 @@ export interface NeonEndpoint {
   id: string;
   host: string;
   type: string;
+  /** "init" | "active" | "idle" — compute lifecycle state. */
   current_state?: string;
+  /** Set while a compute is transitioning (e.g. spinning up to "active"). */
+  pending_state?: string;
 }
 
 interface CreateBranchResponse {
