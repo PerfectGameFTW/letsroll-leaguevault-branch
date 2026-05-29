@@ -46,7 +46,7 @@ export function ViewReceiptButton({ payment, variant = "icon", locationId }: Pro
   const canBackfill = !!payment.providerPaymentId;
 
   if (!isCardPaid || (!hasReceipt && !canBackfill)) {
-    return variant === "link" ? <span className="text-muted-foreground">—</span> : null;
+    return variant === "link" ? <span className="text-muted-foreground">-</span> : null;
   }
 
   const openCached = () => {

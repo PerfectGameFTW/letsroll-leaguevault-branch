@@ -238,18 +238,6 @@ export const queryClient = new QueryClient({
   },
 });
 
-// Reset the entire query cache
-export const resetQueryCache = () => {
-  queryClient.clear();
-};
-
-// Reset specific queries by their keys
-export const resetQueries = async (queryKeys: string[]) => {
-  await Promise.all(
-    queryKeys.map(key => queryClient.resetQueries({ queryKey: [key] }))
-  );
-};
-
 export const prefetchQueries = async (role: 'admin' | 'bowler') => {
   try {
     if (role === 'admin') {
@@ -260,11 +248,4 @@ export const prefetchQueries = async (role: 'admin' | 'bowler') => {
   } catch (error) {
     console.error('[Query] Error prefetching initial data:', error);
   }
-};
-
-// Invalidate multiple queries at once
-export const invalidateQueries = async (keys: string[]) => {
-  await Promise.all(
-    keys.map(key => queryClient.invalidateQueries({ queryKey: [key] }))
-  );
 };

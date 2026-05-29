@@ -137,7 +137,7 @@ export async function hasAdminAccessToLeague(req: Request, leagueId: number): Pr
  * Returns false for system_admin (use `hasAccessToBowler` instead) and
  * for any caller without at least one matching grant.
  */
-export async function hasSecretaryAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
+async function hasSecretaryAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
   if (!req.user) return false;
   if (req.user.role === 'system_admin') return false;
   const grantedLeagueIds = await storage.getSecretaryLeagueIdsForUser(req.user.id);

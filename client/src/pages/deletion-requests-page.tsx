@@ -665,7 +665,7 @@ export default function DeletionRequestsPage() {
                   ) : reviewMode === 'completed' ? (
                     <>
                       Confirm that you have processed the deletion request for{' '}
-                      {activeRequest?.email}. This does not automatically delete user data —
+                      {activeRequest?.email}. This does not automatically delete user data;
                       perform any required deletions in your storage backend before marking
                       complete, or use "Delete account data" instead.
                     </>

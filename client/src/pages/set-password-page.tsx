@@ -302,7 +302,7 @@ export default function SetPasswordPage() {
                   <span data-testid="text-set-password-retry-in">
                     {formatCountdown(remainingSeconds)}
                   </span>
-                  . Please try again then — your link is still valid,
+                  . Please try again then; your link is still valid,
                   so you don't need to request a new one.
                 </AlertDescription>
               </Alert>

@@ -407,7 +407,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
             )}
             {showRetry && !inRetryCooldown && (
               <p className="text-xs text-muted-foreground">
-                Your payment profile is temporarily out of date. We're retrying in the background — use this button to retry now.
+                Your payment profile is temporarily out of date. We're retrying in the background; use this button to retry now.
               </p>
             )}
           </div>

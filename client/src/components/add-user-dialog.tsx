@@ -129,8 +129,8 @@ export function AddUserDialog({ open, onClose, orgLocations }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">End User — can only access their assigned location</SelectItem>
-                <SelectItem value="admin">Admin — can access all locations</SelectItem>
+                <SelectItem value="user">End User: can only access their assigned location</SelectItem>
+                <SelectItem value="admin">Admin: can access all locations</SelectItem>
               </SelectContent>
             </Select>
           </div>

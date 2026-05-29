@@ -105,12 +105,12 @@ export function SquareCatalogCapBanner() {
       <AlertTriangle className="size-5 mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium">
-          Square catalog hit pagination cap — {alerts.length} alert{alerts.length === 1 ? '' : 's'} across{' '}
+          Square catalog hit pagination cap: {alerts.length} alert{alerts.length === 1 ? '' : 's'} across{' '}
           {orgsAffected} {orgsAffected === 1 ? 'organization' : 'organizations'}.
         </p>
         <p className="text-xs mt-1 opacity-90">
           Most recent: {orgLabel}, location #{newest.locationId} ({newest.reason.replace('_', ' ')}){' '}
-          {formatTimeAgo(newest.sentAt)}. Their admin saw a truncated catalog —
+          {formatTimeAgo(newest.sentAt)}. Their admin saw a truncated catalog;
           reach out to prune the catalog or scope by category.
         </p>
       </div>

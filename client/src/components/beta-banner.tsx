@@ -71,7 +71,7 @@ export function BetaBanner() {
       style={{ height: `${BANNER_HEIGHT_PX}px` }}
     >
       <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-      <span>BETA ENVIRONMENT — test data only, payments use sandbox credentials</span>
+      <span>BETA ENVIRONMENT: test data only, payments use sandbox credentials</span>
       <span
         className="font-mono text-[11px] text-slate-700 hidden sm:inline"
         data-testid="beta-banner-commit"

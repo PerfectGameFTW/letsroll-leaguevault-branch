@@ -49,7 +49,7 @@ const RegistrationCompletePage: FC = () => {
               </div>
             </div>
             <p className="text-xs text-muted-foreground text-center">
-              You can sign in any time — your dashboard will appear once an
+              You can sign in any time; your dashboard will appear once an
               admin links your bowler profile.
             </p>
           </CardContent>

@@ -14,11 +14,10 @@ import { AlertTriangle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertLeague } from "@shared/schema";
-
-const searchStorageKey = (locationId: number) =>
-  `league-square-catalog:search:${locationId}`;
-export const categoryStorageKey = (locationId: number) =>
-  `league-square-catalog:category:${locationId}`;
+import {
+  searchStorageKey,
+  categoryStorageKey,
+} from "@/components/league-square-catalog-storage";
 
 function readStoredFilter(key: string): string {
   try {

@@ -113,7 +113,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
           </div>
 
           {financials.remainingBalance <= 0 && financials.totalPaid > 0 && (
-            <div className="flex items-center justify-center gap-2 rounded-md bg-green-500/10 px-3 py-3">
+            <div className="flex items-center justify-center gap-2 rounded-md bg-green-500/10 p-3">
               <CheckCircle2 className="size-5 text-green-600" />
               <span className="text-sm font-semibold text-green-600">Season Paid in Full</span>
             </div>
@@ -160,7 +160,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
               </ul>
               <p className="text-xs text-muted-foreground pl-5">
                 Last {financials.doublePay.dates.length} regular week
-                {financials.doublePay.dates.length === 1 ? '' : 's'} bill $0 — season total unchanged.
+                {financials.doublePay.dates.length === 1 ? '' : 's'} bill $0; season total unchanged.
               </p>
             </div>
           )}

@@ -1,9 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { storage } from '../storage';
 import { sendError } from '../utils/api.js';
-import { createLogger } from '../logger';
-
-const log = createLogger("OrgMiddleware");
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -15,33 +11,6 @@ type OrgScopedRequest = Request & {
   organizationFilter?: number | null;
   isAuthenticated?: () => boolean;
 };
-
-/**
- * Middleware to ensure a user can only access resources from their organization
- * This middleware should be used after the authentication middleware
- */
-export function requireOrganizationAccess(req: OrgScopedRequest, res: Response, next: NextFunction) {
-  // If the user is not authenticated, deny access
-  if (!req.isAuthenticated || !req.isAuthenticated()) {
-    return sendError(
-      res,
-      'Authentication required',
-      401,
-      'AUTH_REQUIRED'
-    );
-  }
-
-  // If the user doesn't have an organization, they can only access unassigned resources
-  if (!req.user.organizationId) {
-    // Set a flag indicating this user can only access unassigned resources
-    req.organizationFilter = null;
-    return next();
-  }
-
-  // The user has an organization, set the filter to their organization
-  req.organizationFilter = req.user.organizationId;
-  next();
-}
 
 /**
  * Middleware to filter resources by the user's organization
@@ -89,36 +58,6 @@ export function filterByOrganization(req: OrgScopedRequest, res: Response, next:
   // Default to the user's organization
   req.organizationFilter = req.user.organizationId;
   next();
-}
-
-/**
- * Middleware to check if a league belongs to the user's organization
- */
-export async function hasAccessToLeague(req: OrgScopedRequest, leagueId: number): Promise<boolean> {
-  if (!req.user) {
-    return false;
-  }
-
-  // Get the league
-  const league = await storage.getLeague(leagueId);
-  if (!league) {
-    return false;
-  }
-
-  // Org-less resource policy (see server/utils/access-control.ts): deny for
-  // every role, including system_admin, before any role-based bypass.
-  if (league.organizationId === null) {
-    log.warn(`league ${leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
-    return false;
-  }
-
-  // System admins have access to all org-scoped leagues
-  if (req.user.role === 'system_admin') {
-    return true;
-  }
-
-  // User can access leagues from their organization
-  return league.organizationId === req.user.organizationId;
 }
 
 /**

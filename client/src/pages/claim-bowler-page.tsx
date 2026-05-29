@@ -183,7 +183,7 @@ const ClaimBowlerPage: FC = () => {
                       {leagueGroup.teams.map((teamGroup) => (
                         <div key={teamGroup.team.id} className="space-y-1 ml-2">
                           <p className="text-xs text-muted-foreground font-medium">
-                            Team {teamGroup.team.number} — {teamGroup.team.name}
+                            Team {teamGroup.team.number}: {teamGroup.team.name}
                           </p>
                           {teamGroup.bowlers.map((bowler) => (
                             <button type="button"
@@ -214,7 +214,7 @@ const ClaimBowlerPage: FC = () => {
                   disabled={claimMutation.isPending}
                 >
                   <SkipForward className="size-4 mr-2" />
-                  Skip — I'm not on a roster yet
+                  Skip: I'm not on a roster yet
                 </Button>
               </div>
             </>

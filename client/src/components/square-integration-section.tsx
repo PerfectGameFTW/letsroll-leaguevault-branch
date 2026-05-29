@@ -591,7 +591,7 @@ export function SquareSection({ orgId, highlightLocationId = null }: SquareSecti
         </div>
         <div>
           <h3 className="text-sm font-semibold">Payment Processing</h3>
-          <p className="text-xs text-muted-foreground">Square or Clover — configured per location</p>
+          <p className="text-xs text-muted-foreground">Square or Clover, configured per location</p>
         </div>
       </div>
 

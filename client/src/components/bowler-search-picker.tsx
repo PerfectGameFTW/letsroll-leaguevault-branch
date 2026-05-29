@@ -148,13 +148,13 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
           data-testid={`${testIdPrefix}-panel`}
         >
           {isFetching && results.length === 0 && (
-            <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
               <Loader2 className="size-3 animate-spin" /> Searching…
             </div>
           )}
           {!isFetching && results.length === 0 && (
             <div
-              className="px-2 py-2 text-sm text-muted-foreground"
+              className="p-2 text-sm text-muted-foreground"
               data-testid={`${testIdPrefix}-empty`}
             >
               No bowlers found

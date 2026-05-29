@@ -750,7 +750,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="border-b border-slate-800/60 shrink-0">
-          <div className="flex items-center justify-center px-3 py-3">
+          <div className="flex items-center justify-center p-3">
             {logoElement}
           </div>
           <div className="flex justify-end px-3 pb-2">
@@ -799,7 +799,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <SheetContent side="left" className="w-72 p-0 bg-[#0f172a] text-slate-300 border-slate-800 [&>button]:text-slate-400 [&>button]:hover:text-white">
           <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
           <div className="border-b border-slate-800/60 shrink-0">
-            <div className="flex items-center justify-center px-3 py-3">
+            <div className="flex items-center justify-center p-3">
               {logoElement}
             </div>
           </div>

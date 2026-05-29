@@ -285,7 +285,7 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
               <SelectContent>
                 {teams.map((t) => (
                   <SelectItem key={t.id} value={String(t.id)}>
-                    Team {t.number} — {t.name}
+                    Team {t.number}: {t.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -402,7 +402,7 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
                 ) : (
                   candidates.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name} — {c.teamLabel}
+                      {c.name}: {c.teamLabel}
                     </SelectItem>
                   ))
                 )}
@@ -438,7 +438,7 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
               <SelectContent>
                 {teams.map((t) => (
                   <SelectItem key={t.id} value={String(t.id)}>
-                    Team {t.number} — {t.name}
+                    Team {t.number}: {t.name}
                   </SelectItem>
                 ))}
               </SelectContent>

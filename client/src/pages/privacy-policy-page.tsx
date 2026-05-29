@@ -85,13 +85,13 @@ const PrivacyPolicyPage: FC = () => {
             </p>
             <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-2">
               <li>
-                <span className="font-medium text-foreground">Square, Inc.</span> — Processes credit card payments, manages saved cards on file, and handles Apple Pay and Google Pay transactions. Square's privacy policy applies to payment data they process.
+                <span className="font-medium text-foreground">Square, Inc.</span>: Processes credit card payments, manages saved cards on file, and handles Apple Pay and Google Pay transactions. Square's privacy policy applies to payment data they process.
               </li>
               <li>
-                <span className="font-medium text-foreground">SendGrid (Twilio)</span> — Delivers transactional emails including registration invitations, welcome messages, and account notifications.
+                <span className="font-medium text-foreground">SendGrid (Twilio)</span>: Delivers transactional emails including registration invitations, welcome messages, and account notifications.
               </li>
               <li>
-                <span className="font-medium text-foreground">Sentry</span> — Monitors application errors and performance to help us maintain service reliability. Sentry may receive technical data such as error messages, stack traces, and device information.
+                <span className="font-medium text-foreground">Sentry</span>: Monitors application errors and performance to help us maintain service reliability. Sentry may receive technical data such as error messages, stack traces, and device information.
               </li>
             </ul>
             <p className="text-sm text-muted-foreground leading-relaxed mt-2">

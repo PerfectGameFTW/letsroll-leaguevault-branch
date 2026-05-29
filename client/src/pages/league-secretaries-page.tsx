@@ -93,7 +93,7 @@ export default function LeagueSecretariesPage() {
           <CardHeader>
             <CardTitle>League Secretaries</CardTitle>
             <CardDescription>
-              {league?.name ?? "League"} — grant per-league admin access to a user. Secretaries
+              {league?.name ?? "League"}: grant per-league admin access to a user. Secretaries
               get league management powers but cannot see saved cards or modify org-level settings.
               System admins cannot grant or revoke this role.
             </CardDescription>

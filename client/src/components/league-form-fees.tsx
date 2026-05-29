@@ -57,8 +57,8 @@ export function LeagueFeeSection({
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="weekly">Weekly — bowlers pay each week</SelectItem>
-                <SelectItem value="upfront">Full Season Upfront — full amount due at start</SelectItem>
+                <SelectItem value="weekly">Weekly: bowlers pay each week</SelectItem>
+                <SelectItem value="upfront">Full Season Upfront: full amount due at start</SelectItem>
               </SelectContent>
             </Select>
             <FormMessage />

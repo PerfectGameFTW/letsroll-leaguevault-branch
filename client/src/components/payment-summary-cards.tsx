@@ -133,7 +133,7 @@ export function PaymentSummaryCards({
               Double-Pay Weeks
             </CardTitle>
             <CardDescription>
-              {doublePay.dates.length} week{doublePay.dates.length === 1 ? '' : 's'} billed at 2× — last{' '}
+              {doublePay.dates.length} week{doublePay.dates.length === 1 ? '' : 's'} billed at 2×; last{' '}
               {doublePay.dates.length} regular week{doublePay.dates.length === 1 ? '' : 's'} not charged
             </CardDescription>
           </CardHeader>
@@ -150,7 +150,7 @@ export function PaymentSummaryCards({
               ))}
             </ul>
             <p className="mt-2 text-xs text-muted-foreground">
-              Season total unchanged — these dates collect early so the last{' '}
+              Season total unchanged; these dates collect early so the last{' '}
               {doublePay.dates.length} regular bowling week{doublePay.dates.length === 1 ? '' : 's'} bill $0.
             </p>
           </CardContent>

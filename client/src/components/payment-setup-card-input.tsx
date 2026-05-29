@@ -1,4 +1,4 @@
-import { FC, RefObject } from "react";
+import { FC, RefObject, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,25 @@ import {
 } from "@/components/ui/select";
 import { Loader2, CreditCard, Wallet } from "lucide-react";
 import type { SavedCard } from "@shared/schema";
+
+// Apple Pay button uses pure black (#000) by brand requirement. Hoisted to
+// module scope so the exhaustive style object isn't reallocated per render;
+// the dynamic `opacity` is applied inline at the call site.
+const APPLE_PAY_BUTTON_BASE_STYLE: CSSProperties = {
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  backgroundColor: '#000',
+  border: 'none',
+  borderRadius: '5px',
+  width: '100%',
+  height: '48px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '2px',
+  padding: 0,
+};
 
 interface PaymentSetupCardInputProps {
   savedCards: SavedCard[];
@@ -93,22 +112,7 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           type="button"
           onClick={onApplePayClick}
           disabled={isWalletProcessing}
-          style={{
-            WebkitAppearance: 'none',
-            appearance: 'none',
-            backgroundColor: '#000',
-            border: 'none',
-            borderRadius: '5px',
-            width: '100%',
-            height: '48px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '2px',
-            padding: 0,
-            opacity: isWalletProcessing ? 0.5 : 1,
-          }}
+          style={{ ...APPLE_PAY_BUTTON_BASE_STYLE, opacity: isWalletProcessing ? 0.5 : 1 }}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="19" height="24" viewBox="0 0 17 20" fill="white" style={{ position: 'relative', top: '-1px' }}>
             <path d="M13.55 10.63a4.27 4.27 0 0 1 2.04-3.59 4.4 4.4 0 0 0-3.46-1.87c-1.46-.15-2.88.87-3.63.87s-1.91-.85-3.15-.83a4.65 4.65 0 0 0-3.91 2.38c-1.68 2.91-.43 7.2 1.19 9.56.8 1.15 1.74 2.44 2.98 2.4 1.2-.05 1.65-.77 3.1-.77s1.86.77 3.12.74c1.29-.02 2.1-1.16 2.88-2.32a10.4 10.4 0 0 0 1.31-2.69 4.13 4.13 0 0 1-2.47-3.88zM11.17 3.46A4.17 4.17 0 0 0 12.14 0a4.25 4.25 0 0 0-2.75 1.42 3.98 3.98 0 0 0-1 2.89 3.52 3.52 0 0 0 2.78-0.85z"/>

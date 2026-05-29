@@ -142,7 +142,7 @@ const ForgotPasswordPage: FC = () => {
                       {formatCountdown(remainingSeconds)}
                     </span>
                     . Please try again then. (If you've already received a
-                    reset email, it's still valid — check your inbox and
+                    reset email, it's still valid: check your inbox and
                     spam folder.)
                   </AlertDescription>
                 </Alert>

@@ -103,7 +103,7 @@ export function ApplePayRecoveryBanner() {
       <AlertTriangle className="size-5 mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium">
-          Apple Pay recovery alert sent {formatTimeAgo(alert.sentAt)} —{' '}
+          Apple Pay recovery alert sent {formatTimeAgo(alert.sentAt)}:{' '}
           {alert.itemCount} item{alert.itemCount === 1 ? '' : 's'} recovered across{' '}
           {jobsLabel}.
         </p>

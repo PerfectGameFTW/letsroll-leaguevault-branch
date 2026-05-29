@@ -248,7 +248,7 @@ function MessagingContent({ orgId }: MessagingContentProps) {
               <>
                 <p className="text-muted-foreground text-xs">
                   League Season requires the custom field to exist in your
-                  BowlNow account first — paste its field ID into the
+                  BowlNow account first; paste its field ID into the
                   organization's BowlNow integration settings to enable it.
                 </p>
                 <p className="text-muted-foreground text-xs">
@@ -265,8 +265,8 @@ function MessagingContent({ orgId }: MessagingContentProps) {
         <Info className="size-4" />
         <AlertTitle>How attribute updates work</AlertTitle>
         <AlertDescription>
-          Whenever a bowler joins, leaves, or moves leagues — or when a league
-          is renamed, archived, or has its season dates changed — we update
+          Whenever a bowler joins, leaves, or moves leagues (or when a league
+          is renamed, archived, or has its season dates changed), we update
           their record on every connected platform automatically. If a sync
           fails, it's retried in the background.
         </AlertDescription>

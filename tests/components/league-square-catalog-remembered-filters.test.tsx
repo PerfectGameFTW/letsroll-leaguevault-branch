@@ -53,10 +53,8 @@ vi.stubGlobal('fetch', fetchMock);
 
 import type { InsertLeague } from '@shared/schema';
 import { Form } from '@/components/ui/form';
-import {
-  LeagueSquareCatalog,
-  categoryStorageKey,
-} from '@/components/league-square-catalog';
+import { LeagueSquareCatalog } from '@/components/league-square-catalog';
+import { categoryStorageKey } from '@/components/league-square-catalog-storage';
 
 const SEARCH_KEY = (loc: number) => `league-square-catalog:search:${loc}`;
 

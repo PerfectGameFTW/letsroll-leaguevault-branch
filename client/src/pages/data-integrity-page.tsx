@@ -263,7 +263,7 @@ function RecentActivityCard() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {isDelete ? (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="text-muted-foreground">-</span>
                         ) : (
                           row.organizationName ?? (row.organizationId !== null ? `#${row.organizationId}` : '—')
                         )}

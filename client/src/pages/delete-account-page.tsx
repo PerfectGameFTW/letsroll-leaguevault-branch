@@ -172,7 +172,7 @@ const DeleteAccountPage: FC = () => {
                 </Label>
                 <p className="text-xs text-muted-foreground">
                   Uncheck this if you do not want any further email at this
-                  address — for example if it has been compromised, or if
+                  address, for example if it has been compromised, or if
                   you no longer have access to it. We will still process the
                   deletion either way.
                 </p>
