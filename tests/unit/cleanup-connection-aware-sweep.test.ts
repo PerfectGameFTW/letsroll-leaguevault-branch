@@ -43,7 +43,16 @@ vi.mock('pg', () => {
       }
       state.connectedHosts.push(this.host);
     }
-    async query(): Promise<{ rows: Array<{ c: number }> }> {
+    async query(sql: string): Promise<{ rows: Array<{ c: number }> }> {
+      // `resolveBranchUrl` runs a `SELECT 1` connectivity *verifier*
+      // (Task #752) before handing out the URL, on the same client this
+      // probe later uses to COUNT connections. That verifier ping is not
+      // a connection-count probe, so it must NOT advance the per-host
+      // `connByHost` sequence or inflate `probeCalls` — only the
+      // `pg_stat_activity` count query does. Distinguish them by SQL.
+      if (!/pg_stat_activity/i.test(sql)) {
+        return { rows: [{ c: 0 }] };
+      }
       const n = state.probeCalls.get(this.host) ?? 0;
       state.probeCalls.set(this.host, n + 1);
       const v = state.connByHost.get(this.host) ?? 0;

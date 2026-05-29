@@ -61,6 +61,29 @@ const PARALLEL_ISOLATED_WITH_APP = [
   'tests/e2e/integrations-deep-link.test.ts',
 ];
 
+/**
+ * Pure in-process unit tests that `vi.mock('pg')` (and `fetch`) and need
+ * NO real database or spawned app. They verify the Neon test-infra
+ * helpers (`tests/setup/neon-branches.ts` reveal-password probing and the
+ * connection-aware cleanup sweep) by mocking the `pg` driver outright.
+ *
+ * They CANNOT run in the `parallel` / `parallel-isolated*` projects:
+ * those projects' setup files import `tests/setup/clone-template.ts`,
+ * which imports the real `pg` (and `./neon-branches`) at module-eval time
+ * — i.e. BEFORE the test file's `vi.mock('pg')` factory can intercept it.
+ * The real driver then makes live connections to the tests' fake Neon
+ * hosts (which resolve via Neon's wildcard DNS) and fails with a real
+ * `28P01`. Moving them to `isolate: true` did not help (the setup file
+ * still pre-imports `pg` within the file's fresh registry first).
+ *
+ * The fix is a dedicated project whose only setup file is the pg-free
+ * error-log guard, so nothing preloads `pg` ahead of the mock.
+ */
+const UNIT_NO_DB = [
+  'tests/unit/neon-branches-reveal-password.test.ts',
+  'tests/unit/cleanup-connection-aware-sweep.test.ts',
+];
+
 const PARALLEL_ISOLATED = [
   'server/routes/__tests__/leagues-square-missing-alerts.test.ts',
   'server/services/__tests__/apple-pay-worker.test.ts',
@@ -202,7 +225,12 @@ export default defineConfig({
           hookTimeout: 30000,
           alias: sharedAlias,
           include: ['tests/**/*.test.ts', 'server/**/__tests__/**/*.test.ts'],
-          exclude: [...SHARED_TABLE_WRITERS, ...PARALLEL_ISOLATED, ...PARALLEL_ISOLATED_WITH_APP],
+          exclude: [
+            ...SHARED_TABLE_WRITERS,
+            ...PARALLEL_ISOLATED,
+            ...PARALLEL_ISOLATED_WITH_APP,
+            ...UNIT_NO_DB,
+          ],
           setupFiles: ['./tests/setup/per-worker-setup.ts'],
           // Skip per-file module re-evaluation; reuse module contexts across
           // files within the same worker. The files that depended on
@@ -311,6 +339,24 @@ export default defineConfig({
           alias: sharedAlias,
           include: ['tests/components/**/*.test.tsx'],
           setupFiles: ['./tests/setup/component-test-setup.ts'],
+        },
+      },
+      {
+        test: {
+          // Pure unit tests that `vi.mock('pg')` and must NOT have the
+          // real `pg` preloaded by a DB-provisioning setup file (see the
+          // `UNIT_NO_DB` comment above). The only setup file here is the
+          // pg-free error-log guard, so the test's module mock wins.
+          name: 'unit-no-db',
+          sequence: { groupOrder: 5 },
+          globals: true,
+          environment: 'node',
+          testTimeout: 30000,
+          hookTimeout: 30000,
+          alias: sharedAlias,
+          include: UNIT_NO_DB,
+          setupFiles: ['./tests/setup/error-log-guard.ts'],
+          pool: 'forks',
         },
       },
     ],

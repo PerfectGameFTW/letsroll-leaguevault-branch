@@ -17,7 +17,7 @@
  * Square/Clover credentials).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { expectErrorLog } from '../helpers/expected-error-logs';
+import { expectErrorLog, getCapturedErrorLogs } from '../helpers/expected-error-logs';
 import { eq, inArray } from 'drizzle-orm';
 import { getTestDb } from '../setup/test-db';
 const db = getTestDb();
@@ -692,14 +692,6 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
 
       sendSpy.mockRejectedValue(new Error('SendGrid hard failure: connection reset'));
 
-      // The project's logger writes formatted lines through
-      // `process.stdout.write` (see server/logger.ts). Spying there
-      // pins the "logged at error level" half of the contract
-      // without coupling the test to the logger's internal API.
-      const stdoutSpy = vi
-        .spyOn(process.stdout, 'write')
-        .mockImplementation(() => true);
-
       // The whole point of catching the throw inside the service is
       // so a flaky email provider can't masquerade as a failed
       // deletion. If a future refactor lets the rejection bubble out,
@@ -719,16 +711,17 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
 
       // And the same throw was logged at ERROR level with both the
       // helpful prefix and the underlying error message so on-call
-      // can trace it.
-      const errorLogged = stdoutSpy.mock.calls.some((args) => {
-        const line = String(args[0] ?? '');
-        return (
+      // can trace it. The in-process error-log guard (Task #746)
+      // suppresses *declared-expected* [ERROR] lines from stdout to
+      // keep green runs quiet, so we assert against the guard's
+      // captured-line buffer (which records the line regardless of
+      // suppression) rather than spying on process.stdout directly.
+      const errorLogged = getCapturedErrorLogs().some(
+        (line) =>
           /\[ERROR\]/.test(line) &&
           /Account-deletion confirmation email threw/.test(line) &&
-          /connection reset/.test(line)
-        );
-      });
-      stdoutSpy.mockRestore();
+          /connection reset/.test(line),
+      );
       expect(errorLogged).toBe(true);
     });
   });

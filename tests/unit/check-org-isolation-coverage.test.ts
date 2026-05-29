@@ -17,7 +17,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
@@ -31,7 +31,15 @@ function runIn(
   const r = spawnSync('npx', ['tsx', SCRIPT, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, NODE_ENV: 'test' },
+    // The fixture `cwd` (a tmpdir) has no local `node_modules`, so a bare
+    // `npx tsx` there tries to *install* tsx and fails in clean CI. Putting
+    // the repo's `node_modules/.bin` on PATH makes npx run the already-
+    // installed tsx binary directly instead of reaching for the network.
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      PATH: `${join(process.cwd(), 'node_modules/.bin')}${delimiter}${process.env.PATH ?? ''}`,
+    },
   });
   return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
 }
