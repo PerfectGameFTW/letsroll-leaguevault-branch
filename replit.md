@@ -83,6 +83,8 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Gotchas
 
+- **Capacitor is an intentional native-mobile target, not dead code**: The `@capacitor/*` dependencies and the `ios/`, `android/`, and `capacitor.config.ts` files back a confirmed product target (native iOS/Android apps — see `NATIVE_BUILD.md`). They are not imported by the web runtime (`server/`, `client/`, `shared/`), so dead-code/cleanup tooling may flag them as unused. Do not remove them; they stay in `dependencies` deliberately. (Knip already ignores the camera/preferences/splash-screen/status-bar plugins via `knip.json`.)
+- **Tooling lives in `devDependencies`, not `dependencies`**: Test, lint, type-only, and static-analysis packages (`vitest`, `playwright`, `jsdom`, `knip`, `@testing-library/*`, `eslint-plugin-react-hooks`, `@tanstack/eslint-plugin-query`, `@types/*`) are dev-only and must stay under `devDependencies`. The deploy build (`npm run build`) installs devDependencies at build time (it relies on `vite`/`esbuild`), so moving these out of `dependencies` does not break the build or runtime (Task #762).
 - **DB Schema Changes**: Modify `shared/schema/` files, then `npm run db:push`.
 - **`APP_ENV=beta` Safety**: Beta environment refuses to start if live Square payment credentials are detected.
 - **`SETUP_SECRET` Strength**: Must be at least 32 characters and not a single repeated character.

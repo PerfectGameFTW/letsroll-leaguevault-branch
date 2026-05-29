@@ -23,6 +23,8 @@ Build and submit LeagueVault to the Apple App Store and Google Play Store.
 
 ## How It Works
 
+> **Dependency boundary:** The `@capacitor/*` packages in `package.json` and the `ios/`, `android/`, and `capacitor.config.ts` files are an intentional native-mobile product target. They are not imported by the web runtime (`server/`, `client/`, `shared/`), so dead-code/cleanup and dependency-audit tooling may flag them as unused — that is expected. Do not remove them or move them out of `dependencies`.
+
 The native apps are thin shells that load the live production website (`https://leaguevault.app`) inside a native WebView. This means:
 
 > **Note:** The runtime backend reads the production hostname from the `APP_DOMAIN` env var (defaults to `leaguevault.app`); see `replit.md`. The mobile entitlements and capacitor config below are **build-time** artifacts that intentionally stay hardcoded — they are baked into signed app bundles, not read from env.
