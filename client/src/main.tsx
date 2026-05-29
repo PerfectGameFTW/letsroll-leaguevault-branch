@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { initCsrfToken } from "./lib/queryClient";
+import { scrubSentryEvent } from "./lib/logger";
 import { isNativeApp } from './lib/capacitor';
 
 initCsrfToken();
@@ -14,6 +15,10 @@ Sentry.init({
   environment: import.meta.env.MODE,
   integrations: [Sentry.browserTracingIntegration()],
   tracesSampleRate: 1.0,
+  // task #770: redaction backstop so events captured outside the
+  // client logger (uncaught errors, SDK breadcrumbs, etc.) still have
+  // PII / secret-shaped strings masked before leaving the browser.
+  beforeSend: (event) => scrubSentryEvent(event),
 });
 
 const rootElement = document.getElementById("root");
