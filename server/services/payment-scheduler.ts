@@ -89,7 +89,6 @@ export class PaymentScheduler {
 
     const isValid = provider.validateCardId(cardId);
     logger.info('[PaymentScheduler] Card token validation', {
-      tokenPrefix: cardId.substring(0, 5),
       isValid,
       provider: provider.providerName,
     });

@@ -289,7 +289,7 @@ export function registerAuthRoutes(app: Express): void {
         }
 
         if (isDev) {
-          log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
+          log.info('Login successful', { userId: user.id, email: maskEmail(user.email), hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
         } else {
           log.info('Login successful', { userId: user.id });
         }
@@ -311,7 +311,7 @@ export function registerAuthRoutes(app: Express): void {
   authRouter.get("/user", async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        if (isDev) log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
+        if (isDev) log.info('/api/user unauthenticated request', { hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
         return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
       }
 

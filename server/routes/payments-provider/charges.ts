@@ -423,7 +423,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       bowlerId,
       leagueId,
       amount,
-      sourceIdPrefix: sourceId?.substring(0, 10) + '...',
+      hasSourceId: !!sourceId,
       userId: req.user?.id,
     });
 
@@ -657,7 +657,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       try {
         const savedCard = await provider.saveCardOnFile(sourceId, cid);
         if (savedCard?.id) {
-          log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
+          log.info('Card saved on file:', { success: true });
           storedCardId = savedCard.id;
           try {
             // Card saved against payer vault — schedule belongs to vault owner.

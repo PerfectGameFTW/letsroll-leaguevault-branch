@@ -3,9 +3,7 @@ import { sql } from 'drizzle-orm';
 const locs = await db.execute(sql`
 SELECT id, name, organization_id, payment_provider,
        (square_credentials::jsonb ? 'accessToken') as has_token,
-       (square_credentials::jsonb ->> 'environment') as env,
-       substring(square_credentials::jsonb ->> 'accessToken' from 1 for 4) as token_prefix,
-       length(square_credentials::jsonb ->> 'accessToken') as token_len
+       (square_credentials::jsonb ->> 'environment') as env
 FROM locations WHERE organization_id = 3;`);
 console.log('Perfect Game locations:'); console.table(locs.rows);
 const leagues = await db.execute(sql`

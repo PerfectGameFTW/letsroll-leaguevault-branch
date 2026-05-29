@@ -80,7 +80,7 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Failed to save card on file', 500);
     }
 
-    log.info('Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
+    log.info('Card saved on file (no-charge):', { success: true });
     await persistCloverCustomer(provider, providerCustId, bowlerId);
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
