@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ApplePayRecoveryAlerter, type AlerterDeps } from "../apple-pay-alerts";
 import type { sendApplePayRecoveryAlert } from "../email";
+import { expectErrorLog } from "../../../tests/helpers/expected-error-logs";
 
 type SendFn = typeof sendApplePayRecoveryAlert;
 
@@ -173,6 +174,7 @@ describe("ApplePayRecoveryAlerter", () => {
   });
 
   it("returns failed (and does not call send) when the persisted slot claim throws", async () => {
+    expectErrorLog(/\[ApplePayAlerts\] Failed to claim Apple Pay alerter slot/);
     const failingAlerter = buildAlerter({
       tryClaimSlot: () => Promise.reject(new Error("db down")),
     });

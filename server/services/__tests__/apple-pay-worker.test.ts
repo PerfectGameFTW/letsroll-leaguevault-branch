@@ -24,6 +24,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApplePayJob, ApplePayJobItem } from "@shared/schema";
+import { expectErrorLog } from "../../../tests/helpers/expected-error-logs";
 
 const storageMock = vi.hoisted(() => ({
   storage: {
@@ -243,6 +244,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
 
   it("does NOT trample a cancellation with a `failed` finalize when the catch-block also runs", async () => {
     const job = makeJob();
+    expectErrorLog(/\[ApplePayWorker\] Job aborted with error/);
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
     // Make getPendingApplePayJobItems throw so processJob's OUTER try/catch
@@ -292,6 +294,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     // from the catch-block" — it only refuses when there's still a
     // non-terminal item to strand.
     const job = makeJob();
+    expectErrorLog(/\[ApplePayWorker\] Job aborted with error/);
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
     storageMock.storage.getPendingApplePayJobItems.mockRejectedValue(
@@ -325,6 +328,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     // their state. Correct behavior is to defer (reopen) and let
     // the next worker tick re-evaluate when the DB is healthy.
     const job = makeJob();
+    expectErrorLog(/\[ApplePayWorker\] Job aborted with error/);
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
     storageMock.storage.getPendingApplePayJobItems.mockRejectedValue(
@@ -485,6 +489,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     // is exactly how a transient blip during enumeration could
     // terminalize a job that had pending items left over.
     const job = makeJob();
+    expectErrorLog(/\[ApplePayWorker\] Job aborted with error/);
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
     storageMock.storage.getPendingApplePayJobItems
@@ -515,6 +520,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     // with the underlying error is the correct behavior — and matches
     // the pre-#568 contract for genuine errors.
     const job = makeJob();
+    expectErrorLog(/\[ApplePayWorker\] Job aborted with error/);
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
     storageMock.storage.getPendingApplePayJobItems.mockRejectedValue(

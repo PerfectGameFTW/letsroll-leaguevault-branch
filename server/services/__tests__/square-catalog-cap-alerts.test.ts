@@ -6,6 +6,7 @@ import {
 } from "../square-catalog-cap-alerts";
 import type { sendSquareCatalogCapAlert } from "../email";
 import type { SquareCatalogCapAlerterSummary } from "@shared/schema";
+import { expectErrorLog } from "../../../tests/helpers/expected-error-logs";
 
 type SendFn = typeof sendSquareCatalogCapAlert;
 
@@ -248,6 +249,7 @@ describe("SquareCatalogCapAlerter", () => {
   });
 
   it("returns failed (and does not call send) when the persisted slot claim throws", async () => {
+    expectErrorLog(/\[SquareCatalogCapAlerts\] Failed to claim Square catalog cap alerter slot/);
     const failingAlerter = buildAlerter({
       tryClaimSlot: () => Promise.reject(new Error("db down")),
     });
