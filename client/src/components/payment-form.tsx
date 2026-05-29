@@ -204,7 +204,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   // only re-applies when one of the inputs actually changes — a manual
   // switch the user makes afterward is never clobbered.
   const savedCardSelectionKey = `${firstSavedCardId ?? ''}|${selectedBowlerId ?? ''}|${paymentType}`;
-  const [prevSavedCardSelectionKey, setPrevSavedCardSelectionKey] = useState(savedCardSelectionKey);
+  const [prevSavedCardSelectionKey, setPrevSavedCardSelectionKey] = useState<string | undefined>(undefined);
   if (savedCardSelectionKey !== prevSavedCardSelectionKey) {
     setPrevSavedCardSelectionKey(savedCardSelectionKey);
     if (firstSavedCardId !== null && paymentType === 'credit_card') {

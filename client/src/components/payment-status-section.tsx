@@ -195,7 +195,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   // an effect so the choice settles before paint and only re-applies
   // when firstSavedCardId itself changes — a manual switch the user
   // makes afterward is never clobbered.
-  const [prevFirstSavedCardId, setPrevFirstSavedCardId] = useState(firstSavedCardId);
+  const [prevFirstSavedCardId, setPrevFirstSavedCardId] = useState<string | null | undefined>(undefined);
   if (firstSavedCardId !== prevFirstSavedCardId) {
     setPrevFirstSavedCardId(firstSavedCardId);
     if (firstSavedCardId !== null) {
