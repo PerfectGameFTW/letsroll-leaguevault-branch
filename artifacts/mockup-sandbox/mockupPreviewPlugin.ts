@@ -64,10 +64,12 @@ export function mockupPreviewPlugin(): Plugin {
       ignore: ["**/_*/**", "**/_*.tsx"],
     });
 
-    return files.map((f) => ({
-      globKey: "./" + f.slice("src/".length),
-      importPath: path.posix.relative("src/.generated", f),
-    }));
+    return files
+      .map((f) => ({
+        globKey: "./" + f.slice("src/".length),
+        importPath: path.posix.relative("src/.generated", f),
+      }))
+      .sort((a, b) => (a.globKey < b.globKey ? -1 : a.globKey > b.globKey ? 1 : 0));
   }
 
   function generateSource(components: Array<DiscoveredComponent>): string {
