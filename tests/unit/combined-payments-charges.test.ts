@@ -21,6 +21,7 @@ import type { Server } from 'node:http';
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPayments: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   getPaymentsByCombinedGroupId: vi.fn(),
@@ -138,6 +139,9 @@ beforeEach(() => {
   });
   mockStorage.getPayments.mockResolvedValue([]);
   mockStorage.getPaymentByIdempotencyKey.mockResolvedValue(null);
+  // P1 (#737): payees must be actively rostered in the league. Default to
+  // rostered; the "not rostered" test overrides with false.
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
   mockStorage.getBowler.mockImplementation(async (id: number) => ({
     id, name: `B${id}`, email: id === 7 ? 'pat@example.com' : null,
     organizationId: 1, squareCustomerId: 'cust_xyz',
@@ -199,6 +203,24 @@ describe('POST /api/payments-provider/combined-payments', () => {
       ],
     });
     expect(res.status).toBe(403);
+    expect(mockSquareProvider.processPayment).not.toHaveBeenCalled();
+    expect(mockStorage.createCombinedPayments).not.toHaveBeenCalled();
+  });
+
+  it('rejects (400 BOWLER_NOT_IN_LEAGUE) when a payee is not rostered in the league', async () => {
+    // Payee 8 is accepted by canUserPayForBowler but isn't on this league's roster.
+    mockStorage.isBowlerActiveInLeague.mockImplementation(async (bowlerId: number) => bowlerId !== 8);
+    const res = await postCombined({
+      sourceId: 'cnon:tok',
+      leagueId: 11,
+      amount: 4000,
+      payees: [
+        { bowlerId: 7, amount: 2000 },
+        { bowlerId: 8, amount: 2000 },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe('BOWLER_NOT_IN_LEAGUE');
     expect(mockSquareProvider.processPayment).not.toHaveBeenCalled();
     expect(mockStorage.createCombinedPayments).not.toHaveBeenCalled();
   });

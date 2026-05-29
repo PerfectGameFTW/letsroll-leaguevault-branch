@@ -72,6 +72,7 @@ export interface IBowlerStorage {
   anonymizeBowler(id: number): Promise<Bowler>;
   getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]>;
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
+  isBowlerActiveInLeague(bowlerId: number, leagueId: number): Promise<boolean>;
   getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
   createBowlerLeagueIfBowlerFree(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague | null>;

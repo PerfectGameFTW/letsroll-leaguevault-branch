@@ -12,6 +12,7 @@ import type { PaymentSchedule } from '@shared/schema';
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPayments: vi.fn(),
   getPaymentById: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
@@ -271,11 +272,12 @@ beforeEach(() => {
     lineageItemVariationId: null, prizeFundItemVariationId: null,
   };
   dbState.bowler = {
-    id: 42, name: 'Pat', email: 'pat@example.com', squareCustomerId: 'sq_cust_1', cloverCustomerId: 'cv_cust_1',
+    id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', squareCustomerId: 'sq_cust_1', cloverCustomerId: 'cv_cust_1',
     paymentCustomerId: 'sq_cust_1',
   };
 
   mockStorage.getLeague.mockResolvedValue(dbState.league);
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
   mockStorage.getBowler.mockResolvedValue(dbState.bowler);
   mockStorage.getPayments.mockResolvedValue([]);
   mockStorage.getPaymentByIdempotencyKey.mockResolvedValue(null);

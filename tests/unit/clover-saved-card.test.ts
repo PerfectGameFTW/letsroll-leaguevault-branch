@@ -30,6 +30,7 @@ import type { Server } from 'node:http';
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPayments: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
@@ -153,6 +154,7 @@ beforeEach(() => {
   mockHasAccessToLeague.mockResolvedValue(true);
   mockHasAccessToBowler.mockResolvedValue(true);
   mockGetPaymentProvider.mockResolvedValue(mockCloverProvider);
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
   mockStorage.getLeague.mockResolvedValue({
     id: 11, organizationId: 1, weeklyFee: 2000, lineageFee: 0, prizeFundFee: 0,
     seasonStart: '2026-01-01', seasonEnd: '2026-04-01', totalBowlingWeeks: 12,

@@ -228,6 +228,12 @@ router.post('/combined-payments', paymentLimiter, async (req, res) => {
       if (b.organizationId !== league.organizationId) {
         return sendError(res, `Bowler ${p.bowlerId} is not in this league's organization`, 403, 'FORBIDDEN');
       }
+      // P1 security: payee must be actively rostered in the selected
+      // league, not merely in the same org. Otherwise an accepted payment
+      // partner could push a charge onto a league the payee isn't in.
+      if (!(await storage.isBowlerActiveInLeague(p.bowlerId, leagueId))) {
+        return sendError(res, `Bowler ${p.bowlerId} is not rostered in this league`, 400, 'BOWLER_NOT_IN_LEAGUE');
+      }
       payeeBowlers[p.bowlerId] = b;
 
       const existing = await storage.getPayments({
@@ -497,6 +503,15 @@ router.post('/payments', paymentLimiter, async (req, res) => {
 
     if (league.organizationId == null) {
       return sendError(res, 'League is not assigned to an organization', 400, 'LEAGUE_NOT_CONFIGURED');
+    }
+    // P1 security: the recipient bowler must belong to the league's org
+    // AND be actively rostered in this league before we charge a card and
+    // write a payment row for the (bowler, league) pair.
+    if (bowler.organizationId !== league.organizationId) {
+      return sendError(res, "Bowler is not in this league's organization", 403, 'FORBIDDEN');
+    }
+    if (!(await storage.isBowlerActiveInLeague(bowlerId, leagueId))) {
+      return sendError(res, 'Bowler is not rostered in this league', 400, 'BOWLER_NOT_IN_LEAGUE');
     }
     const existingPayments = await storage.getPayments({ bowlerId, leagueId, organizationId: league.organizationId });
     const totalPaid = existingPayments

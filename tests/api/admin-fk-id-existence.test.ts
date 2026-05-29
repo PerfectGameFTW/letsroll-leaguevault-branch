@@ -29,11 +29,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
+  bowlerLeagues,
   bowlers,
   leagues,
   locations,
   organizations,
   payments,
+  teams,
   users,
 } from '@shared/schema';
 import {
@@ -91,6 +93,17 @@ describe('Task #454 — admin-supplied FK id existence checks', () => {
       .values({ name: 'Vitest #454 Bowler', organizationId: orgAId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
+
+    // P1 (#737): payment creation now requires the bowler to be actively
+    // rostered in the league. Stand up a team + active roster row so the
+    // happy-path POST below still reaches the create path.
+    const [tm] = await db
+      .insert(teams)
+      .values({ name: 'Vitest #454 Team', number: 1, leagueId: leagueOrgAId })
+      .returning({ id: teams.id });
+    await db
+      .insert(bowlerLeagues)
+      .values({ bowlerId, leagueId: leagueOrgAId, teamId: tm.id, active: true });
   });
 
   afterAll(async () => {

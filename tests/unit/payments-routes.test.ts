@@ -58,6 +58,7 @@ import { ProviderNotConfiguredError } from '../../server/services/payment-errors
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
   getPaymentSchedule: vi.fn(),
@@ -178,7 +179,12 @@ beforeEach(() => {
   // other concerns (idempotency, schedule deactivation, etc.) still
   // reach the create path. Tests asserting the 404 NOT_FOUND branch can
   // override this with `mockResolvedValue(undefined)`.
-  mockStorage.getBowler.mockResolvedValue({ id: 1 });
+  // Org id matches LEAGUE_OK so the P1 org-match guard (#737) passes by
+  // default; cross-org tests override with a different organizationId.
+  mockStorage.getBowler.mockResolvedValue({ id: 1, organizationId: 1 });
+  // P1 (#737): payment creation requires an active roster row. Default to
+  // rostered; the "not rostered" test overrides with false.
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -255,6 +261,30 @@ describe('POST /api/payments', () => {
     const createArg = mockStorage.createPayment.mock.calls[0][0];
     expect(createArg.lineageAmount).toBe(1000); // 2000 * 1000 / 2000
     expect(createArg.prizeFundAmount).toBe(500);
+  });
+
+  // P1 (#737): admin access to the league is not enough — the bowler must
+  // be actively rostered in it and belong to its organization.
+  it('returns 400 BOWLER_NOT_IN_LEAGUE for a same-org bowler not rostered in the league', async () => {
+    mockStorage.getLeague.mockResolvedValue(LEAGUE_OK);
+    mockStorage.getBowler.mockResolvedValue({ id: 42, organizationId: LEAGUE_OK.organizationId });
+    mockStorage.isBowlerActiveInLeague.mockResolvedValue(false);
+
+    const res = await post('/api/payments', basePayment());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('BOWLER_NOT_IN_LEAGUE');
+    expect(mockStorage.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 FORBIDDEN when the bowler belongs to a different organization', async () => {
+    mockStorage.getLeague.mockResolvedValue(LEAGUE_OK);
+    mockStorage.getBowler.mockResolvedValue({ id: 42, organizationId: LEAGUE_OK.organizationId + 1 });
+
+    const res = await post('/api/payments', basePayment());
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('FORBIDDEN');
+    expect(mockStorage.isBowlerActiveInLeague).not.toHaveBeenCalled();
+    expect(mockStorage.createPayment).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the league does not exist', async () => {

@@ -61,6 +61,18 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
 
+    // P1 security: having admin access to the league is NOT sufficient to
+    // record a payment for an arbitrary bowler. The bowler must belong to
+    // the league's organization AND be actively rostered in this league —
+    // otherwise an admin/secretary could pair a legitimate league with a
+    // non-rostered (or cross-org) bowler and corrupt balances/reports.
+    if (targetBowler.organizationId !== league.organizationId) {
+      return sendError(res, "Bowler is not in this league's organization", 403, 'FORBIDDEN');
+    }
+    if (!(await storage.isBowlerActiveInLeague(payment.bowlerId, payment.leagueId))) {
+      return sendError(res, 'Bowler is not rostered in this league', 400, 'BOWLER_NOT_IN_LEAGUE');
+    }
+
     if (payment.idempotencyKey) {
       const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
       if (existing && existing.leagueId === payment.leagueId) {

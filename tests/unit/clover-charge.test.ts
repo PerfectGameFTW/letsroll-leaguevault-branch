@@ -34,6 +34,7 @@ import type { Server } from 'node:http';
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPayments: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
@@ -153,6 +154,7 @@ beforeEach(() => {
   mockHasAccessToLeague.mockResolvedValue(true);
   mockHasAccessToBowler.mockResolvedValue(true);
   mockGetPaymentProvider.mockResolvedValue(mockCloverProvider);
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
   mockStorage.getLeague.mockResolvedValue({
     id: 11, organizationId: 1, weeklyFee: 2000, lineageFee: 0, prizeFundFee: 0,
     seasonStart: '2026-01-01', seasonEnd: '2026-04-01', totalBowlingWeeks: 12,
@@ -249,6 +251,44 @@ describe('POST /api/payments-provider/payments — Clover charge parity (Task #5
     expect(mockCloverProvider.processPayment.mock.calls[0][4]).toBeUndefined();
     expect(mockStorage.createPayment).toHaveBeenCalledOnce();
     expect(mockStorage.createPayment.mock.calls[0][0]).toMatchObject({ type: 'clover' });
+  });
+
+  // P1 (#737): the recipient bowler must belong to the league's org AND be
+  // actively rostered before the card is charged. (Self-pay passes
+  // canUserPayForBowler, so these guards are the meaningful gate here.)
+  it('rejects (403 FORBIDDEN) when the bowler is not in the league organization, no charge', async () => {
+    // Bowler is org 1 (self-pay valid) but the league belongs to a
+    // different org → the org-match guard must fire before charging.
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+    });
+    mockStorage.getLeague.mockResolvedValue({
+      id: 11, organizationId: 999, weeklyFee: 2000, lineageFee: 0, prizeFundFee: 0,
+      seasonStart: '2026-01-01', seasonEnd: '2026-04-01', totalBowlingWeeks: 12,
+      cancelledDates: [], locationId: 99,
+    });
+    const res = await postCharge({
+      sourceId: 'clv_tok_org', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error?.code).toBe('FORBIDDEN');
+    expect(mockStorage.isBowlerActiveInLeague).not.toHaveBeenCalled();
+    expect(mockCloverProvider.processPayment).not.toHaveBeenCalled();
+    expect(mockStorage.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('rejects (400 BOWLER_NOT_IN_LEAGUE) when the bowler is not rostered in the league, no charge', async () => {
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, organizationId: 1, name: 'Pat', email: 'pat@example.com', cloverCustomerId: 'cv_cust_1',
+    });
+    mockStorage.isBowlerActiveInLeague.mockResolvedValue(false);
+    const res = await postCharge({
+      sourceId: 'clv_tok_roster', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe('BOWLER_NOT_IN_LEAGUE');
+    expect(mockCloverProvider.processPayment).not.toHaveBeenCalled();
+    expect(mockStorage.createPayment).not.toHaveBeenCalled();
   });
 
   it('deduplicates a re-submitted Clover charge instead of double-charging', async () => {

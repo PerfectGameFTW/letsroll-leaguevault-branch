@@ -132,6 +132,25 @@ export async function getBowlerLeague(id: number): Promise<BowlerLeague | undefi
   return result;
 }
 
+// True when the bowler currently has an ACTIVE roster row in the league.
+// Payment-creation routes use this to reject payments that pair a league
+// with a bowler who isn't rostered in it (P1: prevents corrupting
+// balances/reports with mismatched bowler/league pairs).
+export async function isBowlerActiveInLeague(bowlerId: number, leagueId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: bowlerLeagues.id })
+    .from(bowlerLeagues)
+    .where(
+      and(
+        eq(bowlerLeagues.bowlerId, bowlerId),
+        eq(bowlerLeagues.leagueId, leagueId),
+        eq(bowlerLeagues.active, true),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM ${teams} WHERE id = ${bowlerLeague.teamId} FOR UPDATE`);

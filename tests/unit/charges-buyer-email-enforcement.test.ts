@@ -25,6 +25,7 @@ import type { Server } from 'node:http';
 const mockStorage = {
   getLeague: vi.fn(),
   getBowler: vi.fn(),
+  isBowlerActiveInLeague: vi.fn(),
   getPayments: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
@@ -137,6 +138,7 @@ beforeEach(() => {
 
   mockHasAccessToLeague.mockResolvedValue(true);
   mockHasAccessToBowler.mockResolvedValue(true);
+  mockStorage.isBowlerActiveInLeague.mockResolvedValue(true);
   mockStorage.getLeague.mockResolvedValue({
     id: 11, organizationId: 1, weeklyFee: 2000, lineageFee: 0, prizeFundFee: 0,
     seasonStart: '2026-01-01', seasonEnd: '2026-04-01', totalBowlingWeeks: 12,
@@ -168,7 +170,7 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
   it('Square + bowler email on file -> 200, no enforcement triggered', async () => {
     mockGetPaymentProvider.mockResolvedValue(mockSquareProvider);
     mockStorage.getBowler.mockResolvedValue({
-      id: 7, name: 'Pat', email: 'on-file@example.com', squareCustomerId: 'cust_xyz',
+      id: 7, organizationId: 1, name: 'Pat', email: 'on-file@example.com', squareCustomerId: 'cust_xyz',
     });
     mockSquareProvider.processPayment.mockResolvedValue({
       id: 'sq_pay_a', status: 'COMPLETED',
@@ -187,7 +189,7 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
   it('Square + override email supplied -> 200, processes normally', async () => {
     mockGetPaymentProvider.mockResolvedValue(mockSquareProvider);
     mockStorage.getBowler.mockResolvedValue({
-      id: 7, name: 'Pat', email: null, squareCustomerId: 'cust_xyz',
+      id: 7, organizationId: 1, name: 'Pat', email: null, squareCustomerId: 'cust_xyz',
     });
     mockSquareProvider.processPayment.mockResolvedValue({
       id: 'sq_pay_b', status: 'COMPLETED',
@@ -208,7 +210,7 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
   it('Square + NO email anywhere -> 400 BUYER_EMAIL_REQUIRED, charge never sent', async () => {
     mockGetPaymentProvider.mockResolvedValue(mockSquareProvider);
     mockStorage.getBowler.mockResolvedValue({
-      id: 7, name: 'Pat', email: null, squareCustomerId: 'cust_xyz',
+      id: 7, organizationId: 1, name: 'Pat', email: null, squareCustomerId: 'cust_xyz',
     });
 
     const res = await postCharge({
@@ -228,7 +230,7 @@ describe('POST /api/payments-provider/payments — buyer email enforcement (Task
   it('Clover + NO email anywhere -> 200, enforcement does NOT trigger', async () => {
     mockGetPaymentProvider.mockResolvedValue(mockCloverProvider);
     mockStorage.getBowler.mockResolvedValue({
-      id: 7, name: 'Pat', email: null, cloverCustomerId: 'cv_123',
+      id: 7, organizationId: 1, name: 'Pat', email: null, cloverCustomerId: 'cv_123',
     });
     mockCloverProvider.processPayment.mockResolvedValue({
       id: 'cv_pay_c', status: 'COMPLETED', providerRef: {},
