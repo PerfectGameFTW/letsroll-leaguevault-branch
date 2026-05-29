@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -136,30 +136,35 @@ export default function WeeklyPaymentsPage() {
     return getEffectiveBowlingWeeks(league.totalBowlingWeeks, league.cancelledDates ?? []);
   }, [league?.totalBowlingWeeks, league?.weekDay, league?.cancelledDates]);
 
-  useEffect(() => {
-    if (league?.weekDay && selectedWeek === null && maxWeek > 0) {
-      const today = startOfToday();
-      const nearestBowlingDay = getNearestBowlingDay(
-        today,
-        league.weekDay,
-        league.skipDates ?? [],
-        league.cancelledDates ?? []
-      );
-      const weekNum = getWeekNumber(nearestBowlingDay, league);
-      setSelectedWeek(Math.max(1, Math.min(weekNum, maxWeek)));
-    }
-  }, [league, selectedWeek, maxWeek]);
+  // Default to the bowling week nearest today until the user navigates to
+  // another week. Derived during render rather than seeded by an effect:
+  // `selectedWeek` holds only an explicit user choice, and `effectiveWeek`
+  // falls back to the computed default in the meantime.
+  const defaultWeek = useMemo(() => {
+    if (!league?.weekDay || maxWeek <= 0) return null;
+    const today = startOfToday();
+    const nearestBowlingDay = getNearestBowlingDay(
+      today,
+      league.weekDay,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+    const weekNum = getWeekNumber(nearestBowlingDay, league);
+    return Math.max(1, Math.min(weekNum, maxWeek));
+  }, [league, maxWeek]);
+
+  const effectiveWeek = selectedWeek ?? defaultWeek;
 
   const selectedDate = useMemo(() => {
-    if (!league?.weekDay || !league?.seasonStart || selectedWeek === null) return undefined;
+    if (!league?.weekDay || !league?.seasonStart || effectiveWeek === null) return undefined;
     return getBowlingDateByWeekNumber(
       league.seasonStart,
       league.weekDay,
-      selectedWeek,
+      effectiveWeek,
       league.skipDates ?? [],
       league.cancelledDates ?? []
     ) ?? undefined;
-  }, [league?.seasonStart, league?.weekDay, league?.skipDates, league?.cancelledDates, selectedWeek]);
+  }, [league?.seasonStart, league?.weekDay, league?.skipDates, league?.cancelledDates, effectiveWeek]);
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", { leagueId, weekOf: selectedDate?.toISOString() }],
@@ -211,7 +216,7 @@ export default function WeeklyPaymentsPage() {
           <div className="flex flex-col gap-y-4">
             <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
             <WeekNavigator
-              selectedWeek={selectedWeek}
+              selectedWeek={effectiveWeek}
               maxWeek={maxWeek}
               selectedDate={selectedDate}
               onWeekChange={setSelectedWeek}
@@ -224,7 +229,7 @@ export default function WeeklyPaymentsPage() {
             {selectedDate && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Week {selectedWeek}</CardTitle>
+                  <CardTitle>Week {effectiveWeek}</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
                   {loadingPayments || loadingBowlerLeagues ? (

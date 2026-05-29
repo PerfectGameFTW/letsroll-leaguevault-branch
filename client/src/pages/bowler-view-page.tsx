@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
@@ -84,13 +84,19 @@ export default function BowlerViewPage() {
     return filterActiveBowlerLeagues(allLeagues, bowlerId);
   }, [detailsResponse?.data?.bowlerLeagues, bowlerId]);
 
+  // Default to the bowler's first active league until the user picks one
+  // from the dropdown. Derived during render rather than seeded by an
+  // effect: `selectedLeagueId` holds only an explicit user choice, and
+  // `effectiveLeagueId` falls back to the first league in the meantime.
+  const effectiveLeagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId ?? null;
+
   const selectedAssociation = useMemo(() => {
     return bowlerLeagues.find(bl =>
-      bl.leagueId === selectedLeagueId &&
+      bl.leagueId === effectiveLeagueId &&
       bl.active &&
       bl.bowlerId === bowlerId
     );
-  }, [bowlerLeagues, selectedLeagueId, bowlerId]);
+  }, [bowlerLeagues, effectiveLeagueId, bowlerId]);
 
   const team = useMemo(() => {
     if (!selectedAssociation?.teamId) return undefined;
@@ -98,16 +104,16 @@ export default function BowlerViewPage() {
   }, [detailsTeams, selectedAssociation?.teamId]);
 
   const league = useMemo(() => {
-    if (!selectedLeagueId) return undefined;
-    return detailsLeagues.find(l => l.id === selectedLeagueId);
-  }, [detailsLeagues, selectedLeagueId]);
+    if (!effectiveLeagueId) return undefined;
+    return detailsLeagues.find(l => l.id === effectiveLeagueId);
+  }, [detailsLeagues, effectiveLeagueId]);
 
   const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
-    queryKey: ["/api/payments", { bowlerId, leagueId: selectedLeagueId }],
+    queryKey: ["/api/payments", { bowlerId, leagueId: effectiveLeagueId }],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       params.set("bowlerId", String(bowlerId));
-      params.set("leagueId", String(selectedLeagueId));
+      params.set("leagueId", String(effectiveLeagueId));
       const response = await fetch(`/api/payments?${params.toString()}`, {
         credentials: "include",
         headers: { "Accept": "application/json" },
@@ -119,7 +125,7 @@ export default function BowlerViewPage() {
       }
       return response.json();
     },
-    enabled: !!selectedLeagueId && !!bowlerId,
+    enabled: !!effectiveLeagueId && !!bowlerId,
     staleTime: 1000 * 60,
     retry: false,
   });
@@ -132,12 +138,6 @@ export default function BowlerViewPage() {
     retry: false,
   });
   const bnConfigured = bnStatusResponse?.data?.configured || false;
-
-  useEffect(() => {
-    if (bowlerLeagues?.length && !selectedLeagueId) {
-      setSelectedLeagueId(bowlerLeagues[0].leagueId);
-    }
-  }, [bowlerLeagues, selectedLeagueId]);
 
   if (loadingDetails) {
     return <Layout><PageLoadingState /></Layout>;
@@ -208,7 +208,7 @@ export default function BowlerViewPage() {
           </div>
           <div className="flex flex-col gap-1">
             <Select
-              value={selectedLeagueId?.toString() || ""}
+              value={effectiveLeagueId?.toString() || ""}
               onValueChange={(value) => setSelectedLeagueId(parseInt(value))}
             >
               <SelectTrigger className="w-[300px]">

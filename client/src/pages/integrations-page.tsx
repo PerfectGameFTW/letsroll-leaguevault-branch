@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
@@ -135,17 +135,12 @@ export default function IntegrationsPage() {
 
   const highlightLocationOrgId = highlightLocationResponse?.data?.organizationId ?? null;
 
-  // Auto-select the location's org for system admins so they don't have
-  // to hunt for it in the dropdown after following the deep link. We only
-  // overwrite an empty selection — never the admin's manual choice — so
-  // navigating back to the page after switching orgs doesn't snap back.
-  useEffect(() => {
-    if (!isSystemAdmin) return;
-    if (selectedOrgId != null) return;
-    if (highlightLocationOrgId == null) return;
-    setSelectedOrgId(highlightLocationOrgId);
-  }, [isSystemAdmin, selectedOrgId, highlightLocationOrgId]);
-
+  // For system admins following a `?location=<id>` deep link, default the
+  // org selection to the location's owning org so they don't have to hunt
+  // for it in the dropdown. Derived during render rather than stored via an
+  // effect: `selectedOrgId` stays null until the admin makes a manual
+  // choice, and `effectiveOrgId` falls back to the deep-linked org until
+  // then — so a manual choice always wins and navigating back never snaps.
   const effectiveOrgId = isSystemAdmin
     ? (selectedOrgId ?? highlightLocationOrgId ?? currentUser?.organizationId ?? null)
     : (currentUser?.organizationId ?? null);
