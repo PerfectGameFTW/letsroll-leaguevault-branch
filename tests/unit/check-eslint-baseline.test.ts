@@ -47,6 +47,10 @@ function runIn(
 // ratchet checks don't care about the ledger gate; they get this stub
 // so the bump check stays silent. Tests that DO exercise the ledger
 // gate write their own ledger explicitly.
+//
+// Every rule that appears in RULE_CEILINGS must have a row here (or in
+// a test's explicit ledger), otherwise the bump gate treats the
+// recorded value as 0 and fails the moment that rule's ceiling is > 0.
 const PERMISSIVE_LEDGER = [
   '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
   '| --- | --- | --- | --- | --- | --- |',
@@ -55,9 +59,21 @@ const PERMISSIVE_LEDGER = [
   '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | test stub | test |',
   '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | test stub | test |',
   '| no-restricted-syntax | 0 | 9999 | +9999 | test stub | test |',
+  '| react-hooks/exhaustive-deps | 0 | 9999 | +9999 | test stub | test |',
+  '| @tanstack/query/exhaustive-deps | 0 | 9999 | +9999 | test stub | test |',
+  '| @tanstack/query/no-unstable-deps | 0 | 9999 | +9999 | test stub | test |',
   '| TOTAL | 0 | 99999 | +99999 | test stub | test |',
   '',
 ].join('\n');
+
+// The newer per-rule ceilings (added after task #696) that the
+// explicit-ledger tests below don't care about. They get permissive
+// rows so only the rule under test trips the bump gate.
+const EXTRA_PERMISSIVE_ROWS = [
+  '| react-hooks/exhaustive-deps | 0 | 9999 | +9999 | seed | test |',
+  '| @tanstack/query/exhaustive-deps | 0 | 9999 | +9999 | seed | test |',
+  '| @tanstack/query/no-unstable-deps | 0 | 9999 | +9999 | seed | test |',
+];
 
 function makeFixture(
   suppressions: unknown,
@@ -91,7 +107,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-non-null-assertion/);
-    expect(r.stderr).toMatch(/230 suppressions \(ceiling 220\)/);
+    expect(r.stderr).toMatch(/230 suppressions \(ceiling 218\)/);
   });
 
   it('exits 1 in --strict mode when the total ceiling is exceeded (catches "swap one any for a different rule" workarounds)', () => {
@@ -100,21 +116,23 @@ describe('check-eslint-baseline CI guard', () => {
     // past the cap. The unrelated rule (`no-unused-vars`) is not in
     // RULE_CEILINGS, so this fixture isolates the total-ceiling
     // check from the per-rule check.
-    // Pinned-rule sum = 0 + 220 + 87 + 4 + 153 = 464; +100 unrelated
-    // = 564 total, which is over the 486 ceiling.
+    // Pinned-rule sum = 0 + 218 + 80 + 4 + 153 + 14 + 5 = 474; +100
+    // unrelated = 574 total, which is over the 496 ceiling.
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/no-explicit-any': { count: 0 },
-        '@typescript-eslint/no-non-null-assertion': { count: 220 },
-        '@typescript-eslint/no-unnecessary-type-assertion': { count: 87 },
+        '@typescript-eslint/no-non-null-assertion': { count: 218 },
+        '@typescript-eslint/no-unnecessary-type-assertion': { count: 80 },
         '@typescript-eslint/consistent-type-assertions': { count: 4 },
         'no-restricted-syntax': { count: 153 },
+        'react-hooks/exhaustive-deps': { count: 14 },
+        '@tanstack/query/no-unstable-deps': { count: 5 },
         '@typescript-eslint/no-unused-vars': { count: 100 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: total suppressions: 564/);
+    expect(r.stderr).toMatch(/FAIL: total suppressions: 574/);
   });
 
   it('exits 0 with a RATCHET hint when a per-rule count drops below the ceiling', () => {
@@ -129,7 +147,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 220\)/,
+      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 218\)/,
     );
     expect(r.stdout).toMatch(/Lower RULE_CEILINGS/);
     expect(r.stdout).toMatch(/RATCHET: total suppressions: 100/);
@@ -200,7 +218,7 @@ describe('check-eslint-baseline CI guard', () => {
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/some-other-rule': { count: 5 },
-        '@typescript-eslint/no-non-null-assertion': { count: 220 },
+        '@typescript-eslint/no-non-null-assertion': { count: 218 },
       },
     });
     const r = runIn(dir, ['--strict']);
@@ -210,7 +228,7 @@ describe('check-eslint-baseline CI guard', () => {
 
   it('exits 1 in --strict mode when a per-rule ceiling is bumped above the BASELINE_BUMP_REASON.md ledger (task #696)', () => {
     // Ledger records nna at 200, but the script's RULE_CEILINGS pins it at
-    // 220. A contributor who raised the literal to 220 without adding a
+    // 218. A contributor who raised the literal to 218 without adding a
     // ledger row gets caught here.
     const ledger = [
       '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
@@ -219,6 +237,7 @@ describe('check-eslint-baseline CI guard', () => {
       '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
       '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
       '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      ...EXTRA_PERMISSIVE_ROWS,
       '| TOTAL | 0 | 99999 | +99999 | seed | test |',
       '',
     ].join('\n');
@@ -233,12 +252,12 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(
-      /FAIL: @typescript-eslint\/no-non-null-assertion: ceiling raised to 220 but BASELINE_BUMP_REASON\.md records 200/,
+      /FAIL: @typescript-eslint\/no-non-null-assertion: ceiling raised to 218 but BASELINE_BUMP_REASON\.md records 200/,
     );
     expect(r.stderr).toMatch(/Add a row in the same commit/);
     // Echoes the row template so the contributor can copy/paste.
     expect(r.stderr).toMatch(
-      /\| @typescript-eslint\/no-non-null-assertion \| 200 \| 220 \| \+20 \|/,
+      /\| @typescript-eslint\/no-non-null-assertion \| 200 \| 218 \| \+18 \|/,
     );
   });
 
@@ -251,6 +270,7 @@ describe('check-eslint-baseline CI guard', () => {
       '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
       '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
       '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      ...EXTRA_PERMISSIVE_ROWS,
       '| TOTAL | 0 | 100 | +100 | seed | test |',
       '',
     ].join('\n');
@@ -258,7 +278,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(
-      /FAIL: TOTAL: ceiling raised to 483 but BASELINE_BUMP_REASON\.md records 100/,
+      /FAIL: TOTAL: ceiling raised to 496 but BASELINE_BUMP_REASON\.md records 100/,
     );
   });
 
@@ -267,17 +287,18 @@ describe('check-eslint-baseline CI guard', () => {
     const ledger = [
       '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
       '| --- | --- | --- | --- | --- | --- |',
-      '| @typescript-eslint/no-non-null-assertion | 200 | 220 | +20 | seed | test |',
+      '| @typescript-eslint/no-non-null-assertion | 200 | 218 | +18 | seed | test |',
       '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
       '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
       '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      ...EXTRA_PERMISSIVE_ROWS,
       '| TOTAL | 0 | 99999 | +99999 | seed | test |',
       '',
     ].join('\n');
     const dir = makeFixture(
       {
         'src/foo.ts': {
-          '@typescript-eslint/no-non-null-assertion': { count: 220 },
+          '@typescript-eslint/no-non-null-assertion': { count: 218 },
         },
       },
       { ledger },
@@ -287,7 +308,7 @@ describe('check-eslint-baseline CI guard', () => {
   });
 
   it('does not require a ledger entry when a ceiling is ratcheted DOWN below the recorded value (task #696)', () => {
-    // Script literal (220) is below ledger (300) → cleanup, no entry needed.
+    // Script literal (218) is below ledger (300) → cleanup, no entry needed.
     const ledger = [
       '| rule | old ceiling | new ceiling | delta | reason | commit/task ref |',
       '| --- | --- | --- | --- | --- | --- |',
@@ -295,6 +316,7 @@ describe('check-eslint-baseline CI guard', () => {
       '| @typescript-eslint/no-unnecessary-type-assertion | 0 | 9999 | +9999 | seed | test |',
       '| @typescript-eslint/consistent-type-assertions | 0 | 9999 | +9999 | seed | test |',
       '| no-restricted-syntax | 0 | 9999 | +9999 | seed | test |',
+      ...EXTRA_PERMISSIVE_ROWS,
       '| TOTAL | 0 | 99999 | +99999 | seed | test |',
       '',
     ].join('\n');
