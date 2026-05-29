@@ -2,7 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 
-export type CatalogLoadState = 'loading' | 'empty' | 'hasItems';
+type CatalogLoadState = 'loading' | 'empty' | 'hasItems';
 
 interface LeagueSquareCatalogStatusProps {
   hasActiveFilters: boolean;

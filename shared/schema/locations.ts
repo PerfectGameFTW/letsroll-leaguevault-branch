@@ -79,7 +79,7 @@ function nonEmptyString(value: unknown): boolean {
  * latter is detected by the presence of `apiTokenConfigured` and
  * treated as "apiToken present" when true.
  */
-export interface CloverConfigStatusInput {
+interface CloverConfigStatusInput {
   apiToken?: string | null;
   apiTokenConfigured?: boolean;
   merchantId?: string | null;
@@ -141,7 +141,7 @@ export const SQUARE_FIELD_LABELS: Record<RequiredSquareField, string> = {
  * latter is detected by the presence of `accessTokenConfigured` and
  * treated as "accessToken present" when true.
  */
-export interface SquareConfigStatusInput {
+interface SquareConfigStatusInput {
   appId?: string | null;
   accessToken?: string | null;
   accessTokenConfigured?: boolean;

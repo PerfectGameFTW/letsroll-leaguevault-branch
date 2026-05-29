@@ -28,13 +28,3 @@ export function getSubdomainSlug(): string | null {
   return null;
 }
 
-export function isSubdomainRequest(): boolean {
-  return getSubdomainSlug() !== null;
-}
-
-export function getOrgSubdomainUrl(slug: string): string {
-  if (window.location.hostname === 'localhost' || window.location.hostname.endsWith('.replit.dev')) {
-    return `${window.location.origin}?__org_slug=${slug}`;
-  }
-  return `https://${slug}.${MAIN_DOMAIN}`;
-}

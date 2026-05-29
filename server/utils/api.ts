@@ -67,7 +67,7 @@ export const SAFE_USER_FIELDS = [
 // column? List it in `SAFE_USER_FIELDS`. The exhaustiveness check
 // below fails type-check if a new column on `users.$inferSelect`
 // is missing from BOTH lists, so the deny half can't go stale.
-export const SENSITIVE_USER_FIELDS = [
+const SENSITIVE_USER_FIELDS = [
   'password',
   'inviteToken',
   'inviteTokenExpiry',
@@ -164,7 +164,7 @@ export const SAFE_ORG_FIELDS = [
 // initializer source matches a member here — closing the gap that
 // the structural check leaves open against hand-rolled projections
 // like `sendSuccess(res, { slug: org.slug, integrations: org.integrations })`.
-export const SENSITIVE_ORG_FIELDS = [
+const SENSITIVE_ORG_FIELDS = [
   'integrations',
 ] as const;
 

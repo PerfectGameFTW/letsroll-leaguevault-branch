@@ -20,7 +20,7 @@ import { BackToDashboardButton } from "./bowler-dashboard-page/back-to-dashboard
 
 const STALE_TIME = 1000 * 60 * 5;
 
-export const BowlerDashboardPage: FC = () => {
+const BowlerDashboardPage: FC = () => {
   const [selectedLeagueId, setSelectedLeagueId] = useSelectedLeague();
   const [sheetOpen, setSheetOpen] = useState(false);
 

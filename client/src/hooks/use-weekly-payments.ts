@@ -294,29 +294,3 @@ export function getWeekNumber(date: Date, league: League | undefined): number {
   return weeksDiff + 1;
 }
 
-export function isDateDisabled(date: Date, league: League | undefined): boolean {
-  if (!league?.weekDay) return false;
-
-  const weekDayMap: { [key: string]: number } = {
-    'sunday': 0,
-    'monday': 1,
-    'tuesday': 2,
-    'wednesday': 3,
-    'thursday': 4,
-    'friday': 5,
-    'saturday': 6
-  };
-
-  const bowlingDayNumber = weekDayMap[league.weekDay.toLowerCase()];
-  if (date.getDay() !== bowlingDayNumber) return true;
-
-  if (league.totalBowlingWeeks != null) {
-    return isDateSkippedOrCancelled(
-      date,
-      league.skipDates ?? [],
-      league.cancelledDates ?? []
-    );
-  }
-
-  return false;
-}

@@ -18,7 +18,7 @@ import type { ApiResponse } from "@shared/schema";
 
 const STALE_TIME = 1000 * 60 * 5;
 
-export const ProfileSettingsPage: FC = () => {
+const ProfileSettingsPage: FC = () => {
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 

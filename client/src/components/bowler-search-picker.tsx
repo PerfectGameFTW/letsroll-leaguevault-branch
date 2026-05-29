@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { ApiResponse } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
-export interface BowlerSearchResult {
+interface BowlerSearchResult {
   id: number;
   name: string;
   organizationId: number;
@@ -185,4 +185,3 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
   );
 };
 
-export default BowlerSearchPicker;

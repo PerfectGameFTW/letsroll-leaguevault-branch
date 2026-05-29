@@ -74,6 +74,10 @@ args = "extra-guards"
 task = "workflow.run"
 args = "not-found-code"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "knip"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -148,6 +152,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts && npx tsx scripts/check-no-nested-link-button.ts && npx tsx scripts/check-error-log-guard-wiring.ts"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "knip"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx knip"
 
 [workflows.workflow.metadata]
 outputType = "console"

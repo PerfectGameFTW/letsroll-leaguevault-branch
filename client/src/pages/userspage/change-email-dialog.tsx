@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import type { UsersTableUser } from '@/components/users-table';
 import type { PaymentSyncStatus } from '@shared/schema';
 
-export type ChangeEmailDialogFormValues = { email: string };
+type ChangeEmailDialogFormValues = { email: string };
 
 type ChangeEmailResponse = {
   success: boolean;

@@ -112,7 +112,7 @@ const DEFINITIONS: DefinitionSpec[] = [
  *   detail="A custom attribute definition with the specified `name`
  *           already exists; name=League Name"
  */
-export function isNameCollisionError(err: unknown): boolean {
+function isNameCollisionError(err: unknown): boolean {
   if (!(err instanceof getSquareErrorCtor())) return false;
   const errors = err.errors;
   if (!errors?.length) return false;
@@ -328,7 +328,7 @@ export async function ensureDefinitions(
  * Returns true on success (including idempotent NOT_FOUND), false on
  * any other API failure. Callers should treat false as NON-FATAL.
  */
-export async function deleteDefinition(
+async function deleteDefinition(
   client: SquareCustomAttrDefinitionsClient,
   key: string,
 ): Promise<boolean> {

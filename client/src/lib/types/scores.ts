@@ -18,7 +18,7 @@ export interface ScoreWithRelations extends Score {
   };
 }
 
-export interface BowlerScores {
+interface BowlerScores {
   bowlerId: number;
   bowlerName: string;
   position: number;
@@ -32,7 +32,7 @@ export interface BowlerScores {
   }>;
 }
 
-export interface TeamScores {
+interface TeamScores {
   teamId: number;
   teamName: string;
   teamNumber: number;
@@ -40,8 +40,3 @@ export interface TeamScores {
   bowlers: BowlerScores[];
 }
 
-export interface WeeklyScores {
-  weekNumber: number;
-  date: string;
-  teams: TeamScores[];
-}

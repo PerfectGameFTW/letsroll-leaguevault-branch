@@ -20,7 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import type { UsersTableUser } from '@/components/users-table';
 
-export type ResetPasswordDialogFormValues = { newPassword: string };
+type ResetPasswordDialogFormValues = { newPassword: string };
 
 interface Props {
   resetPasswordUserId: number | null;

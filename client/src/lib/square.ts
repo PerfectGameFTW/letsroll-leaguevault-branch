@@ -30,7 +30,7 @@ interface SquareCustomer {
   email: string;
 }
 
-export interface SquarePaymentRequestDetails {
+interface SquarePaymentRequestDetails {
   countryCode: string;
   currencyCode: string;
   total: { amount: string; label: string };
@@ -64,7 +64,7 @@ export interface TokenizeError {
   type?: string;
 }
 
-export interface TokenizeResult {
+interface TokenizeResult {
   status: string;
   token?: string;
   errors?: TokenizeError[];
@@ -107,17 +107,6 @@ const cardStyle = {
     borderColor: '#CC0023',
   },
 };
-
-export async function warmUpSquareCard(): Promise<void> {
-  try {
-    if (!payments) return;
-    if (preWarmedCard) return;
-    preWarmedCard = await payments.card({ style: cardStyle });
-  } catch (err) {
-    console.error('[Square] Failed to pre-warm card:', err);
-    preWarmedCard = null;
-  }
-}
 
 export function getPreWarmedCard(): SquareCard | null {
   const card = preWarmedCard;

@@ -115,4 +115,3 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
   );
 };
 
-export default AdminBowlerLinkPanel;

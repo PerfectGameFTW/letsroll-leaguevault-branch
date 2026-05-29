@@ -12,7 +12,7 @@ interface RecoveredItem {
   itemId: number;
 }
 
-export interface AlertSummary {
+interface AlertSummary {
   itemCount: number;
   affectedJobIds: number[];
   itemIds: number[];

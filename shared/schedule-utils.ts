@@ -12,7 +12,7 @@ export function toIsoDateStr(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-export function toLocalMidnight(date: string | Date): Date {
+function toLocalMidnight(date: string | Date): Date {
   if (typeof date === "string") {
     const datePart = date.replace(" ", "T").split("T")[0];
     const [year, month, day] = datePart.split("-").map(Number);

@@ -8,14 +8,14 @@ const PROVIDER_LABELS: Record<PaymentProviderType, string> = {
   clover: "Clover",
 };
 
-export type ApiErrorBody = {
+type ApiErrorBody = {
   error?: { message?: string; code?: string } | string;
   message?: string;
 };
 
 export type ApiErrorLike = Error & { code?: string; status?: number };
 
-export function getApiErrorCode(body: unknown): string | undefined {
+function getApiErrorCode(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
   const err = (body as ApiErrorBody).error;
   if (typeof err === "object" && err && typeof err.code === "string") {
@@ -24,7 +24,7 @@ export function getApiErrorCode(body: unknown): string | undefined {
   return undefined;
 }
 
-export function getApiErrorMessage(body: unknown, fallback: string): string {
+function getApiErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
   const b = body as ApiErrorBody;
   if (typeof b.error === "object" && b.error?.message) return b.error.message;

@@ -16,11 +16,6 @@ export interface MissingVariation {
   variationId: string;
 }
 
-export interface LeagueMissingFinding {
-  league: League;
-  missing: MissingVariation[];
-}
-
 export interface AuditDeps {
   /** Active leagues to inspect (must include the variation id columns). */
   listLeaguesToAudit: () => Promise<League[]>;

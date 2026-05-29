@@ -22,7 +22,6 @@ export type UserRole = (typeof USER_ROLES)[number];
 
 // Bowler-level schedule: how often an individual bowler's automatic payment recurs
 export const SCHEDULE_FREQUENCIES = ["weekly", "monthly", "upfront"] as const;
-export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
 
 export const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded", "disputed"] as const;
 export const PaymentStatus = {

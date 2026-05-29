@@ -100,8 +100,6 @@ export const TEMPLATE_PARENT_BRANCH_NAME =
   ?? process.env.LV_PRODUCTION_BRANCH_NAME
   ?? 'main';
 
-/** @deprecated Use TEMPLATE_PARENT_BRANCH_NAME. Kept for backward compat. */
-export const PRODUCTION_BRANCH_NAME = TEMPLATE_PARENT_BRANCH_NAME;
 
 let _deprecationLogged = false;
 /**

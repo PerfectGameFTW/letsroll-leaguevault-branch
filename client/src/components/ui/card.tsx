@@ -1,7 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * If true, removes padding from the card
    */
@@ -23,7 +23,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 )
 Card.displayName = "Card"
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * Optional CSS class for additional styling
    */
@@ -41,7 +41,7 @@ const CardHeader = React.forwardRef<HTMLDivElement, CardHeaderProps>(
 )
 CardHeader.displayName = "CardHeader"
 
-export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
   /**
    * Level of the heading element (h1-h6)
    */
@@ -65,7 +65,7 @@ const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
 )
 CardTitle.displayName = "CardTitle"
 
-export interface CardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
+interface CardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
   /**
    * Optional CSS class for additional styling
    */
@@ -83,7 +83,7 @@ const CardDescription = React.forwardRef<HTMLParagraphElement, CardDescriptionPr
 )
 CardDescription.displayName = "CardDescription"
 
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * Optional CSS class for additional styling
    */
@@ -101,7 +101,7 @@ const CardContent = React.forwardRef<HTMLDivElement, CardContentProps>(
 )
 CardContent.displayName = "CardContent"
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * Optional CSS class for additional styling
    */

@@ -20,7 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
-export interface UsersTableLinkedBowler {
+interface UsersTableLinkedBowler {
   id: number;
   name: string;
   leagueName: string | null;

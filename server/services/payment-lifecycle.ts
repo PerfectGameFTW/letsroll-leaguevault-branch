@@ -153,7 +153,7 @@ export async function processScheduledPaymentJob(
   }
 }
 
-export function computeNextPaymentDate(
+function computeNextPaymentDate(
   scheduleRecord: PaymentSchedule,
   league: typeof leagues.$inferSelect
 ): Date {

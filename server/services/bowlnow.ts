@@ -45,7 +45,7 @@ function resolveLeagueSeasonFieldId(orgConfig?: OrgIntegrations | null): string 
   return orgConfig?.bowlnow?.leagueSeasonFieldId || undefined;
 }
 
-export interface BNContact {
+interface BNContact {
   id?: string;
   email?: string | null;
   firstName?: string;

@@ -13,7 +13,7 @@ import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CloverCard } from "@/hooks/use-clover-payment";
 
-export type PaymentCard = SquareCard | CloverCard | null;
+type PaymentCard = SquareCard | CloverCard | null;
 
 interface UsePaymentFormSubmitOptions {
   form: UseFormReturn<InsertPayment>;

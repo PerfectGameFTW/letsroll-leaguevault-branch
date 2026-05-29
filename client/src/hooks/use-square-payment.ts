@@ -3,7 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } from "@/lib/square";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 
-export interface SquareCardTokenizeResult {
+interface SquareCardTokenizeResult {
   status: string;
   token?: string;
   errors?: Array<{ message: string }>;

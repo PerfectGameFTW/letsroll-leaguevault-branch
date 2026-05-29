@@ -257,4 +257,3 @@ export const BowlerPaymentLinksSection: FC<{
   );
 };
 
-export default BowlerPaymentLinksSection;

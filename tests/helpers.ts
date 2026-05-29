@@ -470,8 +470,6 @@ export {
   TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
   TEST_NEW_ORG_ADMIN_PASSWORD,
-  TEST_ORG_A_SLUG,
-  TEST_ORG_B_SLUG,
   getBaselineOrgIds,
   getBaselineOrgAId,
   acquireFixtureOrg,
