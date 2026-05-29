@@ -8,6 +8,11 @@ import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
 import { z } from 'zod';
 import { insertBowlerSchema, type InsertBowler } from '../../shared/schema/bowlers';
+import {
+  hasZipLocalFileHeader,
+  looksLikeText,
+  inspectZipForBomb,
+} from '../utils/spreadsheet-magic-bytes.js';
 
 const log = createLogger("BulkImport");
 
@@ -17,6 +22,50 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
+// Business cap on rows per import. Enforced as early as practical so a
+// pathological file cannot make us build an unbounded in-memory array.
+const MAX_IMPORT_ROWS = 2000;
+
+// Defense-in-depth against XLSX zip bombs: reject before ExcelJS
+// materialises the workbook if the ZIP central directory declares a
+// total uncompressed payload above this absolute cap, or an overall
+// decompression ratio above the multiplier. A legitimate sub-5MB,
+// <=2000-row workbook stays well under both.
+const MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
+const MAX_DECOMPRESSION_RATIO = 100;
+
+// Upper bound on parse wall-clock time. A file that survives the size
+// checks but is still pathological cannot hang the request forever; on
+// timeout the parse aborts and the route returns a clean 400.
+const PARSE_TIMEOUT_MS = 15000;
+
+class ParseTimeoutError extends Error {
+  constructor() {
+    super('Parsing the file took too long and was aborted.');
+    this.name = 'ParseTimeoutError';
+  }
+}
+
+// Sentinel thrown out of ExcelJS's `eachRow` callback to stop iteration
+// the moment the row cap is exceeded (the callback has no `break`).
+const ROW_LIMIT_EXCEEDED = Symbol('ROW_LIMIT_EXCEEDED');
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ParseTimeoutError()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 
 interface ParsedRow {
@@ -97,7 +146,7 @@ async function parseFile(buffer: Buffer, filename: string): Promise<{ rows: Pars
     const workbook = new ExcelJS.Workbook();
 
     if (ext === 'csv') {
-      await workbook.csv.read(Readable.from([buffer]));
+      await withTimeout(workbook.csv.read(Readable.from([buffer])), PARSE_TIMEOUT_MS);
     } else {
       // ExcelJS's `xlsx.load` is typed as `Buffer` (unparameterised), but
       // multer hands us `Buffer<ArrayBufferLike>` from newer @types/node.
@@ -105,7 +154,7 @@ async function parseFile(buffer: Buffer, filename: string): Promise<{ rows: Pars
       // at runtime to avoid laundering the type via `as unknown as`.
       const bytes = new Uint8Array(buffer.byteLength);
       bytes.set(buffer);
-      await workbook.xlsx.load(bytes.buffer);
+      await withTimeout(workbook.xlsx.load(bytes.buffer), PARSE_TIMEOUT_MS);
     }
 
     const sheet = workbook.worksheets[0];
@@ -115,15 +164,34 @@ async function parseFile(buffer: Buffer, filename: string): Promise<{ rows: Pars
     }
 
     const rawData: string[][] = [];
-    sheet.eachRow({ includeEmpty: false }, (row) => {
-      const values = row.values as unknown[];
-      const rowArr: string[] = [];
-      // ExcelJS row.values is 1-indexed; index 0 is undefined.
-      for (let i = 1; i < values.length; i++) {
-        rowArr.push(cellToString(values[i]));
-      }
-      rawData.push(rowArr);
-    });
+    // Stop as soon as the row cap is exceeded so we never build an
+    // unbounded array, even if the upload survived the size guards.
+    // `eachRow` has no break, so throw a sentinel and catch it below.
+    let rowLimitExceeded = false;
+    try {
+      sheet.eachRow({ includeEmpty: false }, (row) => {
+        // header (rawData[0]) + MAX_IMPORT_ROWS data rows is allowed;
+        // one more non-empty row means the file is over the cap.
+        if (rawData.length > MAX_IMPORT_ROWS) {
+          rowLimitExceeded = true;
+          throw ROW_LIMIT_EXCEEDED;
+        }
+        const values = row.values as unknown[];
+        const rowArr: string[] = [];
+        // ExcelJS row.values is 1-indexed; index 0 is undefined.
+        for (let i = 1; i < values.length; i++) {
+          rowArr.push(cellToString(values[i]));
+        }
+        rawData.push(rowArr);
+      });
+    } catch (iterErr) {
+      if (iterErr !== ROW_LIMIT_EXCEEDED) throw iterErr;
+    }
+
+    if (rowLimitExceeded) {
+      errors.push(`File contains more than ${MAX_IMPORT_ROWS} rows. Maximum is 2,000 rows per import.`);
+      return { rows, errors };
+    }
 
     if (rawData.length < 2) {
       errors.push('The file must have a header row and at least one data row');
@@ -198,14 +266,52 @@ router.post('/', (req, res, next) => {
       return sendError(res, 'Invalid file type. Please upload a CSV or XLSX file.', 400);
     }
 
-    const allowedMimeTypes = [
-      'text/csv',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'application/octet-stream',
-    ];
-    if (!allowedMimeTypes.includes(req.file.mimetype)) {
-      return sendError(res, 'Invalid file type. The uploaded file does not appear to be a valid CSV or XLSX file.', 400);
+    const buffer = req.file.buffer;
+    const mimetype = req.file.mimetype;
+
+    // `application/octet-stream` is intentionally on both allow-lists:
+    // browsers and OS file pickers (including the Capacitor mobile
+    // picker used by the native apps) frequently have no MIME mapping
+    // for .xlsx/.csv and upload them as a generic byte stream. We keep
+    // accepting it, but ONLY when the actual file bytes (magic-byte
+    // sniffing below) confirm a real ZIP/XLSX container or valid CSV
+    // text — never on the client-supplied MIME alone.
+    if (ext === 'xlsx') {
+      const allowedXlsxMimes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream',
+      ];
+      if (!allowedXlsxMimes.includes(mimetype)) {
+        return sendError(res, 'Invalid file type. The uploaded file does not appear to be a valid XLSX file.', 400);
+      }
+      // Content check: a real .xlsx is a ZIP archive (PK\x03\x04).
+      if (!hasZipLocalFileHeader(buffer)) {
+        return sendError(res, 'Invalid file. The uploaded file is not a valid XLSX workbook.', 400);
+      }
+      // Zip-bomb guard: reject oversized/high-ratio archives before
+      // ExcelJS decompresses the workbook into memory.
+      const guard = inspectZipForBomb(buffer, {
+        maxTotalUncompressed: MAX_UNCOMPRESSED_BYTES,
+        maxRatio: MAX_DECOMPRESSION_RATIO,
+      });
+      if (!guard.ok) {
+        log.warn(`Rejected XLSX bulk import: ${guard.reason} (uncompressed=${guard.totalUncompressed ?? 'n/a'}, compressed=${guard.totalCompressed ?? 'n/a'})`);
+        return sendError(res, 'The uploaded file is too large or malformed to process safely.', 400);
+      }
+    } else {
+      const allowedCsvMimes = [
+        'text/csv',
+        'application/vnd.ms-excel',
+        'application/octet-stream',
+      ];
+      if (!allowedCsvMimes.includes(mimetype)) {
+        return sendError(res, 'Invalid file type. The uploaded file does not appear to be a valid CSV file.', 400);
+      }
+      // Content check: a CSV must be text, not a binary/ZIP container.
+      if (!looksLikeText(buffer)) {
+        return sendError(res, 'Invalid file. The uploaded CSV does not appear to be a text file.', 400);
+      }
     }
 
     const organizationId: number | null | undefined = req.user?.organizationId;
