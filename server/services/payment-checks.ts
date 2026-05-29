@@ -10,9 +10,9 @@ import { getTotalPaidInSeason } from "./payment-execution";
 // New behavior: the autopay scheduler doubles the regular weekly
 // charge on each league `doublePayDates` entry (see
 // `payment-execution.ts::executeScheduledPayment`). The legacy
-// `final_two_weeks_due_week` column is preserved on the leagues
-// table only as a one-shot startup-backfill source for
-// `doublePayDates`; it is never read by the payment pipeline.
+// `final_two_weeks_due_week` column and its one-shot `doublePayDates`
+// backfill were dropped entirely in Task #760; nothing in the payment
+// pipeline reads or writes it.
 
 export async function checkPaidInFull(
   scheduleRecord: PaymentSchedule,
