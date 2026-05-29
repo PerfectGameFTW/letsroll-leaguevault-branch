@@ -72,8 +72,9 @@ export function RefundPaymentDialog({ payment, onClose, onConfirm, isPending }: 
           </Alert>
         )}
         <div className="py-2">
-          <label className="text-sm font-medium">Reason (optional)</label>
+          <label htmlFor="refund-reason" className="text-sm font-medium">Reason (optional)</label>
           <Input
+            id="refund-reason"
             placeholder="Enter refund reason..."
             value={reason}
             onChange={(e) => setReason(e.target.value)}

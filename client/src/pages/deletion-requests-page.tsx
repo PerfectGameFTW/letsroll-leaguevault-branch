@@ -681,6 +681,7 @@ export default function DeletionRequestsPage() {
                     <input
                       id="execute-confirm"
                       type="text"
+                      aria-label="Type DELETE to confirm"
                       className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
                       value={executeConfirmText}
                       onChange={(e) => setExecuteConfirmText(e.target.value)}

@@ -218,6 +218,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
       <input
         type="file"
         ref={fileInputRef}
+        aria-label="Upload profile photo"
         style={{ display: 'none' }}
         accept="image/jpeg,image/png,image/gif,image/webp"
         onChange={handleFileChange}

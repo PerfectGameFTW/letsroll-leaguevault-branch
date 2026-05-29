@@ -123,9 +123,13 @@ export function PaymentCreditCardSection({
         {!applePayTokenizeOnly && (
           <div
             ref={applePayRef}
+            role="button"
+            tabIndex={0}
+            aria-label="Pay with Apple Pay"
             className={applePayAvailable ? "min-h-[40px]" : undefined}
             style={applePayAvailable ? undefined : { display: 'none' }}
             onClick={applePayAvailable ? onApplePayClick : undefined}
+            onKeyDown={applePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onApplePayClick(); } } : undefined}
           />
         )}
         {applePayAvailable && applePayTokenizeOnly && (
@@ -161,9 +165,13 @@ export function PaymentCreditCardSection({
         {!googlePayTokenizeOnly && (
           <div
             ref={googlePayRef}
+            role="button"
+            tabIndex={0}
+            aria-label="Pay with Google Pay"
             className={googlePayAvailable ? "w-full" : undefined}
             style={googlePayAvailable ? { width: '100%', height: '44px' } : { display: 'none' }}
             onClick={googlePayAvailable ? onGooglePayClick : undefined}
+            onKeyDown={googlePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onGooglePayClick(); } } : undefined}
           />
         )}
         {isWalletProcessing && (

@@ -96,6 +96,7 @@ export function GlobalSearch() {
       )}
       <input
         type="text"
+        aria-label="Search leagues, teams, or bowlers"
         placeholder="Search leagues, teams, or bowlers..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}

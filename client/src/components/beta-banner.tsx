@@ -63,8 +63,7 @@ export function BetaBanner() {
   if (!isBeta) return null;
 
   return (
-    <div
-      role="status"
+    <output
       aria-live="polite"
       data-testid="beta-banner"
       className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold tracking-wide shadow-sm"
@@ -78,6 +77,6 @@ export function BetaBanner() {
       >
         {commit}
       </span>
-    </div>
+    </output>
   );
 }

@@ -29,7 +29,9 @@ export const LeagueBottomSheet: FC<LeagueBottomSheetProps> = ({
 
   return (
     <>
-      <div
+      <button
+        type="button"
+        aria-label="Close"
         className="fixed inset-0 bg-black/40 z-40 transition-opacity duration-300"
         onClick={onClose}
       />

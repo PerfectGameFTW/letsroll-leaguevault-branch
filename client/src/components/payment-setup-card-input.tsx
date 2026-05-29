@@ -102,7 +102,11 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
       {!applePayTokenizeOnly && (
         <div
           ref={applePayRef}
+          role="button"
+          tabIndex={0}
+          aria-label="Pay with Apple Pay"
           onClick={applePayAvailable ? onApplePayClick : undefined}
+          onKeyDown={applePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApplePayClick(); } } : undefined}
           className={applePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
           style={applePayAvailable ? undefined : { display: 'none' }}
         />
@@ -136,7 +140,11 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
       {!googlePayTokenizeOnly && (
         <div
           ref={googlePayRef}
+          role="button"
+          tabIndex={0}
+          aria-label="Pay with Google Pay"
           onClick={googlePayAvailable ? onGooglePayClick : undefined}
+          onKeyDown={googlePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onGooglePayClick(); } } : undefined}
           className={googlePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
           style={googlePayAvailable ? undefined : { display: 'none' }}
         />

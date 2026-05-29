@@ -55,6 +55,7 @@ export const PaymentCustomAmount: FC<PaymentCustomAmountProps> = ({
           </Button>
           <input
             id="custom-weeks"
+            aria-label="Number of weeks"
             type="number"
             min="1"
             max={maxPayableWeeks}

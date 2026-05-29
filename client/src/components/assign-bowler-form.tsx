@@ -114,7 +114,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Select Bowler</label>
+            <label htmlFor="assign-bowler-select" className="text-sm font-medium">Select Bowler</label>
             {isLoading ? (
               <div className="flex items-center justify-center p-4">
                 <Loader2 className="size-4 animate-spin" />
@@ -124,7 +124,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
                 onValueChange={setSelectedBowlerId}
                 value={selectedBowlerId}
               >
-                <SelectTrigger>
+                <SelectTrigger id="assign-bowler-select">
                   <SelectValue placeholder="Choose a bowler" />
                 </SelectTrigger>
                 <SelectContent>

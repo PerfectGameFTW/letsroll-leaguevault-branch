@@ -432,15 +432,14 @@ export function LeagueSquareCatalog({
         <FormLabel className="flex items-center gap-2">
           <span>Lineage Item</span>
           {lineageMissingFromCatalog && (
-            <span
+            <output
               className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
               title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
-              role="status"
               data-testid="warn-lineage-missing-from-catalog"
             >
               <AlertTriangle className="size-3" aria-hidden="true" />
               Not in Square catalog
-            </span>
+            </output>
           )}
         </FormLabel>
         <Select
@@ -526,15 +525,14 @@ export function LeagueSquareCatalog({
         <FormLabel className="flex items-center gap-2">
           <span>Prize Fund Item</span>
           {prizeFundMissingFromCatalog && (
-            <span
+            <output
               className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
               title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
-              role="status"
               data-testid="warn-prize-fund-missing-from-catalog"
             >
               <AlertTriangle className="size-3" aria-hidden="true" />
               Not in Square catalog
-            </span>
+            </output>
           )}
         </FormLabel>
         <Select

@@ -339,8 +339,9 @@ export default function LeagueViewPage() {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div>
-                <label className="text-sm font-medium">New Season Start Date</label>
+                <label htmlFor="new-season-start" className="text-sm font-medium">New Season Start Date</label>
                 <Input
+                  id="new-season-start"
                   type="date"
                   value={newSeasonStart}
                   onChange={(e) => setNewSeasonStart(e.target.value)}
@@ -348,8 +349,9 @@ export default function LeagueViewPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">New Season End Date</label>
+                <label htmlFor="new-season-end" className="text-sm font-medium">New Season End Date</label>
                 <Input
+                  id="new-season-end"
                   type="date"
                   value={newSeasonEnd}
                   onChange={(e) => setNewSeasonEnd(e.target.value)}
@@ -511,9 +513,9 @@ function EmbedAdminPanel({ league }: { league: League }) {
         )}
 
         <div>
-          <label className="text-sm font-medium block mb-1">Direct link</label>
+          <label htmlFor="embed-direct-link" className="text-sm font-medium block mb-1">Direct link</label>
           <div className="flex gap-2">
-            <Input readOnly value={embedUrl} data-testid="embed-direct-url" />
+            <Input id="embed-direct-link" readOnly value={embedUrl} data-testid="embed-direct-url" />
             <Button type="button" variant="outline" size="icon" onClick={() => copy(embedUrl)} aria-label="Copy URL">
               <Copy className="size-4" />
             </Button>
@@ -524,9 +526,9 @@ function EmbedAdminPanel({ league }: { league: League }) {
         </div>
 
         <div>
-          <label className="text-sm font-medium block mb-1">iframe snippet</label>
+          <label htmlFor="embed-iframe-snippet" className="text-sm font-medium block mb-1">iframe snippet</label>
           <div className="flex gap-2">
-            <Textarea readOnly value={iframeSnippet} rows={3} className="font-mono text-xs" data-testid="embed-iframe-snippet" />
+            <Textarea id="embed-iframe-snippet" readOnly value={iframeSnippet} rows={3} className="font-mono text-xs" data-testid="embed-iframe-snippet" />
             <Button type="button" variant="outline" size="icon" onClick={() => copy(iframeSnippet)} aria-label="Copy snippet">
               <Copy className="size-4" />
             </Button>
@@ -535,13 +537,14 @@ function EmbedAdminPanel({ league }: { league: League }) {
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-sm font-medium">Allowed embed domains</label>
+            <label htmlFor="embed-allowed-domains" className="text-sm font-medium">Allowed embed domains</label>
             <span className="text-xs text-muted-foreground">{currentDomains.length} domain(s)</span>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
             Sites in this allowlist may iframe your registration page. One domain per line (e.g. <code>example.com</code>). Leave empty to block iframing.
           </p>
           <Textarea
+            id="embed-allowed-domains"
             value={domainsText ?? currentDomains.join('\n')}
             onChange={(e) => setDomainsText(e.target.value)}
             rows={4}
@@ -574,13 +577,14 @@ function EmbedAdminPanel({ league }: { league: League }) {
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-sm font-medium">Custom questions</label>
+            <label htmlFor="embed-custom-questions" className="text-sm font-medium">Custom questions</label>
             <span className="text-xs text-muted-foreground">{questions.length} question(s)</span>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
             JSON array of question objects. Each entry: <code>{`{ "label": string, "type": "short_text|long_text|single_select|multi_select|yes_no|number", "required": boolean, "options": string[] }`}</code>
           </p>
           <Textarea
+            id="embed-custom-questions"
             value={
               questionsJson ??
               JSON.stringify(
@@ -627,7 +631,7 @@ function EmbedAdminPanel({ league }: { league: League }) {
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-sm font-medium">Submissions</label>
+            <span className="text-sm font-medium">Submissions</span>
             <span className="text-xs text-muted-foreground">
               {registrations.length} total
               {league.rosterCap != null && ` · cap ${league.rosterCap}`}

@@ -195,6 +195,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           {googlePayAvailable && googlePayTokenizeOnly && onGooglePayClick && (
             <button
               type="button"
+              aria-label="Pay with Google Pay"
               onClick={onGooglePayClick}
               disabled={isWalletProcessing}
               style={{ ...GOOGLE_PAY_BUTTON_BASE_STYLE, opacity: isWalletProcessing ? 0.5 : 1 }}
@@ -275,7 +276,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              <label className="text-sm font-medium mb-2 block">Card Details</label>
+              <span className="text-sm font-medium mb-2 block">Card Details</span>
               <div
                 ref={(el) => cardCallbackRef.current(el)}
                 className="min-h-[80px] rounded-md border p-3"

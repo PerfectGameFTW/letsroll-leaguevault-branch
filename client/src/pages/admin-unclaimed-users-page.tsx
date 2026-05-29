@@ -256,7 +256,7 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-sm font-medium">League</label>
+            <label htmlFor="unclaimed-create-league" className="text-sm font-medium">League</label>
             <Select
               value={leagueId}
               onValueChange={(v) => {
@@ -264,7 +264,7 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
                 setTeamId("");
               }}
             >
-              <SelectTrigger data-testid="select-league">
+              <SelectTrigger id="unclaimed-create-league" data-testid="select-league">
                 <SelectValue placeholder="Select a league" />
               </SelectTrigger>
               <SelectContent>
@@ -277,9 +277,9 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
             </Select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Team</label>
+            <label htmlFor="unclaimed-create-team" className="text-sm font-medium">Team</label>
             <Select value={teamId} onValueChange={setTeamId} disabled={!leagueId}>
-              <SelectTrigger data-testid="select-team">
+              <SelectTrigger id="unclaimed-create-team" data-testid="select-team">
                 <SelectValue placeholder={leagueId ? "Select a team" : "Pick a league first"} />
               </SelectTrigger>
               <SelectContent>
@@ -389,9 +389,9 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-sm font-medium">Existing bowler</label>
+            <label htmlFor="unclaimed-link-bowler" className="text-sm font-medium">Existing bowler</label>
             <Select value={bowlerId} onValueChange={setBowlerId}>
-              <SelectTrigger data-testid="select-bowler">
+              <SelectTrigger id="unclaimed-link-bowler" data-testid="select-bowler">
                 <SelectValue placeholder="Select an unlinked bowler" />
               </SelectTrigger>
               <SelectContent>
@@ -410,7 +410,7 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
             </Select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">
+            <label htmlFor="unclaimed-link-league" className="text-sm font-medium">
               Add to league/team (optional)
             </label>
             <Select
@@ -420,7 +420,7 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
                 setTeamId("");
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="unclaimed-link-league">
                 <SelectValue placeholder="Select a league" />
               </SelectTrigger>
               <SelectContent>

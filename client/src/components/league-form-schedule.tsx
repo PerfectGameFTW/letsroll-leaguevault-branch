@@ -69,7 +69,7 @@ export function LeagueScheduleSection({
         />
 
         <div>
-          <label className="text-sm font-medium">Season End</label>
+          <span className="text-sm font-medium">Season End</span>
           <div className="mt-1.5 flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
             {computedSeasonEnd
               ? computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -81,8 +81,9 @@ export function LeagueScheduleSection({
 
       <div className="space-y-3">
         <div>
-          <label className="text-sm font-medium">Bowling Weeks</label>
+          <label htmlFor="bowling-weeks" className="text-sm font-medium">Bowling Weeks</label>
           <Input
+            id="bowling-weeks"
             type="number"
             min={1}
             max={52}

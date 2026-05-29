@@ -230,6 +230,7 @@ export function BulkBowlerImport({ open, onClose }: BulkBowlerImportProps) {
                   onChange={handleFileChange}
                   className="hidden"
                   id="bulk-import-file"
+                  aria-label="Upload CSV or XLSX file"
                 />
                 <Button
                   variant="outline"

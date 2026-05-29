@@ -177,16 +177,18 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-1 text-xs">
+                  <label htmlFor={`switch-primary-${row.id}`} className="flex items-center gap-1 text-xs">
                     <Switch
+                      id={`switch-primary-${row.id}`}
                       checked={row.isPrimaryContact}
                       onCheckedChange={(v) => updateMutation.mutate({ id: row.id, patch: { isPrimaryContact: v } })}
                       data-testid={`switch-primary-${row.id}`}
                     />
                     Primary
                   </label>
-                  <label className="flex items-center gap-1 text-xs">
+                  <label htmlFor={`switch-payer-${row.id}`} className="flex items-center gap-1 text-xs">
                     <Switch
+                      id={`switch-payer-${row.id}`}
                       checked={row.isPayer}
                       onCheckedChange={(v) => updateMutation.mutate({ id: row.id, patch: { isPayer: v } })}
                       data-testid={`switch-payer-${row.id}`}
