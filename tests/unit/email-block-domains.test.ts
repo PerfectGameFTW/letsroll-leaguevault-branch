@@ -8,6 +8,7 @@
  * those layers continues to surface in tests.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 
 type SendArgs = [
   msg: {
@@ -129,6 +130,8 @@ describe('dispatchMail (task #593) — recipient-domain guard', () => {
   });
 
   it('still throws on a render/sanitize error even when the recipient would be blocked', async () => {
+    // The render/sanitize failure is logged at [ERROR] before it rethrows.
+    expectErrorLog(/Failed to send templated email 'bulk_invite':/);
     // Force the template lookup to throw — the dispatcher must NEVER
     // see this message because the render pipeline aborts first. This
     // pins the contract that a bug in templating/rendering still

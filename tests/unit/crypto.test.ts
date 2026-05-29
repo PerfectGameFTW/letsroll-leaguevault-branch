@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { encrypt, decrypt, isEncrypted } from '../../server/utils/crypto';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 
 // Use a deterministic test key (64 hex chars = 32 bytes)
 const TEST_KEY = 'a'.repeat(64);
@@ -30,6 +31,8 @@ describe('crypto utilities', () => {
     });
 
     it('returns null for tampered ciphertext', () => {
+      // decrypt() logs the auth-tag failure at [ERROR] on purpose.
+      expectErrorLog(/\[Crypto\] Decryption failed/);
       const ct = encrypt('secret');
       const parts = ct.split(':');
       // Corrupt the ciphertext portion

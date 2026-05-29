@@ -20,6 +20,7 @@
  *      that for the BN happy path.)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import type { OrgIntegrations } from '@shared/schema';
 
 const { getBowler, getBowlerLeagues, getLeague, getTeam, getOrganization, updateBowlerBnContactId } = vi.hoisted(() => ({
@@ -166,6 +167,8 @@ describe('syncBowlerToBN — custom-field behavior (task #478)', () => {
   });
 
   it('returns { success: false } without throwing when BowlNow rejects the create', async () => {
+    // The route logs the BowlNow rejection at [ERROR] on purpose.
+    expectErrorLog(/Error creating contact:/);
     arrangeBowlerWithOneLeague();
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ contacts: [] }), { status: 200 }),

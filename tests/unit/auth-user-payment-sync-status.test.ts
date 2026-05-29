@@ -31,6 +31,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -213,6 +214,8 @@ describe('/api/auth/user paymentSyncStatus hydration (#363)', () => {
   });
 
   it('degrades gracefully to null when the bowler lookup throws', async () => {
+    // The graceful-degradation branch logs the lookup failure at [ERROR] on purpose.
+    expectErrorLog(/Failed to look up bowler for \/api\/user paymentSyncStatus/);
     nextAuthState = { isAuthenticated: true, user: TEST_USER_LINKED };
     mockGetBowler.mockRejectedValue(new Error('simulated DB outage'));
 

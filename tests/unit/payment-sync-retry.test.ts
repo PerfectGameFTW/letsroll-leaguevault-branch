@@ -14,6 +14,7 @@
  *   - paymentSyncBackoffMs grows exponentially and caps the exponent
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 
 const mockSelect = vi.fn();
 const mockGetUserByBowlerId = vi.fn();
@@ -266,6 +267,8 @@ describe('runPaymentSyncRetrySweep', () => {
   });
 
   it('treats an unexpected throw as an error and continues with the next bowler', async () => {
+    // The sweep logs the unexpected throw at [ERROR] on purpose.
+    expectErrorLog(/Payment-sync retry threw unexpectedly/);
     mockSelect.mockResolvedValue([
       bowler({ id: 100 }),
       bowler({ id: 101 }),

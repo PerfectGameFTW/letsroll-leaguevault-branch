@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -280,6 +281,8 @@ describe('POST /api/auth/set-password — password-changed email dispatch (task 
   });
 
   it('still returns 200 when the email helper rejects (best-effort contract)', async () => {
+    // The route logs the swallowed email failure at [ERROR] on purpose.
+    expectErrorLog(/Password-changed notification threw \(set-password\)/);
     mockSendPasswordChangedNotification.mockRejectedValueOnce(
       new Error('SendGrid 503'),
     );

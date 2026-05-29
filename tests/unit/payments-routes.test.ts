@@ -50,6 +50,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -526,6 +527,8 @@ describe('POST /api/payments/:id/refund', () => {
   });
 
   it('returns 422 when the payment provider is not configured', async () => {
+    // The refund handler logs the provider error at [ERROR] before mapping to 422.
+    expectErrorLog(/\[Payments\] Refund error:/);
     mockStorage.getPaymentById.mockResolvedValue(cardPayment);
     mockStorage.getLeague.mockResolvedValue(LEAGUE_OK);
     mockGetPaymentProvider.mockRejectedValue(

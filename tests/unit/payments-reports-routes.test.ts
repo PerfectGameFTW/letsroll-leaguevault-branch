@@ -24,6 +24,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -423,6 +424,8 @@ describe('GET /api/payments — malformed filter inputs', () => {
 
 describe('GET /api/payments — error path', () => {
   it('returns 500 with a generic error message when storage throws', async () => {
+    // The 500 branch logs the underlying storage error at [ERROR] on purpose.
+    expectErrorLog(/\[Payments\] Get error:/);
     mockStorage.getPayments.mockRejectedValue(new Error('db down'));
 
     const res = await get('/api/payments', ORG_A_USER);

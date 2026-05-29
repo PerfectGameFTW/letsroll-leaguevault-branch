@@ -80,6 +80,16 @@ vi.mock('../../server/storage', () => ({
       mockInvalidatePending.apply(null, a as never),
     getUserByEmail: vi.fn(async () => null),
     getOrganization: vi.fn(async () => null),
+    // The change-password route drives the lockout counter (task #357).
+    // Mock both methods faithfully so the route's normal calls don't
+    // fall through to "is not a function" and log incidental [ERROR]
+    // noise on the success path this test exercises.
+    recordFailedPasswordChangeAttempt: vi.fn(async () => ({
+      count: 1,
+      lockedUntil: null as string | null,
+      justLocked: false,
+    })),
+    resetFailedPasswordChangeAttempts: vi.fn(async () => undefined),
   },
 }));
 

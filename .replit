@@ -64,15 +64,15 @@ args = "wire-sanitization"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "not-found-code"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "csrf-coverage"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "extra-guards"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "not-found-code"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -120,17 +120,6 @@ args = "npx tsx scripts/check-wire-sanitization.ts"
 isValidation = true
 
 [[workflows.workflow]]
-name = "not-found-code"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts && npx tsx scripts/check-no-nested-link-button.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
 name = "csrf-coverage"
 author = "agent"
 
@@ -148,6 +137,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx scripts/check-eslint-baseline.ts --strict && npx tsx scripts/check-no-secrets-in-logs.ts --surface=server --strict && npx tsx scripts/check-no-secrets-in-logs.ts --surface=client --strict && npx tsx scripts/check-log-debug-pii.ts --strict && npx tsx scripts/check-trust-proxy-coverage.ts --strict"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "not-found-code"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx scripts/check-not-found-code.ts && npx tsx scripts/check-provider-not-configured.ts && npx tsx scripts/check-no-nested-link-button.ts && npx tsx scripts/check-error-log-guard-wiring.ts"
 
 [workflows.workflow.metadata]
 outputType = "console"

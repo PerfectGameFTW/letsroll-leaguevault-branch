@@ -24,6 +24,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -486,6 +487,8 @@ describe('PATCH /api/organization-admin/users/:id/admin-status — persistent au
     });
 
     it('rolls back (transaction rejects) and surfaces 500 when the audit insert throws — the role update ran inside the rolled-back transaction so no row is observable outside it', async () => {
+      // The fail-closed branch logs the underlying error at [ERROR] on purpose.
+      expectErrorLog(/Error updating organization admin status:/);
       mockGetUser.mockResolvedValueOnce({ ...TARGET_USER_REGULAR });
       mockRecordAdminRoleChangeAudit.mockRejectedValueOnce(
         new Error('DB unavailable'),

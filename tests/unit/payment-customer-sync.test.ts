@@ -14,6 +14,7 @@
  *   - user has no linked bowler → 'not_applicable'
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 
 const mockGetBowler = vi.fn();
 const mockUpdateBowler = vi.fn();
@@ -292,6 +293,9 @@ describe('syncBowlerForUser', () => {
   });
 
   it('logs the structured "given up" error when attribute writes cross PAYMENT_SYNC_MAX_ATTEMPTS (task #680)', async () => {
+    // This test exercises the give-up branch, which logs at [ERROR] by
+    // design; declare it so the guard treats it as expected, not noise.
+    expectErrorLog(/Payment-customer sync gave up after max retry attempts/);
     const aboutToCapBowler = {
       ...baseBowler,
       // 4 → next attempt becomes 5 = PAYMENT_SYNC_MAX_ATTEMPTS.

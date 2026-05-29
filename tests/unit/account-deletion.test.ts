@@ -17,6 +17,7 @@
  * Square/Clover credentials).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import { eq, inArray } from 'drizzle-orm';
 import { getTestDb } from '../setup/test-db';
 const db = getTestDb();
@@ -681,6 +682,8 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     });
 
     it('hard failure: SendGrid throws → caught, recorded, logged at ERROR, scrub still completes', async () => {
+      // This test name says it: the confirmation-email failure is logged at [ERROR] on purpose.
+      expectErrorLog(/Account-deletion confirmation email threw/);
       const orgId = await makeOrg();
       const adminId = await makeUser(uniqueEmail('admin'), orgId);
       const targetEmail = uniqueEmail('notify-throws');

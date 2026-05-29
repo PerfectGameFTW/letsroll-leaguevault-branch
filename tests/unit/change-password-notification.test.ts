@@ -21,6 +21,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -64,6 +65,16 @@ vi.mock('../../server/services/email', () => ({
 const mockGetUser = vi.fn();
 const mockUpdateUser = vi.fn();
 const mockInvalidatePending = vi.fn(async () => 0);
+// The change-password route also drives the lockout counter (task #357).
+// Mock both methods faithfully so the route's normal calls don't fall
+// through to "is not a function" and log incidental [ERROR] noise on the
+// happy / wrong-password paths.
+const mockRecordFailedAttempt = vi.fn(async () => ({
+  count: 1,
+  lockedUntil: null as string | null,
+  justLocked: false,
+}));
+const mockResetFailedAttempts = vi.fn(async () => undefined);
 
 vi.mock('../../server/storage', () => ({
   storage: {
@@ -71,6 +82,10 @@ vi.mock('../../server/storage', () => ({
     updateUser: (...a: unknown[]) => mockUpdateUser.apply(null, a as never),
     invalidatePendingEmailChangeRequestsForUser: (...a: unknown[]) =>
       mockInvalidatePending.apply(null, a as never),
+    recordFailedPasswordChangeAttempt: (...a: unknown[]) =>
+      mockRecordFailedAttempt.apply(null, a as never),
+    resetFailedPasswordChangeAttempts: (...a: unknown[]) =>
+      mockResetFailedAttempts.apply(null, a as never),
   },
 }));
 
@@ -265,6 +280,8 @@ describe('POST /api/account/change-password — password-changed email dispatch'
   });
 
   it('still returns 200 for the change-password call when the email helper rejects (best-effort contract)', async () => {
+    // The route logs the swallowed email failure at [ERROR] on purpose.
+    expectErrorLog(/Password-changed notification threw unexpectedly/);
     mockSendPasswordChangedNotification.mockRejectedValueOnce(
       new Error('SendGrid 503'),
     );

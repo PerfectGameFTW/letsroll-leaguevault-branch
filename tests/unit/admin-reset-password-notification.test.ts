@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -366,6 +367,8 @@ describe('POST /api/organization-admin/users/:id/reset-password — admin-driven
   });
 
   it('still returns 200 when the email helper rejects (best-effort contract — password rotation is not rolled back)', async () => {
+    // The route logs the swallowed email failure at [ERROR] on purpose.
+    expectErrorLog(/Password-changed notification threw \(admin reset\)/);
     mockSendPasswordChangedNotification.mockRejectedValueOnce(
       new Error('SendGrid 503'),
     );
@@ -509,6 +512,8 @@ describe('POST /api/organization-admin/users/:id/reset-password — persistent a
   });
 
   it('returns 500 and does NOT send the response with success when the audit insert fails (fail-closed compliance contract)', async () => {
+    // The fail-closed branch logs the underlying error at [ERROR] on purpose.
+    expectErrorLog(/Error resetting user password:/);
     mockRecordAdminPasswordResetAudit.mockRejectedValueOnce(new Error('DB unavailable'));
     const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
     expect(res.status).toBe(500);
@@ -565,6 +570,8 @@ describe('POST /api/organization-admin/users/:id/reset-password — persistent a
     });
 
     it('rolls back (transaction rejects) and surfaces 500 when the audit insert throws — no observable password write outside the rolled-back transaction', async () => {
+      // The fail-closed branch logs the underlying error at [ERROR] on purpose.
+      expectErrorLog(/Error resetting user password:/);
       mockRecordAdminPasswordResetAudit.mockRejectedValueOnce(
         new Error('audit insert boom'),
       );

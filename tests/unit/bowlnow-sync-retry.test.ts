@@ -10,6 +10,7 @@
  * the row from being scanned forever).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectErrorLog } from '../helpers/expected-error-logs';
 
 const mockSelect = vi.fn();
 const mockGetOrgIntegrations = vi.fn();
@@ -227,6 +228,8 @@ describe('runBowlnowSyncRetrySweep', () => {
   });
 
   it('treats an unexpected throw as an error and bumps attempts so we eventually give up', async () => {
+    // The sweep logs the unexpected throw at [ERROR] on purpose.
+    expectErrorLog(/BowlNow-sync retry threw unexpectedly/);
     mockSelect.mockResolvedValue([
       bowler({ id: 100 }),
       bowler({ id: 101 }),

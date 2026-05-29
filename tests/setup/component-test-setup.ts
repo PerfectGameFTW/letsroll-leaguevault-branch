@@ -7,6 +7,9 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
+// Side-effect import: installs the in-process [ERROR] log guard
+// (Task #746) for the client-components project too.
+import './error-log-guard';
 
 // jsdom doesn't implement the Pointer Capture APIs that several
 // Radix primitives (Toast, Select, Popover, ...) call from their

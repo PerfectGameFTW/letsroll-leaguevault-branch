@@ -11,6 +11,7 @@
  * used only by the `parallel` project (the bulk of HTTP-driven
  * tests/api/** suites).
  */
+import './error-log-guard';
 import { cloneTemplateForWorker } from './clone-template';
 
 await cloneTemplateForWorker();
