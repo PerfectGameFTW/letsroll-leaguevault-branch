@@ -37,13 +37,16 @@ export function GlobalSearch() {
         signal: controller.signal,
       });
       const json = await res.json();
-      if (thisRequestId !== requestIdRef.current) return;
-      if (json.success) {
-        setResults(json.data);
-        setIsOpen(true);
-      } else {
-        setResults(null);
-        setIsOpen(false);
+      // Last-write-wins: only apply this response if it's still the latest
+      // in-flight request (a newer request would have bumped the id).
+      if (thisRequestId === requestIdRef.current) {
+        if (json.success) {
+          setResults(json.data);
+          setIsOpen(true);
+        } else {
+          setResults(null);
+          setIsOpen(false);
+        }
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;

@@ -101,6 +101,7 @@ export function WalletPaymentButtons({
       {!applePayTokenizeOnly && (
         <div
           ref={applePayRef}
+          // react-doctor-disable-next-line react-doctor/prefer-tag-over-role -- Square's applePay.attach() injects its own button/iframe into this exact node; a semantic <button> can't legally contain that interactive content, so this mount node must stay a div with role="button".
           role="button"
           tabIndex={0}
           aria-label="Pay with Apple Pay"
@@ -159,6 +160,7 @@ export function WalletPaymentButtons({
       {!googlePayTokenizeOnly && (
         <div
           ref={googlePayRef}
+          // react-doctor-disable-next-line react-doctor/prefer-tag-over-role -- Square's googlePay.attach() injects its own button/iframe into this exact node; a semantic <button> can't legally contain that interactive content, so this mount node must stay a div with role="button".
           role="button"
           tabIndex={0}
           aria-label="Pay with Google Pay"

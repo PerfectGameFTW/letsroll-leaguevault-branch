@@ -59,7 +59,9 @@ export function ConfirmDeleteDialog({
               </p>
               <p>{consequencesIntro}</p>
               <ul className="list-disc pl-5 space-y-1">
-                {consequences.map((c, i) => <li key={i}>{c}</li>)}
+                {consequences.map((c, position) => (
+                  <li key={typeof c === "string" ? c : position}>{c}</li>
+                ))}
               </ul>
               <p className="text-sm">
                 Consider archiving instead if you may need this data in the future.

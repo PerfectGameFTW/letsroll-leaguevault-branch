@@ -211,13 +211,16 @@ export default function BowlerScoresPage() {
                     <TableRow key={`${week.date}-${week.weekNumber}`}>
                       <TableCell>{format(new Date(week.date), "MMM d, yyyy")}</TableCell>
                       <TableCell>{week.weekNumber}</TableCell>
-                      {week.games.map((game, index) => (
-                        <TableCell key={`${week.date}-${week.weekNumber}-g${index}`} className="text-right">
+                      {[1, 2, 3].map((gameNumber) => {
+                        const game = week.games[gameNumber - 1];
+                        return (
+                        <TableCell key={`${week.date}-${week.weekNumber}-g${gameNumber}`} className="text-right">
                           {game?.isVacant ? "VACANT" :
                            game?.isAbsent ? "ABSENT" :
                            game?.score || "—"}
                         </TableCell>
-                      ))}
+                        );
+                      })}
                       <TableCell className="text-right font-medium">
                         {week.seriesTotal || "—"}
                       </TableCell>
