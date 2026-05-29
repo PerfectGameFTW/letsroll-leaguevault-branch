@@ -51,6 +51,15 @@ export async function sendInviteEmail(
     return false;
   }
 
+  // Escape every interpolated value before splicing it into the raw
+  // fallback HTML. userName / organizationName are user- and
+  // org-controlled; the URL is server-generated but escaped for
+  // consistency with the other senders (see escapeHtml usage in
+  // sendEmailChangeConfirmation et al.).
+  const safeName = escapeHtml(userName);
+  const safeOrgName = organizationName ? escapeHtml(organizationName) : '';
+  const safeSetupUrl = escapeHtml(setupUrl);
+
   const msg = {
     to: toEmail,
     from: { email: FROM_EMAIL, name: FROM_NAME },
@@ -61,15 +70,15 @@ export async function sendInviteEmail(
           <h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>
         </div>
         
-        <p style="font-size: 16px; color: #333;">Hi ${userName},</p>
+        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
         
         <p style="font-size: 16px; color: #333;">
-          You've been invited to join ${organizationName ? `<strong>${organizationName}</strong> on ` : ''}LeagueVault. 
+          You've been invited to join ${safeOrgName ? `<strong>${safeOrgName}</strong> on ` : ''}LeagueVault. 
           To get started, please set up your password by clicking the button below.
         </p>
         
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${setupUrl}" 
+          <a href="${safeSetupUrl}" 
              style="background-color: #1a1a2e; color: #ffffff; padding: 14px 28px; 
                     text-decoration: none; border-radius: 6px; font-size: 16px; 
                     display: inline-block; font-weight: bold;">
@@ -81,7 +90,7 @@ export async function sendInviteEmail(
           If the button doesn't work, copy and paste this link into your browser:
         </p>
         <p style="font-size: 14px; color: #666; word-break: break-all;">
-          <a href="${setupUrl}" style="color: #1a1a2e;">${setupUrl}</a>
+          <a href="${safeSetupUrl}" style="color: #1a1a2e;">${safeSetupUrl}</a>
         </p>
         
         <p style="font-size: 14px; color: #666;">
@@ -124,6 +133,12 @@ export async function sendPasswordResetFallbackEmail(
   const baseUrl = getBaseUrl(orgSlug);
   const resetUrl = `${baseUrl}/set-password?token=${resetToken}`;
 
+  // Escape interpolated values before splicing into raw fallback HTML.
+  // userName is user-controlled; the URL is server-generated but
+  // escaped for consistency with the other senders.
+  const safeName = escapeHtml(userName);
+  const safeResetUrl = escapeHtml(resetUrl);
+
   const msg = {
     to: toEmail,
     from: { email: FROM_EMAIL, name: FROM_NAME },
@@ -133,12 +148,12 @@ export async function sendPasswordResetFallbackEmail(
         <div style="text-align: center; margin-bottom: 30px;">
           <h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>
         </div>
-        <p style="font-size: 16px; color: #333;">Hi ${userName},</p>
+        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
         <p style="font-size: 16px; color: #333;">
           We received a request to reset your password. Click the button below to choose a new password.
         </p>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}"
+          <a href="${safeResetUrl}"
              style="background-color: #1a1a2e; color: #ffffff; padding: 14px 28px;
                     text-decoration: none; border-radius: 6px; font-size: 16px;
                     display: inline-block; font-weight: bold;">
@@ -149,7 +164,7 @@ export async function sendPasswordResetFallbackEmail(
           If the button doesn't work, copy and paste this link into your browser:
         </p>
         <p style="font-size: 14px; color: #666; word-break: break-all;">
-          <a href="${resetUrl}">${resetUrl}</a>
+          <a href="${safeResetUrl}">${safeResetUrl}</a>
         </p>
         <p style="font-size: 14px; color: #666;">
           This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
