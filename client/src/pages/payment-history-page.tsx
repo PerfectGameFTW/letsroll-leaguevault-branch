@@ -8,6 +8,7 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
+import { useSavedCardDefault } from "@/hooks/use-saved-card-default";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
@@ -65,15 +66,14 @@ export default function PaymentHistoryPage() {
   const savedCards = savedCardsResponse?.data || [];
   const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
-  useEffect(() => {
-    if (firstSavedCardId !== null) {
-      setCardMode('saved');
-      setSelectedSavedCardId(firstSavedCardId);
-    } else {
-      setCardMode('new');
-      setSelectedSavedCardId('');
-    }
-  }, [firstSavedCardId]);
+  // Default the card picker to the bowler's first saved card once the
+  // saved-cards query resolves. Shared with the admin checkout + bowler
+  // setup flows.
+  useSavedCardDefault({
+    firstSavedCardId,
+    setCardMode,
+    setSelectedSavedCardId,
+  });
 
   const { data: bowlerDetailsResponse, isLoading: loadingBowlerDetails, error: bowlerError } = useQuery<ApiResponse<BowlerDetailsResponse>>({
     queryKey: [`/api/bowlers/${bowlerId}/details`, { includePayments: true }],

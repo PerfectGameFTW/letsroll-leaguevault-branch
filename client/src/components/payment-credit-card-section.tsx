@@ -1,4 +1,4 @@
-import { type CSSProperties, type MutableRefObject, type RefObject } from "react";
+import { type MutableRefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -17,25 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, CreditCard, AlertTriangle, Wallet } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertPayment } from "@shared/schema";
-
-// Apple Pay button uses pure black (#000) by brand requirement. Hoisted to
-// module scope so the exhaustive style object isn't reallocated per render;
-// the dynamic `opacity` is applied inline at the call site.
-const APPLE_PAY_BUTTON_BASE_STYLE: CSSProperties = {
-  WebkitAppearance: 'none',
-  appearance: 'none',
-  backgroundColor: '#000',
-  border: 'none',
-  borderRadius: '5px',
-  width: '100%',
-  height: '44px',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '2px',
-  padding: 0,
-};
+import { WalletPaymentButtons } from "@/components/wallet-payment-buttons";
 
 interface SavedCard {
   id: string;
@@ -111,75 +93,18 @@ export function PaymentCreditCardSection({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        {/*
-         * Always-mounted Apple Pay container. Square's `applePay.attach()`
-         * runs against the same DOM node both before and after the
-         * `applePayAvailable` flag flips, so the rendered Apple Pay button
-         * isn't unmounted out from under us. (The previous pattern split
-         * the ref across a hidden placeholder div and a separate visible
-         * div — when the visible one took over, Square's attached
-         * button was destroyed and admins saw an empty clickable area.)
-         */}
-        {!applePayTokenizeOnly && (
-          <div
-            ref={applePayRef}
-            role="button"
-            tabIndex={0}
-            aria-label="Pay with Apple Pay"
-            className={applePayAvailable ? "min-h-[40px]" : undefined}
-            style={applePayAvailable ? undefined : { display: 'none' }}
-            onClick={applePayAvailable ? onApplePayClick : undefined}
-            onKeyDown={applePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onApplePayClick(); } } : undefined}
-          />
-        )}
-        {applePayAvailable && applePayTokenizeOnly && (
-          <button
-            type="button"
-            onClick={onApplePayClick}
-            disabled={isWalletProcessing}
-            style={{ ...APPLE_PAY_BUTTON_BASE_STYLE, opacity: isWalletProcessing ? 0.5 : 1 }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="21" viewBox="0 0 17 20" fill="white" style={{ position: 'relative', top: '-1px' }}>
-              <path d="M13.55 10.63a4.27 4.27 0 0 1 2.04-3.59 4.4 4.4 0 0 0-3.46-1.87c-1.46-.15-2.88.87-3.63.87s-1.91-.85-3.15-.83a4.65 4.65 0 0 0-3.91 2.38c-1.68 2.91-.43 7.2 1.19 9.56.8 1.15 1.74 2.44 2.98 2.4 1.2-.05 1.65-.77 3.1-.77s1.86.77 3.12.74c1.29-.02 2.1-1.16 2.88-2.32a10.4 10.4 0 0 0 1.31-2.69 4.13 4.13 0 0 1-2.47-3.88zM11.17 3.46A4.17 4.17 0 0 0 12.14 0a4.25 4.25 0 0 0-2.75 1.42 3.98 3.98 0 0 0-1 2.89 3.52 3.52 0 0 0 2.78-0.85z"/>
-            </svg>
-            <span style={{
-              color: '#fff',
-              fontFamily: '-apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif',
-              fontSize: '20px',
-              fontWeight: 400,
-              letterSpacing: '0.4px',
-            }}>Pay</span>
-          </button>
-        )}
-        {/*
-         * Always-mounted Google Pay container — same reasoning as the
-         * Apple Pay block above. Square's `googlePay.attach()` injects
-         * the Google Pay button image into this node while it's still
-         * `display:none`; once `googlePayAvailable` flips, the same
-         * node simply becomes visible and the button shows up
-         * immediately. Splitting this across two divs (visible + hidden
-         * placeholder) caused the Google Pay button to render into the
-         * placeholder, then disappear when the placeholder unmounted —
-         * leaving an empty clickable area instead of a button.
-         */}
-        {!googlePayTokenizeOnly && (
-          <div
-            ref={googlePayRef}
-            role="button"
-            tabIndex={0}
-            aria-label="Pay with Google Pay"
-            className={googlePayAvailable ? "w-full" : undefined}
-            style={googlePayAvailable ? { width: '100%', height: '44px' } : { display: 'none' }}
-            onClick={googlePayAvailable ? onGooglePayClick : undefined}
-            onKeyDown={googlePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onGooglePayClick(); } } : undefined}
-          />
-        )}
-        {isWalletProcessing && (
-          <div className="flex items-center justify-center py-2">
-            <Loader2 className="size-4 animate-spin text-muted-foreground mr-2" />
-            <span className="text-sm text-muted-foreground">Processing wallet payment…</span>
-          </div>
-        )}
+        <WalletPaymentButtons
+          variant="admin"
+          applePayAvailable={applePayAvailable}
+          googlePayAvailable={googlePayAvailable}
+          applePayRef={applePayRef}
+          googlePayRef={googlePayRef}
+          onApplePayClick={onApplePayClick}
+          onGooglePayClick={onGooglePayClick}
+          isWalletProcessing={isWalletProcessing}
+          applePayTokenizeOnly={!!applePayTokenizeOnly}
+          googlePayTokenizeOnly={!!googlePayTokenizeOnly}
+        />
       </div>
 
       {hasWalletOptions && (

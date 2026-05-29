@@ -3,6 +3,7 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
+import { useSavedCardDefault } from "@/hooks/use-saved-card-default";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { csrfFetch, queryClient } from '@/lib/queryClient';
@@ -190,21 +191,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   // Default the card picker to the bowler's first saved card once the
   // saved-cards query resolves (and back to "new" if the set empties).
-  // Done as a render-time adjustment keyed on the loaded id rather than
-  // an effect so the choice settles before paint and only re-applies
-  // when firstSavedCardId itself changes — a manual switch the user
-  // makes afterward is never clobbered.
-  const [prevFirstSavedCardId, setPrevFirstSavedCardId] = useState<string | null | undefined>(undefined);
-  if (firstSavedCardId !== prevFirstSavedCardId) {
-    setPrevFirstSavedCardId(firstSavedCardId);
-    if (firstSavedCardId !== null) {
-      setCardMode('saved');
-      setSelectedSavedCardId(firstSavedCardId);
-    } else {
-      setCardMode('new');
-      setSelectedSavedCardId('');
-    }
-  }
+  // Shared with the admin checkout + quick-pay flows.
+  useSavedCardDefault({
+    firstSavedCardId,
+    setCardMode,
+    setSelectedSavedCardId,
+  });
 
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && cardMode === 'new' && !providerLoading) {

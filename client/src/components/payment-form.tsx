@@ -12,6 +12,7 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
+import { useSavedCardDefault } from "@/hooks/use-saved-card-default";
 import { Form } from "@/components/ui/form";
 import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { InsertPayment, Bowler, League, User, ApiResponse } from "@shared/schema";
@@ -180,20 +181,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
   // Default the card picker to the bowler's first saved card whenever the
   // bowler, payment type, or loaded saved-card set changes (and back to "new"
-  // otherwise). Done as a render-time adjustment so the choice settles
-  // before paint; a manual switch the user makes afterward is not clobbered.
-  const savedCardSelectionKey = `${firstSavedCardId ?? ''}|${selectedBowlerId ?? ''}|${paymentType}`;
-  const [prevSavedCardSelectionKey, setPrevSavedCardSelectionKey] = useState<string | undefined>(undefined);
-  if (savedCardSelectionKey !== prevSavedCardSelectionKey) {
-    setPrevSavedCardSelectionKey(savedCardSelectionKey);
-    if (firstSavedCardId !== null && paymentType === 'credit_card') {
-      setCardMode('saved');
-      setSelectedSavedCardId(firstSavedCardId);
-    } else {
-      setCardMode('new');
-      setSelectedSavedCardId('');
-    }
-  }
+  // otherwise). Shared with the bowler setup + quick-pay flows.
+  useSavedCardDefault({
+    firstSavedCardId,
+    enabled: paymentType === 'credit_card',
+    dependencyKey: `${selectedBowlerId ?? ''}|${paymentType}`,
+    setCardMode,
+    setSelectedSavedCardId,
+  });
 
   useEffect(() => {
     if (!open || paymentType !== "credit_card") {

@@ -1,4 +1,4 @@
-import { FC, RefObject, type CSSProperties } from "react";
+import { FC, RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -11,25 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, CreditCard, Wallet } from "lucide-react";
 import type { SavedCard } from "@shared/schema";
-
-// Apple Pay button uses pure black (#000) by brand requirement. Hoisted to
-// module scope so the exhaustive style object isn't reallocated per render;
-// the dynamic `opacity` is applied inline at the call site.
-const APPLE_PAY_BUTTON_BASE_STYLE: CSSProperties = {
-  WebkitAppearance: 'none',
-  appearance: 'none',
-  backgroundColor: '#000',
-  border: 'none',
-  borderRadius: '5px',
-  width: '100%',
-  height: '48px',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '2px',
-  padding: 0,
-};
+import { WalletPaymentButtons } from "@/components/wallet-payment-buttons";
 
 interface PaymentSetupCardInputProps {
   savedCards: SavedCard[];
@@ -90,71 +72,18 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
         </p>
       </div>
 
-      {/*
-       * Always-mounted Apple Pay container. Square's `applePay.attach()`
-       * runs against this exact node before `applePayAvailable`
-       * flips, so the rendered button isn't unmounted out from under
-       * us. The previous pattern split the ref across a visible div
-       * and a hidden placeholder; when the placeholder unmounted,
-       * Square's attached button was destroyed and users saw an
-       * empty clickable area instead of a button.
-       */}
-      {!applePayTokenizeOnly && (
-        <div
-          ref={applePayRef}
-          role="button"
-          tabIndex={0}
-          aria-label="Pay with Apple Pay"
-          onClick={applePayAvailable ? onApplePayClick : undefined}
-          onKeyDown={applePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApplePayClick(); } } : undefined}
-          className={applePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
-          style={applePayAvailable ? undefined : { display: 'none' }}
-        />
-      )}
-      {applePayAvailable && applePayTokenizeOnly && (
-        <button
-          type="button"
-          onClick={onApplePayClick}
-          disabled={isWalletProcessing}
-          style={{ ...APPLE_PAY_BUTTON_BASE_STYLE, opacity: isWalletProcessing ? 0.5 : 1 }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="19" height="24" viewBox="0 0 17 20" fill="white" style={{ position: 'relative', top: '-1px' }}>
-            <path d="M13.55 10.63a4.27 4.27 0 0 1 2.04-3.59 4.4 4.4 0 0 0-3.46-1.87c-1.46-.15-2.88.87-3.63.87s-1.91-.85-3.15-.83a4.65 4.65 0 0 0-3.91 2.38c-1.68 2.91-.43 7.2 1.19 9.56.8 1.15 1.74 2.44 2.98 2.4 1.2-.05 1.65-.77 3.1-.77s1.86.77 3.12.74c1.29-.02 2.1-1.16 2.88-2.32a10.4 10.4 0 0 0 1.31-2.69 4.13 4.13 0 0 1-2.47-3.88zM11.17 3.46A4.17 4.17 0 0 0 12.14 0a4.25 4.25 0 0 0-2.75 1.42 3.98 3.98 0 0 0-1 2.89 3.52 3.52 0 0 0 2.78-0.85z"/>
-          </svg>
-          <span style={{
-            color: '#fff',
-            fontFamily: '-apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif',
-            fontSize: '22px',
-            fontWeight: 400,
-            letterSpacing: '0.4px',
-          }}>Pay</span>
-        </button>
-      )}
-      {/*
-       * Always-mounted Google Pay container — same reasoning as the
-       * Apple Pay block above. Splitting the ref across two sibling
-       * divs caused Google Pay's button to render into a hidden
-       * placeholder, then disappear when that placeholder unmounted,
-       * leaving an empty clickable area.
-       */}
-      {!googlePayTokenizeOnly && (
-        <div
-          ref={googlePayRef}
-          role="button"
-          tabIndex={0}
-          aria-label="Pay with Google Pay"
-          onClick={googlePayAvailable ? onGooglePayClick : undefined}
-          onKeyDown={googlePayAvailable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onGooglePayClick(); } } : undefined}
-          className={googlePayAvailable ? 'min-h-[48px] cursor-pointer' : undefined}
-          style={googlePayAvailable ? undefined : { display: 'none' }}
-        />
-      )}
-      {isWalletProcessing && (
-        <div className="flex items-center justify-center gap-2 py-2">
-          <Loader2 className="size-4 animate-spin" />
-          <span className="text-sm text-muted-foreground">Processing wallet payment…</span>
-        </div>
-      )}
+      <WalletPaymentButtons
+        variant="bowler"
+        applePayAvailable={applePayAvailable}
+        googlePayAvailable={googlePayAvailable}
+        applePayRef={applePayRef}
+        googlePayRef={googlePayRef}
+        onApplePayClick={onApplePayClick}
+        onGooglePayClick={onGooglePayClick}
+        isWalletProcessing={isWalletProcessing}
+        applePayTokenizeOnly={applePayTokenizeOnly}
+        googlePayTokenizeOnly={googlePayTokenizeOnly}
+      />
       {showWallet && (
         <div className="relative flex items-center gap-4 py-2">
           <div className="flex-1 border-t" />
