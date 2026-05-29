@@ -1,5 +1,5 @@
 import { MapPin, Shield, Send, Trash2, KeyRound, Mail } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { invalidateOrgAdminUsers } from "@/lib/query-keys";
 import { apiRequest } from "@/lib/queryClient";
 
 interface UsersTableLinkedBowler {
@@ -59,14 +60,13 @@ const hasPendingInvite = (user: UsersTableUser) => !!user.inviteToken;
 
 export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onResetPassword, onChangeEmail }: Props) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, makeOrgAdmin }: { userId: number; makeOrgAdmin: boolean }) => {
       return apiRequest(`/api/org-admin/users/${userId}/admin-status`, "PATCH", { makeOrgAdmin });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/org-admin/users"] });
+      invalidateOrgAdminUsers();
       toast({ title: "Role updated", description: "User role has been updated." });
     },
     onError: (error: Error) => {
@@ -79,7 +79,7 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
       return apiRequest(`/api/org-admin/users/${userId}/location`, "PATCH", { locationId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/org-admin/users"] });
+      invalidateOrgAdminUsers();
       toast({ title: "Location updated", description: "User location assignment has been updated." });
     },
     onError: (error: Error) => {
@@ -91,6 +91,9 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
     mutationFn: async (userId: number) => {
       return apiRequest(`/api/org-admin/users/${userId}/resend-invite`, "POST");
     },
+    // No cache invalidation needed: re-sending the invite email does not
+    // change any visible row data (the user stays "Pending" with the same
+    // fields), so there is nothing to refetch.
     onSuccess: () => {
       toast({ title: "Invite sent", description: "A new invitation email has been sent." });
     },

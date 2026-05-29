@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Loader2, UserPlus, Link2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { invalidateUnclaimedUsers } from "@/lib/query-keys";
 import { PageLoadingState } from "@/components/page-states";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import type { ApiResponse, League, Team, Bowler } from "@shared/schema";
@@ -65,7 +66,7 @@ const AdminUnclaimedUsersPage: FC = () => {
         description: `${name} has been permanently removed.`,
       });
       setDeleting(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/unclaimed-users"] });
+      invalidateUnclaimedUsers();
     },
     onError: (err: Error) => {
       toast({
@@ -158,7 +159,7 @@ const AdminUnclaimedUsersPage: FC = () => {
               description: `${creating.name} is now linked to ${bowlerName}.`,
             });
             setCreating(null);
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/unclaimed-users"] });
+            invalidateUnclaimedUsers();
           }}
         />
       )}
@@ -172,7 +173,7 @@ const AdminUnclaimedUsersPage: FC = () => {
               description: `${linking.name} is now linked to ${bowlerName}.`,
             });
             setLinking(null);
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/unclaimed-users"] });
+            invalidateUnclaimedUsers();
           }}
         />
       )}
@@ -234,6 +235,8 @@ function CreateBowlerDialog({ user, onClose, onSuccess }: DialogProps) {
         teamId: Number(teamId),
       });
     },
+    // No cache invalidation here: this child dialog defers to the parent's
+    // `onSuccess`, which calls `invalidateUnclaimedUsers()` after closing.
     onSuccess: () => onSuccess(user.name),
     onError: (err: Error) => {
       toast({
@@ -364,6 +367,8 @@ function LinkExistingDialog({ user, onClose, onSuccess }: DialogProps) {
       }
       return apiRequest(`/api/admin/unclaimed-users/${user.id}/link-existing`, "POST", body);
     },
+    // No cache invalidation here: this child dialog defers to the parent's
+    // `onSuccess`, which calls `invalidateUnclaimedUsers()` after closing.
     onSuccess: () => {
       const sel = candidates.find((c) => String(c.id) === bowlerId);
       onSuccess(sel?.name ?? user.name);

@@ -16,6 +16,7 @@ import {
   isProviderNotConfiguredError,
   providerNotConfiguredToast,
 } from '@/lib/provider-not-configured';
+import { applePayJobKeys } from '@/lib/query-keys';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { ApiResponse, ApplePayJobStatus } from '@shared/schema';
 import { CountTile } from './count-tile';
@@ -152,7 +153,7 @@ export function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: ()
         // Drop the now-stale per-job detail cache so a re-open of the same
         // id (very unlikely after delete, but possible if the user navigates
         // back via a deep link) refetches and lands on the 404 path.
-        queryClient.removeQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs', jobId] });
+        queryClient.removeQueries({ queryKey: applePayJobKeys.detail(jobId) });
         onClose();
       }
     },
