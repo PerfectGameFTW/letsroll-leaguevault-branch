@@ -57,17 +57,15 @@ export const BowlerSearchPicker: FC<BowlerSearchPickerProps> = ({
     [excludeIds],
   );
 
-  const url = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("q", debounced);
-    if (organizationId) params.set("organizationId", String(organizationId));
-    if (excludeKey) params.set("excludeIds", excludeKey);
-    return `/api/bowlers/search?${params.toString()}`;
-  }, [debounced, organizationId, excludeKey]);
-
   const { data, isFetching } = useQuery<ApiResponse<BowlerSearchResult[]>>({
     queryKey: ["/api/bowlers/search", debounced, organizationId ?? null, excludeKey],
-    queryFn: () => apiRequest<BowlerSearchResult[]>(url, "GET"),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set("q", debounced);
+      if (organizationId) params.set("organizationId", String(organizationId));
+      if (excludeKey) params.set("excludeIds", excludeKey);
+      return apiRequest<BowlerSearchResult[]>(`/api/bowlers/search?${params.toString()}`, "GET");
+    },
     enabled: debounced.length >= 2 && !disabled,
     staleTime: 10_000,
   });

@@ -24,18 +24,8 @@
       "count": 22
     }
   },
-  "client/src/components/admin-bowler-link-panel.tsx": {
-    "@tanstack/query/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "client/src/components/bowler-layout.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
-      "count": 1
-    }
-  },
-  "client/src/components/bowler-search-picker.tsx": {
-    "@tanstack/query/exhaustive-deps": {
       "count": 1
     }
   },
@@ -47,11 +37,6 @@
   "client/src/components/league-form-fees.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "client/src/components/league-square-catalog.tsx": {
-    "@tanstack/query/exhaustive-deps": {
-      "count": 2
     }
   },
   "client/src/components/organization-form-body.tsx": {
@@ -72,11 +57,6 @@
   "client/src/components/reorder-teams-dialog.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
-    }
-  },
-  "client/src/components/ui/chart.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
     }
   },
   "client/src/hooks/use-bowlers.ts": {
@@ -125,28 +105,8 @@
       "count": 1
     }
   },
-  "client/src/lib/utils/lane-pairing.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "client/src/lib/utils/score-organization.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "client/src/pages/admin-email-change-audits-page.tsx": {
-    "@tanstack/query/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "client/src/pages/bowler-view-page.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "client/src/pages/claim-bowler-page.tsx": {
-    "@tanstack/query/exhaustive-deps": {
       "count": 1
     }
   },
@@ -175,11 +135,6 @@
   },
   "client/src/pages/league-view-page.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "client/src/pages/leagues-page.tsx": {
-    "@tanstack/query/exhaustive-deps": {
       "count": 1
     }
   },

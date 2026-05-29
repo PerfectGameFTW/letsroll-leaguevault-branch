@@ -25,12 +25,14 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
 }) => {
   const { toast } = useToast();
 
-  const adminListUrl = organizationId
-    ? `/api/bowler-links/admin?organizationId=${organizationId}`
-    : "/api/bowler-links/admin";
   const { data } = useQuery<ApiResponse<{ links: LinkRow[] }>>({
     queryKey: ["/api/bowler-links/admin", organizationId],
-    queryFn: () => apiRequest<{ links: LinkRow[] }>(adminListUrl, "GET"),
+    queryFn: () => {
+      const adminListUrl = organizationId
+        ? `/api/bowler-links/admin?organizationId=${organizationId}`
+        : "/api/bowler-links/admin";
+      return apiRequest<{ links: LinkRow[] }>(adminListUrl, "GET");
+    },
     staleTime: 30_000,
   });
   const all = data?.data?.links ?? [];

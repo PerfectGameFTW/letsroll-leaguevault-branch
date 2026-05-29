@@ -233,11 +233,10 @@ export function LeagueSquareCatalog({
   selectedCategoryId,
   onCategoryChange,
 }: LeagueSquareCatalogProps) {
-  const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
-
   const { data: categoriesData } = useQuery<{ success: boolean; data: CategoriesPayload }>({
     queryKey: ['/api/payments-provider/catalog/categories', locationId],
     queryFn: async () => {
+      const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
       const res = await fetch(`/api/payments-provider/catalog/categories${catalogLocationParam}`);
       if (!res.ok) throw new Error('Failed to fetch catalog categories');
       return res.json();
@@ -250,6 +249,7 @@ export function LeagueSquareCatalog({
   const { data: allCatalogData, isLoading: isLoadingCatalog } = useQuery<{ success: boolean; data: ItemsPayload }>({
     queryKey: ['/api/payments-provider/catalog/items', locationId],
     queryFn: async () => {
+      const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
       const res = await fetch(`/api/payments-provider/catalog/items${catalogLocationParam}`);
       if (!res.ok) throw new Error('Failed to fetch catalog items');
       return res.json();

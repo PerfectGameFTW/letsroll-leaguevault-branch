@@ -123,17 +123,15 @@ export default function AdminEmailChangeAuditsPage() {
     [appliedTargetUserId, page],
   );
 
-  const offset = page * PAGE_SIZE;
-  const queryParams = new URLSearchParams();
-  queryParams.set('limit', String(PAGE_SIZE));
-  queryParams.set('offset', String(offset));
-  if (appliedTargetUserId !== null) {
-    queryParams.set('targetUserId', String(appliedTargetUserId));
-  }
-
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery<ApiResponse<AuditListResponse>>({
     queryKey,
     queryFn: async () => {
+      const queryParams = new URLSearchParams();
+      queryParams.set('limit', String(PAGE_SIZE));
+      queryParams.set('offset', String(page * PAGE_SIZE));
+      if (appliedTargetUserId !== null) {
+        queryParams.set('targetUserId', String(appliedTargetUserId));
+      }
       const res = await fetch(
         `/api/system-admin/admin-email-change-audits?${queryParams.toString()}`,
         { credentials: 'include' },

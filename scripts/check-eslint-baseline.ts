@@ -62,7 +62,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // Ratcheted 244 → 220 in task #683 after the orphaned-data merge
   // converted ~24 `value!` patterns into explicit `if (!x) throw`
   // guards as part of the suppression-prune pass.
-  '@typescript-eslint/no-non-null-assertion': 220,
+  // Ratcheted 220 → 218 alongside the query-staleness fix: the standard
+  // `eslint --prune-suppressions` pass cleared two now-stale `value!`
+  // suppressions in client/src/lib/utils (lane-pairing, score-organization).
+  '@typescript-eslint/no-non-null-assertion': 218,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -81,7 +84,9 @@ const RULE_CEILINGS: Record<string, number> = {
   // pass that landed alongside the test-only inline disables for the
   // new `no-unscoped-table-query-in-test-assertion` and
   // `no-spawn-tsx-in-test` rules.
-  '@typescript-eslint/no-unnecessary-type-assertion': 84,
+  // Ratcheted 84 → 80 alongside the query-staleness fix: the prune pass
+  // cleared four stale casts in client/src/components/ui/chart.tsx.
+  '@typescript-eslint/no-unnecessary-type-assertion': 80,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -123,7 +128,15 @@ const RULE_CEILINGS: Record<string, number> = {
   // violations now fail lint. Ratchet down as each site is fixed
   // deliberately.
   'react-hooks/exhaustive-deps': 14,
-  '@tanstack/query/exhaustive-deps': 7,
+  // Paid down 7 → 0: all seven missing-queryKey-dep sites were fixed.
+  // Six were false positives where the URL/params derived only from
+  // values already in the key — the derivation was inlined into the
+  // queryFn so the (already-covered) dependency is visible to the rule.
+  // One — leagues-page scores history — was a genuine staleness bug:
+  // `currentWeek` (date-derived via getWeeksPassedInSeason) was used in
+  // the fetch URL but missing from the key, so it is now in the key.
+  // Stays at 0 — net-new violations fail `npm run lint` directly.
+  '@tanstack/query/exhaustive-deps': 0,
   '@tanstack/query/no-unstable-deps': 5,
 };
 
@@ -157,7 +170,11 @@ const RULE_CEILINGS: Record<string, number> = {
 // react-hooks/exhaustive-deps, +7 @tanstack/query/exhaustive-deps, +5
 // @tanstack/query/no-unstable-deps — all pre-existing violations
 // baselined rather than risk-edited. See BASELINE_BUMP_REASON.md.
-const TOTAL_CEILING = 509;
+// Ratcheted 509 → 496 after fixing all 7 @tanstack/query/exhaustive-deps
+// sites (-7) and a prune-suppressions pass that cleared 6 pre-existing
+// stale suppressions (-2 no-non-null-assertion, -4
+// no-unnecessary-type-assertion).
+const TOTAL_CEILING = 496;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

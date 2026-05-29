@@ -67,7 +67,7 @@ export default function LeaguesPage() {
   const currentWeek = firstLeague ? getWeeksPassedInSeason(firstLeague) : 0;
 
   const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: ScoreWithRelations[] }>({
-    queryKey: ["/api/scores/history", firstLeague?.id],
+    queryKey: ["/api/scores/history", firstLeague?.id, currentWeek],
     queryFn: async () => {
       if (!firstLeague?.id) throw new Error("No league selected");
       const response = await fetch(`/api/scores?leagueId=${firstLeague.id}&weekNumber=${currentWeek}`);

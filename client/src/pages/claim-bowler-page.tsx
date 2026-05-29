@@ -54,13 +54,12 @@ const ClaimBowlerPage: FC = () => {
     return params.get("organizationId") || null;
   }, [searchString]);
 
-  const unlinkedUrl = organizationId
-    ? `/api/bowlers/unlinked?organizationId=${organizationId}`
-    : "/api/bowlers/unlinked";
-
   const { data: unlinkedResponse, isLoading } = useQuery<{ success: boolean; data: LeagueGroup[] }>({
     queryKey: ["/api/bowlers/unlinked", organizationId],
     queryFn: async () => {
+      const unlinkedUrl = organizationId
+        ? `/api/bowlers/unlinked?organizationId=${organizationId}`
+        : "/api/bowlers/unlinked";
       const res = await fetch(unlinkedUrl);
       if (!res.ok) throw new Error("Failed to fetch unlinked bowlers");
       return res.json();
