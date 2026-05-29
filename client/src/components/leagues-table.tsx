@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getSeasonLabel } from "@/lib/season-utils";
+import { getSeasonLabel } from "@shared/season-utils";
 import type { League } from "@shared/schema";
 
 interface Props {

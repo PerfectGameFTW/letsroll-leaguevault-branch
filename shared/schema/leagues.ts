@@ -94,10 +94,6 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
   squareCategoryId: text("square_category_id"),
   timezone: text("timezone").default(DEFAULT_TIMEZONE),
-  // Legacy column kept ONLY as the source for the doublePay backfill
-  // (Task #646). Never read or written by app code; new leagues leave
-  // this NULL.
-  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week"),
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
   previousSeasonId: integer("previous_season_id").references((): AnyPgColumn => leagues.id, { onDelete: 'set null' }),
@@ -114,9 +110,8 @@ export const leagues = pgTable("leagues", {
   cancelledDates: text("cancelled_dates").array().notNull().default(sql`'{}'`),
   // Up to 2 ISO `YYYY-MM-DD` bowling dates that should be charged at
   // 2× the weekly fee by the autopay scheduler (Task #646). Replaces
-  // the legacy `finalTwoWeeksDueWeek` lump-charge mechanism. The
-  // legacy column stays on the table only as a backfill source; new
-  // code never reads it.
+  // the legacy `finalTwoWeeksDueWeek` lump-charge mechanism that was
+  // dropped in Task #760.
   doublePayDates: text("double_pay_dates").array().notNull().default(sql`'{}'`),
   // Task #679: when true the league is treated as a youth league; minor
   // bowlers placed on a team in this league require at least one
@@ -172,7 +167,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   isYouth: z.boolean().default(false),
   rosterCap: z.number().int().positive().nullable().optional(),
   embedRegistrationFee: z.number().int().min(0).nullable().optional(),
-}).omit({ id: true, finalTwoWeeksDueWeek: true })
+}).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
     "Season end date must be after season start date"

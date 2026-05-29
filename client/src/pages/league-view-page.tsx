@@ -22,7 +22,7 @@ import type { ApiResponse, League, User } from "@shared/schema";
 import { useParams, Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { getSeasonLabel } from "@/lib/season-utils";
+import { getSeasonLabel } from "@shared/season-utils";
 import { EmbedAdminPanel } from "./league-view-page/embed-admin-panel";
 import { InviteResultCard } from "./league-view-page/invite-result-card";
 import { LeagueActionCards } from "./league-view-page/league-action-cards";

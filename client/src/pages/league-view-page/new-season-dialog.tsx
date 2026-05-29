@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, RefreshCw } from "lucide-react";
 import type { League } from "@shared/schema";
-import { getSeasonLabel } from "@/lib/season-utils";
+import { getSeasonLabel } from "@shared/season-utils";
 
 export function NewSeasonDialog({
   league,

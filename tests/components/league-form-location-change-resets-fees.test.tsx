@@ -76,7 +76,6 @@ const seededLeague: League = {
   squarePrizeFundItemName: 'PF Item',
   squareCategoryId: null,
   timezone: 'America/New_York',
-  finalTwoWeeksDueWeek: null,
   paymentMode: 'weekly',
   seasonNumber: 1,
   previousSeasonId: null,

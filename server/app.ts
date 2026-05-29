@@ -49,7 +49,6 @@ import './services/third-party-pins';
 import { applePayWorker } from './services/apple-pay-worker';
 import { startLeagueSquareCatalogAudit } from './services/league-square-catalog-audit';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateDiskUrlsToApiUrls } from './migrations/migrate-avatars';
-import { backfillDoublePayDates } from './migrations/backfill-double-pay-dates';
 import { backfillMissingPaymentCustomers } from './migrations/backfill-missing-payment-customers';
 import { seedDefaultEmailTemplates } from './migrations/seed-email-templates';
 import { createLogger } from './logger';
@@ -434,12 +433,6 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<CreatedApp
       }
     } catch (error) {
       log.error('Error running avatar migration:', error);
-    }
-
-    try {
-      await backfillDoublePayDates();
-    } catch (error) {
-      log.error('Error backfilling double-pay dates:', error);
     }
 
     try {

@@ -131,10 +131,10 @@ function makeLeague(overrides: Partial<League> = {}): League {
     rosterCap: null,
     embedRegistrationFee: null,
   });
-  // `id` and `finalTwoWeeksDueWeek` are omitted from the insert schema;
-  // re-add them to satisfy the SELECT type. Overrides win.
+  // `id` is omitted from the insert schema; re-add it to satisfy the
+  // SELECT type. Overrides win.
   return Object.assign(
-    { id: 11, finalTwoWeeksDueWeek: null },
+    { id: 11 },
     parsed,
     overrides,
   ) as League;

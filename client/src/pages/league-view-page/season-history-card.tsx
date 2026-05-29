@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { History } from "lucide-react";
 import { Link } from "wouter";
 import type { League } from "@shared/schema";
-import { getSeasonLabel } from "@/lib/season-utils";
+import { getSeasonLabel } from "@shared/season-utils";
 
 export function SeasonHistoryCard({
   seasonHistory,

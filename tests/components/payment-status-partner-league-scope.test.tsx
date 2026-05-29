@@ -167,7 +167,6 @@ function makeLeague(id: number): League {
     squarePrizeFundItemName: null,
     squareCategoryId: null,
     timezone: 'America/New_York',
-    finalTwoWeeksDueWeek: null,
     paymentMode: 'weekly',
     seasonNumber: 1,
     previousSeasonId: null,

@@ -212,7 +212,6 @@ interface LeagueRow {
   seasonNumber: number;
   previousSeasonId: number | null;
   locationId: number;
-  finalTwoWeeksDueWeek: number | null;
   doublePayDates: string[];
   practiceStartTime: string | null;
   competitionStartTime: string | null;
@@ -247,7 +246,6 @@ function makeLeague(overrides: Partial<LeagueRow> = {}): LeagueRow {
     seasonNumber: 1,
     previousSeasonId: null,
     locationId: LOCATION_ID,
-    finalTwoWeeksDueWeek: null,
     doublePayDates: [],
     practiceStartTime: null,
     competitionStartTime: null,

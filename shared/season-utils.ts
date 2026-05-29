@@ -7,9 +7,8 @@
 // match a bowler whose league synced as "Fall 25" / something close.
 //
 // Behavior is unchanged from the prior client-only version: same
-// inputs, same outputs, no new branches. The client `@/lib/season-utils`
-// import path now re-exports this so existing client code keeps working
-// without a churn-style rename — see client/src/lib/season-utils.ts.
+// inputs, same outputs, no new branches. Client and server both import
+// `getSeasonLabel` directly from this module.
 export function getSeasonLabel(seasonStart: Date | string, seasonEnd: Date | string): string {
   const start = new Date(seasonStart);
   const end = new Date(seasonEnd);

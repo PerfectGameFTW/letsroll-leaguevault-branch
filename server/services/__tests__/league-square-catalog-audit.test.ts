@@ -31,7 +31,6 @@ function makeLeague(overrides: Partial<League>): League {
     squarePrizeFundItemName: "Prize Fund Item",
     squareCategoryId: null,
     timezone: "America/New_York",
-    finalTwoWeeksDueWeek: null,
     paymentMode: "weekly",
     seasonNumber: 1,
     previousSeasonId: null,
