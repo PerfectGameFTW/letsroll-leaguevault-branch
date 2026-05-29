@@ -1,20 +1,12 @@
 import { FC, RefObject } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { CalendarDays, Users } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { League, SavedCard } from "@shared/schema";
 import { PaymentCustomAmount } from "@/components/payment-custom-amount";
 import { PaymentSetupCardInput } from "@/components/payment-setup-card-input";
 import { PaymentSubmitSection } from "@/components/payment-submit-section";
+import { PaymentSetupRecipientPicker } from "@/components/payment-setup-recipient-picker";
+import { PaymentSetupSummaryCard } from "@/components/payment-setup-summary-card";
+import { PaymentSetupCombinedPay } from "@/components/payment-setup-combined-pay";
 
 type RefDiv = React.RefObject<HTMLDivElement>;
 
@@ -92,6 +84,11 @@ interface PaymentSetupFormProps {
   partnerPastDueByBowlerId?: Record<number, number>;
 }
 
+// Stable default references so optional props don't create a fresh array /
+// object on every render (which would defeat memoized children / deps).
+const EMPTY_PARTNER_OPTIONS: { id: number; name: string }[] = [];
+const EMPTY_PARTNER_PAST_DUE: Record<number, number> = {};
+
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   league,
   weeklyFee,
@@ -130,14 +127,14 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   isWalletProcessing,
   applePayTokenizeOnly,
   googlePayTokenizeOnly,
-  partnerOptions = [],
+  partnerOptions = EMPTY_PARTNER_OPTIONS,
   selfBowler,
   targetBowlerId,
   setTargetBowlerId,
   allowPartnerSelection,
   additionalBowlerIds,
   setAdditionalBowlerIds,
-  partnerPastDueByBowlerId = {},
+  partnerPastDueByBowlerId = EMPTY_PARTNER_PAST_DUE,
 }) => {
   // Task #706: combined-pay (multi-select) is now offered for ALL
   // payment modes — autopay, one-time, and upfront — whenever the
@@ -210,155 +207,40 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
       <CardContent>
         <div className="space-y-6">
           {showPartnerPicker && (
-            <div className="space-y-2" data-testid="recipient-picker">
-              <Label className="flex items-center gap-2 text-sm font-medium">
-                <Users className="size-4 text-muted-foreground" /> Pay for
-              </Label>
-              <Select
-                value={String(targetBowlerId)}
-                onValueChange={(v) => setTargetBowlerId(Number(v))}
-              >
-                <SelectTrigger data-testid="select-recipient">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    value={String(selfBowler.id)}
-                    data-testid={`recipient-option-${selfBowler.id}`}
-                  >
-                    {selfBowler.name} (you)
-                  </SelectItem>
-                  {partnerOptions.map((p) => (
-                    <SelectItem
-                      key={p.id}
-                      value={String(p.id)}
-                      data-testid={`recipient-option-${p.id}`}
-                    >
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {targetBowlerId !== selfBowler.id && (
-                <p className="text-xs text-muted-foreground">
-                  This payment will be recorded against your linked partner and
-                  attributed as paid by you.
-                </p>
-              )}
-            </div>
+            <PaymentSetupRecipientPicker
+              selfBowler={selfBowler}
+              targetBowlerId={targetBowlerId}
+              setTargetBowlerId={setTargetBowlerId}
+              partnerOptions={partnerOptions}
+            />
           )}
-          {league.paymentMode === 'upfront' ? (
-            <div className="rounded-md border bg-muted/30 p-4 space-y-2">
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-muted-foreground">Weekly fee</span>
-                <span className="text-sm">{formatCurrency(weeklyFee)} / week</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-muted-foreground">Season length</span>
-                <span className="text-sm">{totalWeeks} weeks</span>
-              </div>
-              <div className="border-t pt-3 flex items-center justify-between">
-                <span className="font-semibold">Total due today</span>
-                <span className="text-lg font-bold" data-testid="upfront-total-due">
-                  {formatCurrency(financials.fullSeasonAmount * (1 + additionalBowlerIds.length))}
-                </span>
-              </div>
-            </div>
-          ) : paymentMode === 'autopay' && (
-            <div className="rounded-md border bg-muted/30 p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <CalendarDays className="size-5 text-muted-foreground shrink-0" />
-                <div>
-                  <p className="text-sm font-medium">Weekly auto-pay</p>
-                  <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
-                </div>
-              </div>
-              {anyAutopayPastDue && (
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold">Total due today</span>
-                  <span
-                    className="text-base font-bold"
-                    data-testid="autopay-due-today"
-                  >
-                    {formatCurrency(autopayDueTodayTotal)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          <PaymentSetupSummaryCard
+            league={league}
+            paymentMode={paymentMode}
+            weeklyFee={weeklyFee}
+            totalWeeks={totalWeeks}
+            fullSeasonAmount={financials.fullSeasonAmount}
+            additionalBowlerCount={additionalBowlerIds.length}
+            anyAutopayPastDue={anyAutopayPastDue}
+            autopayDueTodayTotal={autopayDueTodayTotal}
+          />
 
           {showCombinedPay && (
-            <div
-              className="space-y-2 rounded-md border bg-muted/20 p-4"
-              data-testid="combined-autopay-group"
-            >
-              <Label className="flex items-center gap-2 text-sm font-medium">
-                <Users className="size-4 text-muted-foreground" />
-                {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
-                  ? 'Also charge me for these linked bowlers each week'
-                  : 'Also pay for these linked bowlers in this transaction'}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {paymentMode === 'autopay' && league.paymentMode !== 'upfront'
-                  ? "Your card will be charged for everyone you select on the same schedule. Each charge is recorded against the partner's account and attributed as paid by you."
-                  : "Your card will be charged once for everyone you select. Each amount is recorded against the partner's account and attributed as paid by you."}
-              </p>
-              <div className="space-y-2 pt-1">
-                <label
-                  className="flex items-center justify-between gap-2 text-sm opacity-80"
-                  data-testid={`combined-pay-option-self-${selfBowler.id}`}
-                >
-                  <span className="flex items-center gap-2">
-                    <Checkbox checked disabled />
-                    <span>{selfBowler.name} (you)</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    {formatCurrency(isAutopayMode && anyAutopayPastDue ? selfDueToday : baseAmount)}
-                  </span>
-                </label>
-                {partnerOptions.map((p) => {
-                  const checked = additionalBowlerIds.includes(p.id);
-                  const rowAmount =
-                    isAutopayMode && anyAutopayPastDue ? partnerDueToday(p.id) : baseAmount;
-                  return (
-                    <label
-                      key={p.id}
-                      className="flex items-center justify-between gap-2 text-sm"
-                      data-testid={`combined-autopay-option-${p.id}`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => togglePartner(p.id, v === true)}
-                          data-testid={`combined-autopay-checkbox-${p.id}`}
-                        />
-                        <span>{p.name}</span>
-                      </span>
-                      <span className="text-muted-foreground">{formatCurrency(rowAmount)}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              {additionalBowlerIds.length > 0 && (
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold">
-                    {isAutopayMode && anyAutopayPastDue
-                      ? 'Total due today'
-                      : isAutopayMode
-                        ? 'Combined per-cycle total'
-                        : 'Combined total'}
-                  </span>
-                  <span
-                    className="text-base font-bold"
-                    data-testid="combined-pay-total"
-                  >
-                    {formatCurrency(
-                      isAutopayMode && anyAutopayPastDue ? autopayDueTodayTotal : combinedTotal,
-                    )}
-                  </span>
-                </div>
-              )}
-            </div>
+            <PaymentSetupCombinedPay
+              league={league}
+              paymentMode={paymentMode}
+              selfBowler={selfBowler}
+              partnerOptions={partnerOptions}
+              additionalBowlerIds={additionalBowlerIds}
+              togglePartner={togglePartner}
+              isAutopayMode={isAutopayMode}
+              anyAutopayPastDue={anyAutopayPastDue}
+              selfDueToday={selfDueToday}
+              partnerDueToday={partnerDueToday}
+              baseAmount={baseAmount}
+              combinedTotal={combinedTotal}
+              autopayDueTodayTotal={autopayDueTodayTotal}
+            />
           )}
           
           {selectedSchedule === 'custom' && league.paymentMode !== 'upfront' && (

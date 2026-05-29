@@ -34,10 +34,10 @@ type EmbedInfo = {
   questions: Question[];
 };
 
-type Child = { name: string; email: string; phone: string; isMinor: boolean };
+type Child = { id: string; name: string; email: string; phone: string; isMinor: boolean };
 
 function emptyChild(): Child {
-  return { name: "", email: "", phone: "", isMinor: true };
+  return { id: crypto.randomUUID(), name: "", email: "", phone: "", isMinor: true };
 }
 
 export default function EmbedRegisterPage() {
@@ -211,7 +211,7 @@ export default function EmbedRegisterPage() {
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-6">
               {children.map((child, i) => (
-                <section key={i} className="space-y-3 border rounded-md p-4">
+                <section key={child.id} className="space-y-3 border rounded-md p-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold">Bowler {children.length > 1 ? `#${i + 1}` : "info"}</h3>
                     {children.length > 1 && (

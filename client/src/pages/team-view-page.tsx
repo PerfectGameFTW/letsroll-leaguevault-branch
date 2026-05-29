@@ -6,28 +6,19 @@ import { BowlerForm } from "@/components/bowler-form";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AssignBowlerForm } from "@/components/assign-bowler-form";
 import { ReorderBowlersDialog } from "@/components/reorder-bowlers-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, Pencil, Trash2, CheckCircle2 } from "lucide-react";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
-import type { Team, Bowler, League, BowlerLeague, ApiResponse, TeamDetailsResponse } from "@shared/schema";
-import { useParams, Link } from "wouter";
+import type { Bowler, BowlerLeague, ApiResponse, TeamDetailsResponse } from "@shared/schema";
+import { useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getTeamBowlers } from "@/lib/bowler-league-utils";
+import { TeamViewHeader } from "./team-view-page/header";
+import { TeamViewBowlersTable } from "./team-view-page/bowlers-table";
+import { TeamViewEditDialog } from "./team-view-page/edit-dialog";
+import { TeamViewRemoveBowlerDialog } from "./team-view-page/remove-bowler-dialog";
 
 const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
@@ -182,99 +173,25 @@ export default function TeamViewPage() {
   return (
     <Layout>
       <ErrorBoundary level="section">
-      <div className="mb-6">
-        <Link
-          href={`/leagues/${team.leagueId}/teams`}
-          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
-        >
-          <ArrowLeft className="size-4 mr-2" />
-          Back to Teams
-        </Link>
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold flex-1">{team.name}</h1>
-            <Button variant="ghost" size="sm" onClick={handleEditClick}>
-              <Pencil className="size-4" />
-              <span className="sr-only">Edit team name</span>
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="size-4 mr-2" />
-              Create New Bowler
-            </Button>
-            <Button onClick={() => setShowAssignForm(true)}>
-              <Plus className="size-4 mr-2" />
-              Add Existing Bowler
-            </Button>
-          </div>
-        </div>
-      </div>
+      <TeamViewHeader
+        teamName={team.name}
+        leagueId={team.leagueId}
+        onEditClick={handleEditClick}
+        onCreateBowler={() => setShowForm(true)}
+        onAddExistingBowler={() => setShowAssignForm(true)}
+      />
 
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Weekly Fee</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {teamBowlers.length > 0 ? (
-              teamBowlers.map(({ bowler, bowlerLeague }) => (
-                <TableRow key={bowlerLeague.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className={`size-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
-                      <Link href={`/bowlers/${bowler.id}?from=team&fromTeamId=${teamId}`} className="hover:underline">
-                        {bowler.name}
-                      </Link>
-                    </div>
-                  </TableCell>
-                  <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
-                      {bowlerLeague.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedBowler(bowler);
-                          setShowForm(true);
-                        }}
-                      >
-                        <Pencil className="size-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowRemoveDialog({ bowlerId: bowler.id, name: bowler.name })}
-                      >
-                        <Trash2 className="size-4 mr-2" />
-                        Remove
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center">
-                  No bowlers assigned to this team
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <TeamViewBowlersTable
+        teamBowlers={teamBowlers}
+        league={league}
+        teamId={teamId}
+        onEditBowler={(bowler) => {
+          setSelectedBowler(bowler);
+          setShowForm(true);
+        }}
+        onRemoveBowler={(target) => setShowRemoveDialog(target)}
+      />
 
       {teamBowlers.length > 1 && (
         <div className="mt-4">
@@ -285,37 +202,13 @@ export default function TeamViewPage() {
       )}
 
       {/* Edit Team Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Team Name</DialogTitle>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(onEditTeam)} className="space-y-4">
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input placeholder="Enter team name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end">
-                <Button type="submit" disabled={updateTeamMutation.isPending}>
-                  {updateTeamMutation.isPending && (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  )}
-                  Save
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <TeamViewEditDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        form={editForm}
+        onSubmit={onEditTeam}
+        isPending={updateTeamMutation.isPending}
+      />
 
       {/* Bowler Forms */}
       <BowlerForm
@@ -345,33 +238,13 @@ export default function TeamViewPage() {
       />
 
       {/* Remove Bowler Confirmation Dialog */}
-      <Dialog open={showRemoveDialog !== null} onOpenChange={(open) => !open && setShowRemoveDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Bowler from Team</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove {showRemoveDialog?.name} from this team? This will completely remove their association with this team.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowRemoveDialog(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRemoveBowler}
-              disabled={removeBowlerMutation.isPending}
-            >
-              {removeBowlerMutation.isPending ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TeamViewRemoveBowlerDialog
+        target={showRemoveDialog}
+        onOpenChange={(open) => !open && setShowRemoveDialog(null)}
+        onCancel={() => setShowRemoveDialog(null)}
+        onConfirm={handleRemoveBowler}
+        isPending={removeBowlerMutation.isPending}
+      />
       </ErrorBoundary>
     </Layout>
   );

@@ -1,16 +1,4 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { FormControl, FormItem, FormLabel } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertLeague } from "@shared/schema";
@@ -18,6 +6,10 @@ import {
   searchStorageKey,
   categoryStorageKey,
 } from "@/components/league-square-catalog-storage";
+import { LeagueSquareCatalogEmptyLocation } from "@/components/league-square-catalog-empty-location";
+import { LeagueSquareCatalogStatus } from "@/components/league-square-catalog-status";
+import { LeagueSquareCatalogFilterFields } from "@/components/league-square-catalog-filter-fields";
+import { LeagueSquareCatalogItemSelect } from "@/components/league-square-catalog-item-select";
 
 function readStoredFilter(key: string): string {
   try {
@@ -87,6 +79,154 @@ function readOriginal(
   };
 }
 
+// Task #623: the catalog API now returns
+// `{ items|categories, truncated }` instead of a bare array, so the
+// admin UI can show a banner when the pagination safety cap fired
+// and the visible list is incomplete. We accept the bare-array
+// shape too as a defensive fallback in case a stale server is
+// still on the pre-#623 contract.
+type CategoriesPayload = CatalogCategory[] | { categories: CatalogCategory[]; truncated?: boolean };
+type ItemsPayload = CatalogItem[] | { items: CatalogItem[]; truncated?: boolean };
+
+const readCategories = (payload: CategoriesPayload | undefined) =>
+  Array.isArray(payload) ? payload : payload?.categories ?? [];
+const readItems = (payload: ItemsPayload | undefined) =>
+  Array.isArray(payload) ? payload : payload?.items ?? [];
+const readTruncated = (payload: CategoriesPayload | ItemsPayload | undefined) =>
+  !!(payload && !Array.isArray(payload) && payload.truncated);
+
+function restoreLineageOriginal(
+  form: UseFormReturn<InsertLeague>,
+  originalLineage: OriginalSelection,
+  getPriceForVariation: (variationId: string | null | undefined) => number | null,
+) {
+  form.setValue('squareLineageItemId', originalLineage.itemId);
+  form.setValue('lineageItemVariationId', originalLineage.variationId);
+  form.setValue('squareLineageItemName', originalLineage.name);
+  form.setValue('lineageFee', originalLineage.fee);
+  const lineagePrice = originalLineage.fee ?? 0;
+  const prizeFundPrice =
+    getPriceForVariation(form.getValues('prizeFundItemVariationId')) ??
+    form.getValues('prizeFundFee') ??
+    0;
+  const total = lineagePrice + prizeFundPrice;
+  if (total > 0) form.setValue('weeklyFee', total);
+}
+
+function restorePrizeFundOriginal(
+  form: UseFormReturn<InsertLeague>,
+  originalPrizeFund: OriginalSelection,
+  getPriceForVariation: (variationId: string | null | undefined) => number | null,
+) {
+  form.setValue('squarePrizeFundItemId', originalPrizeFund.itemId);
+  form.setValue('prizeFundItemVariationId', originalPrizeFund.variationId);
+  form.setValue('squarePrizeFundItemName', originalPrizeFund.name);
+  form.setValue('prizeFundFee', originalPrizeFund.fee);
+  const prizeFundPrice = originalPrizeFund.fee ?? 0;
+  const lineagePrice =
+    getPriceForVariation(form.getValues('lineageItemVariationId')) ??
+    form.getValues('lineageFee') ??
+    0;
+  const total = lineagePrice + prizeFundPrice;
+  if (total > 0) form.setValue('weeklyFee', total);
+}
+
+interface LineageHandlerDeps {
+  form: UseFormReturn<InsertLeague>;
+  catalogVariationIndex: Map<string, { item: CatalogItem; variation: CatalogItemVariation }>;
+  getPriceForVariation: (variationId: string | null | undefined) => number | null;
+  originalLineage: OriginalSelection;
+}
+
+function makeLineageOnValueChange({
+  form,
+  catalogVariationIndex,
+  getPriceForVariation,
+  originalLineage,
+}: LineageHandlerDeps) {
+  return (value: string) => {
+    if (value === 'none') {
+      form.setValue('squareLineageItemId', null);
+      form.setValue('lineageItemVariationId', null);
+      form.setValue('squareLineageItemName', null);
+      form.setValue('lineageFee', null);
+      return;
+    }
+    const lineageMatch = catalogVariationIndex.get(value);
+    if (lineageMatch) {
+      const { item, variation } = lineageMatch;
+      form.setValue('squareLineageItemId', item.id);
+      form.setValue('lineageItemVariationId', variation.id);
+      form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+      const lineagePrice = variation.price || 0;
+      const prizeFundPrice = getPriceForVariation(form.getValues('prizeFundItemVariationId'));
+      const total = lineagePrice + (prizeFundPrice || 0);
+      if (total > 0) form.setValue('weeklyFee', total);
+      if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
+      return;
+    }
+    // The clicked value isn't in `catalogItems` — the only legitimate
+    // value here is the originally-saved Lineage row (rendered as the
+    // fallback below for items that have been hidden by the search /
+    // category filter, or removed from Square entirely). Restore the
+    // full saved snapshot so the form doesn't end up with the new
+    // variation id but the previous item id / name / fee.
+    if (
+      originalLineage.variationId &&
+      originalLineage.name &&
+      value === originalLineage.variationId
+    ) {
+      restoreLineageOriginal(form, originalLineage, getPriceForVariation);
+    }
+  };
+}
+
+interface PrizeFundHandlerDeps {
+  form: UseFormReturn<InsertLeague>;
+  catalogVariationIndex: Map<string, { item: CatalogItem; variation: CatalogItemVariation }>;
+  getPriceForVariation: (variationId: string | null | undefined) => number | null;
+  originalPrizeFund: OriginalSelection;
+}
+
+function makePrizeFundOnValueChange({
+  form,
+  catalogVariationIndex,
+  getPriceForVariation,
+  originalPrizeFund,
+}: PrizeFundHandlerDeps) {
+  return (value: string) => {
+    if (value === 'none') {
+      form.setValue('squarePrizeFundItemId', null);
+      form.setValue('prizeFundItemVariationId', null);
+      form.setValue('squarePrizeFundItemName', null);
+      form.setValue('prizeFundFee', null);
+      return;
+    }
+    const prizeFundMatch = catalogVariationIndex.get(value);
+    if (prizeFundMatch) {
+      const { item, variation } = prizeFundMatch;
+      form.setValue('squarePrizeFundItemId', item.id);
+      form.setValue('prizeFundItemVariationId', variation.id);
+      form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+      const lineagePrice = getPriceForVariation(form.getValues('lineageItemVariationId'));
+      const prizeFundPrice = variation.price || 0;
+      const total = (lineagePrice || 0) + prizeFundPrice;
+      if (total > 0) form.setValue('weeklyFee', total);
+      if (prizeFundPrice > 0) form.setValue('prizeFundFee', prizeFundPrice);
+      return;
+    }
+    // See the Lineage handler above for why we restore the snapshot
+    // here instead of silently exiting.
+    if (
+      originalPrizeFund.variationId &&
+      originalPrizeFund.name &&
+      value === originalPrizeFund.variationId
+    ) {
+      restorePrizeFundOriginal(form, originalPrizeFund, getPriceForVariation);
+    }
+  };
+}
+
 export function LeagueSquareCatalog({
   form,
   locationId,
@@ -94,22 +234,6 @@ export function LeagueSquareCatalog({
   onCategoryChange,
 }: LeagueSquareCatalogProps) {
   const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
-
-  // Task #623: the catalog API now returns
-  // `{ items|categories, truncated }` instead of a bare array, so the
-  // admin UI can show a banner when the pagination safety cap fired
-  // and the visible list is incomplete. We accept the bare-array
-  // shape too as a defensive fallback in case a stale server is
-  // still on the pre-#623 contract.
-  type CategoriesPayload = CatalogCategory[] | { categories: CatalogCategory[]; truncated?: boolean };
-  type ItemsPayload = CatalogItem[] | { items: CatalogItem[]; truncated?: boolean };
-
-  const readCategories = (payload: CategoriesPayload | undefined) =>
-    Array.isArray(payload) ? payload : payload?.categories ?? [];
-  const readItems = (payload: ItemsPayload | undefined) =>
-    Array.isArray(payload) ? payload : payload?.items ?? [];
-  const readTruncated = (payload: CategoriesPayload | ItemsPayload | undefined) =>
-    !!(payload && !Array.isArray(payload) && payload.truncated);
 
   const { data: categoriesData } = useQuery<{ success: boolean; data: CategoriesPayload }>({
     queryKey: ['/api/payments-provider/catalog/categories', locationId],
@@ -237,16 +361,38 @@ export function LeagueSquareCatalog({
   }, [catalogItems, debouncedSearch]);
   const isSearching = debouncedSearch.length > 0;
 
-  const getPriceForVariation = (variationId: string | null | undefined): number | null => {
-    if (!variationId) return null;
-    const searchLists = [allCatalogItems, catalogItems];
-    for (const list of searchLists) {
-      for (const item of list) {
-        const v = item.variations.find(v => v.id === variationId);
-        if (v) return v.price;
+  // Variation id -> { item, variation } over the currently-selectable
+  // `catalogItems`, built once per catalog change so the select handlers
+  // can resolve a clicked variation in O(1) instead of scanning every
+  // item's variations on each change. First match wins (variation ids are
+  // unique in Square), matching the prior first-match-then-return loops.
+  const catalogVariationIndex = useMemo(() => {
+    const map = new Map<string, { item: (typeof catalogItems)[number]; variation: (typeof catalogItems)[number]["variations"][number] }>();
+    for (const item of catalogItems) {
+      for (const variation of item.variations) {
+        if (!map.has(variation.id)) map.set(variation.id, { item, variation });
       }
     }
-    return null;
+    return map;
+  }, [catalogItems]);
+
+  // Variation id -> price across both lists. `allCatalogItems` is written
+  // last so it takes precedence, preserving the original lookup order
+  // (allCatalogItems scanned before catalogItems).
+  const priceByVariation = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const item of catalogItems) {
+      for (const v of item.variations) map.set(v.id, v.price);
+    }
+    for (const item of allCatalogItems) {
+      for (const v of item.variations) map.set(v.id, v.price);
+    }
+    return map;
+  }, [catalogItems, allCatalogItems]);
+
+  const getPriceForVariation = (variationId: string | null | undefined): number | null => {
+    if (!variationId) return null;
+    return priceByVariation.get(variationId) ?? null;
   };
 
   // Snapshot of the originally-saved Lineage / Prize Fund selections, taken
@@ -274,341 +420,75 @@ export function LeagueSquareCatalog({
     'prizeFundFee',
   );
 
-  const restoreLineageOriginal = () => {
-    form.setValue('squareLineageItemId', originalLineage.itemId);
-    form.setValue('lineageItemVariationId', originalLineage.variationId);
-    form.setValue('squareLineageItemName', originalLineage.name);
-    form.setValue('lineageFee', originalLineage.fee);
-    const lineagePrice = originalLineage.fee ?? 0;
-    const prizeFundPrice =
-      getPriceForVariation(form.getValues('prizeFundItemVariationId')) ??
-      form.getValues('prizeFundFee') ??
-      0;
-    const total = lineagePrice + prizeFundPrice;
-    if (total > 0) form.setValue('weeklyFee', total);
-  };
+  const lineageOnValueChange = makeLineageOnValueChange({
+    form,
+    catalogVariationIndex,
+    getPriceForVariation,
+    originalLineage,
+  });
 
-  const restorePrizeFundOriginal = () => {
-    form.setValue('squarePrizeFundItemId', originalPrizeFund.itemId);
-    form.setValue('prizeFundItemVariationId', originalPrizeFund.variationId);
-    form.setValue('squarePrizeFundItemName', originalPrizeFund.name);
-    form.setValue('prizeFundFee', originalPrizeFund.fee);
-    const prizeFundPrice = originalPrizeFund.fee ?? 0;
-    const lineagePrice =
-      getPriceForVariation(form.getValues('lineageItemVariationId')) ??
-      form.getValues('lineageFee') ??
-      0;
-    const total = lineagePrice + prizeFundPrice;
-    if (total > 0) form.setValue('weeklyFee', total);
-  };
+  const prizeFundOnValueChange = makePrizeFundOnValueChange({
+    form,
+    catalogVariationIndex,
+    getPriceForVariation,
+    originalPrizeFund,
+  });
 
   if (!locationId) {
-    return (
-      <div className="space-y-3 rounded-lg border p-3" data-testid="catalog-needs-location">
-        <div className="text-sm font-medium">Square Catalog Items</div>
-        <p className="text-sm text-muted-foreground">
-          Select a location above first to load this location's Square catalog items.
-        </p>
-      </div>
-    );
+    return <LeagueSquareCatalogEmptyLocation />;
   }
 
   return (
     <div className="space-y-3 rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Square Catalog Items</div>
-        {hasActiveFilters && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-auto px-2 py-1 text-xs"
-            onClick={handleClearFilters}
-            data-testid="button-clear-catalog-filters"
-          >
-            Clear filters
-          </Button>
-        )}
-      </div>
+      <LeagueSquareCatalogStatus
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={handleClearFilters}
+        loadState={isLoadingCatalog ? 'loading' : (hasCatalogItems ? 'hasItems' : 'empty')}
+        isCatalogTruncated={isCatalogTruncated}
+      />
 
-      {isLoadingCatalog && (
-        <p className="text-sm text-muted-foreground">Loading catalog items&hellip;</p>
-      )}
+      <LeagueSquareCatalogFilterFields
+        searchInput={searchInput}
+        onSearchChange={handleSearchChange}
+        hasCatalogItems={hasCatalogItems}
+        isSearching={isSearching}
+        visibleItemCount={visibleCatalogItems.length}
+        totalItemCount={catalogItems.length}
+        categories={categories}
+        selectedCategoryId={selectedCategoryId}
+        onCategorySelect={(value) => {
+          const catId = value === 'all' ? null : value;
+          onCategoryChange(catId);
+          form.setValue('squareCategoryId', catId);
+          if (locationId) writeStoredFilter(categoryStorageKey(locationId), catId);
+        }}
+      />
 
-      {!isLoadingCatalog && !hasCatalogItems && (
-        <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
-      )}
+      <LeagueSquareCatalogItemSelect
+        label="Lineage Item"
+        missingFromCatalog={lineageMissingFromCatalog}
+        missingTestId="warn-lineage-missing-from-catalog"
+        fallbackTestId="select-lineage-fallback"
+        currentVariationId={form.watch('lineageItemVariationId')}
+        hasCatalogItems={hasCatalogItems}
+        visibleCatalogItems={visibleCatalogItems}
+        originalVariationId={originalLineage.variationId}
+        originalName={originalLineage.name}
+        onValueChange={lineageOnValueChange}
+      />
 
-      {/* Task #623: when the server's pagination safety cap fires
-          (5,000 items / 20 pages — see `paginateCatalogObjects` in
-          server/services/square-provider.ts) the visible list is a
-          truncated prefix of the real catalog. Pre-#623 the admin
-          had no signal at all — surface it here so they understand
-          why some items are missing. */}
-      {isCatalogTruncated && (
-        <Alert variant="destructive" data-testid="alert-catalog-truncated">
-          <AlertTriangle className="size-4" />
-          <AlertTitle>This catalog is too large to fully load</AlertTitle>
-          <AlertDescription>
-            We stopped loading after a safety limit (5,000 items) was reached, so some
-            Square items aren't shown below. If you expected to see more, please contact
-            support.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <FormItem>
-        <FormLabel>Search Items</FormLabel>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            type="text"
-            placeholder="Search by item name…"
-            value={searchInput}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            disabled={!hasCatalogItems}
-            className="pl-8 pr-8"
-            data-testid="input-catalog-search"
-          />
-          {searchInput && (
-            <button
-              type="button"
-              onClick={() => handleSearchChange('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-              data-testid="button-clear-catalog-search"
-            >
-              <X className="size-4" />
-            </button>
-          )}
-        </div>
-        {isSearching && (
-          <p className="text-xs text-muted-foreground" data-testid="text-catalog-search-count">
-            {visibleCatalogItems.length === 0
-              ? 'No items match your search'
-              : `${visibleCatalogItems.length} of ${catalogItems.length} item${catalogItems.length === 1 ? '' : 's'} match`}
-          </p>
-        )}
-      </FormItem>
-
-      <FormItem>
-        <FormLabel>Filter by Category</FormLabel>
-        <Select
-          value={
-            !hasCatalogItems
-              ? undefined
-              : (selectedCategoryId || 'all')
-          }
-          onValueChange={(value) => {
-            const catId = value === 'all' ? null : value;
-            onCategoryChange(catId);
-            form.setValue('squareCategoryId', catId);
-            if (locationId) writeStoredFilter(categoryStorageKey(locationId), catId);
-          }}
-          disabled={!hasCatalogItems}
-        >
-          <FormControl>
-            <SelectTrigger>
-              <SelectValue placeholder={!hasCatalogItems ? "No Square items configured for this location" : "All Categories"} />
-            </SelectTrigger>
-          </FormControl>
-          <SelectContent>
-            {!hasCatalogItems && (
-              <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
-            )}
-            {hasCatalogItems && (
-              <>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                ))}
-              </>
-            )}
-          </SelectContent>
-        </Select>
-      </FormItem>
-
-      <FormItem>
-        <FormLabel className="flex items-center gap-2">
-          <span>Lineage Item</span>
-          {lineageMissingFromCatalog && (
-            <output
-              className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
-              title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
-              data-testid="warn-lineage-missing-from-catalog"
-            >
-              <AlertTriangle className="size-3" aria-hidden="true" />
-              Not in Square catalog
-            </output>
-          )}
-        </FormLabel>
-        <Select
-          value={
-            !hasCatalogItems
-              ? undefined
-              : (form.watch('lineageItemVariationId') || 'none')
-          }
-          onValueChange={(value) => {
-            if (value === 'none') {
-              form.setValue('squareLineageItemId', null);
-              form.setValue('lineageItemVariationId', null);
-              form.setValue('squareLineageItemName', null);
-              form.setValue('lineageFee', null);
-              return;
-            }
-            for (const item of catalogItems) {
-              const variation = item.variations.find(v => v.id === value);
-              if (variation) {
-                form.setValue('squareLineageItemId', item.id);
-                form.setValue('lineageItemVariationId', variation.id);
-                form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                const lineagePrice = variation.price || 0;
-                const prizeFundPrice = getPriceForVariation(form.getValues('prizeFundItemVariationId'));
-                const total = lineagePrice + (prizeFundPrice || 0);
-                if (total > 0) form.setValue('weeklyFee', total);
-                if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
-                return;
-              }
-            }
-            // The clicked value isn't in `catalogItems` — the only legitimate
-            // value here is the originally-saved Lineage row (rendered as the
-            // fallback below for items that have been hidden by the search /
-            // category filter, or removed from Square entirely). Restore the
-            // full saved snapshot so the form doesn't end up with the new
-            // variation id but the previous item id / name / fee.
-            if (
-              originalLineage.variationId &&
-              originalLineage.name &&
-              value === originalLineage.variationId
-            ) {
-              restoreLineageOriginal();
-            }
-          }}
-          disabled={!hasCatalogItems}
-        >
-          <FormControl>
-            <SelectTrigger>
-              <SelectValue placeholder={!hasCatalogItems ? "No Square items configured for this location" : "None"} />
-            </SelectTrigger>
-          </FormControl>
-          <SelectContent>
-            {!hasCatalogItems && (
-              <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
-            )}
-            {hasCatalogItems && (
-              <>
-                <SelectItem value="none">None</SelectItem>
-                {(() => {
-                  const savedId = originalLineage.variationId;
-                  const savedName = originalLineage.name;
-                  const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
-                  if (savedId && savedName && !isInList) {
-                    return <SelectItem key={savedId} value={savedId} data-testid="select-lineage-fallback">{savedName}</SelectItem>;
-                  }
-                  return null;
-                })()}
-                {visibleCatalogItems.map((item) =>
-                  item.variations.map((variation) => (
-                    <SelectItem key={variation.id} value={variation.id}>
-                      {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
-                      {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
-                    </SelectItem>
-                  ))
-                )}
-              </>
-            )}
-          </SelectContent>
-        </Select>
-      </FormItem>
-
-      <FormItem>
-        <FormLabel className="flex items-center gap-2">
-          <span>Prize Fund Item</span>
-          {prizeFundMissingFromCatalog && (
-            <output
-              className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
-              title="This item is no longer in your Square catalog. Re-pick a live item before bowlers check out."
-              data-testid="warn-prize-fund-missing-from-catalog"
-            >
-              <AlertTriangle className="size-3" aria-hidden="true" />
-              Not in Square catalog
-            </output>
-          )}
-        </FormLabel>
-        <Select
-          value={
-            !hasCatalogItems
-              ? undefined
-              : (form.watch('prizeFundItemVariationId') || 'none')
-          }
-          onValueChange={(value) => {
-            if (value === 'none') {
-              form.setValue('squarePrizeFundItemId', null);
-              form.setValue('prizeFundItemVariationId', null);
-              form.setValue('squarePrizeFundItemName', null);
-              form.setValue('prizeFundFee', null);
-              return;
-            }
-            for (const item of catalogItems) {
-              const variation = item.variations.find(v => v.id === value);
-              if (variation) {
-                form.setValue('squarePrizeFundItemId', item.id);
-                form.setValue('prizeFundItemVariationId', variation.id);
-                form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                const lineagePrice = getPriceForVariation(form.getValues('lineageItemVariationId'));
-                const prizeFundPrice = variation.price || 0;
-                const total = (lineagePrice || 0) + prizeFundPrice;
-                if (total > 0) form.setValue('weeklyFee', total);
-                if (prizeFundPrice > 0) form.setValue('prizeFundFee', prizeFundPrice);
-                return;
-              }
-            }
-            // See the Lineage handler above for why we restore the snapshot
-            // here instead of silently exiting.
-            if (
-              originalPrizeFund.variationId &&
-              originalPrizeFund.name &&
-              value === originalPrizeFund.variationId
-            ) {
-              restorePrizeFundOriginal();
-            }
-          }}
-          disabled={!hasCatalogItems}
-        >
-          <FormControl>
-            <SelectTrigger>
-              <SelectValue placeholder={!hasCatalogItems ? "No Square items configured for this location" : "None"} />
-            </SelectTrigger>
-          </FormControl>
-          <SelectContent>
-            {!hasCatalogItems && (
-              <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
-            )}
-            {hasCatalogItems && (
-              <>
-                <SelectItem value="none">None</SelectItem>
-                {(() => {
-                  const savedId = originalPrizeFund.variationId;
-                  const savedName = originalPrizeFund.name;
-                  const isInList = savedId && visibleCatalogItems.some(item => item.variations.some(v => v.id === savedId));
-                  if (savedId && savedName && !isInList) {
-                    return <SelectItem key={savedId} value={savedId} data-testid="select-prize-fund-fallback">{savedName}</SelectItem>;
-                  }
-                  return null;
-                })()}
-                {visibleCatalogItems.map((item) =>
-                  item.variations.map((variation) => (
-                    <SelectItem key={variation.id} value={variation.id}>
-                      {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
-                      {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
-                    </SelectItem>
-                  ))
-                )}
-              </>
-            )}
-          </SelectContent>
-        </Select>
-      </FormItem>
+      <LeagueSquareCatalogItemSelect
+        label="Prize Fund Item"
+        missingFromCatalog={prizeFundMissingFromCatalog}
+        missingTestId="warn-prize-fund-missing-from-catalog"
+        fallbackTestId="select-prize-fund-fallback"
+        currentVariationId={form.watch('prizeFundItemVariationId')}
+        hasCatalogItems={hasCatalogItems}
+        visibleCatalogItems={visibleCatalogItems}
+        originalVariationId={originalPrizeFund.variationId}
+        originalName={originalPrizeFund.name}
+        onValueChange={prizeFundOnValueChange}
+      />
     </div>
   );
 }

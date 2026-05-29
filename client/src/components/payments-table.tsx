@@ -44,6 +44,10 @@ interface Props {
   leagues?: League[];
 }
 
+// Stable default reference so the optional `leagues` prop doesn't create a
+// fresh array on every render.
+const EMPTY_LEAGUES: League[] = [];
+
 export function PaymentsTable({
   payments,
   filteredPayments,
@@ -53,7 +57,7 @@ export function PaymentsTable({
   onDelete,
   isRefundPending,
   isDeletePending,
-  leagues = [],
+  leagues = EMPTY_LEAGUES,
 }: Props) {
   const [resendTarget, setResendTarget] = useState<Payment | null>(null);
   const leagueLocationMap = new Map<number, number | null>();

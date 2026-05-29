@@ -9,8 +9,7 @@ import { csrfFetch, queryClient } from '@/lib/queryClient';
 import { calculateFinancials, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { League, Bowler, Payment, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
-import { PaymentOverviewCard } from "@/components/payment-overview-card";
-import { PaymentSetupForm } from "@/components/payment-setup-form";
+import { PaymentStatusView } from "@/components/payment-status-view";
 import { useBowlerPaymentSubmit } from "@/hooks/use-bowler-payment-submit";
 
 interface BowlerLinkRow {
@@ -117,9 +116,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   // `bowlerLeagues` to consult.
   const acceptedPartners = useMemo(() => {
     const all = linksResponse?.data?.links ?? [];
-    return all
-      .filter((l) => l.status === "accepted")
-      .map((l) => ({ id: l.partnerBowlerId, name: l.partnerName }));
+    return all.flatMap((l) =>
+      l.status === "accepted" ? [{ id: l.partnerBowlerId, name: l.partnerName }] : []
+    );
   }, [linksResponse]);
 
   // Task #715: per-partner past-due in this league. The combined
@@ -434,78 +433,64 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   });
   const activeSchedule = scheduleResponse?.success ? scheduleResponse.data ?? undefined : undefined;
 
-  if (showPaymentSetup) {
-    return (
-      <PaymentSetupForm
-        league={league}
-        weeklyFee={weeklyFee}
-        totalWeeks={totalWeeks}
-        paymentMode={paymentMode}
-        selectedSchedule={selectedSchedule}
-        selectedWeeks={selectedWeeks}
-        maxPayableWeeks={maxPayableWeeks}
-        fixedAmount={fixedAmount}
-        fixedAmountType={fixedAmountType}
-        financials={financials}
-        seasonPresets={seasonPresets}
-        savedCards={savedCards}
-        cardMode={cardMode}
-        selectedSavedCardId={selectedSavedCardId}
-        cardContainerRef={cardContainerRef}
-        isInitialized={isInitialized}
-        squareError={squareError}
-        storeCard={storeCard}
-        isSubmitting={isSubmitting}
-        onWeekChange={handleWeekChangeWrapper}
-        onFixedAmount={(amount, type) => {
-          setFixedAmount(amount);
-          setFixedAmountType(type);
-          if (type === 'pastDue' && amount !== null) {
-            setSelectedWeeks(Math.max(1, Math.round(amount / weeklyFee)));
-          } else if (type === 'remaining') {
-            setSelectedWeeks(maxPayableWeeks);
-          }
-        }}
-        setCardMode={setCardMode}
-        setSelectedSavedCardId={setSelectedSavedCardId}
-        setStoreCard={setStoreCard}
-        cleanupCard={cleanupCard}
-        calculateTotalAmount={calculateTotalAmount}
-        onSubmit={handleSubmitPayment}
-        onCancel={() => {
-          setShowPaymentSetup(false);
-        }}
-        applePayAvailable={applePayAvailable}
-        googlePayAvailable={googlePayAvailable}
-        applePayRef={applePayRef}
-        googlePayRef={googlePayRef}
-        onApplePayClick={handleApplePayClick}
-        onGooglePayClick={handleGooglePayClick}
-        isWalletProcessing={isWalletProcessing}
-        applePayTokenizeOnly={applePayTokenizeOnly}
-        googlePayTokenizeOnly={googlePayTokenizeOnly}
-        partnerOptions={partnerOptions}
-        selfBowler={{ id: bowler.id, name: bowler.name || 'You' }}
-        targetBowlerId={targetBowlerId}
-        setTargetBowlerId={setTargetBowlerId}
-        // Autopay only supports self pay (combined-autopay is configured
-        // separately by the schedule owner). Lock the picker to self in
-        // autopay mode; allow partner selection in onetime / upfront.
-        allowPartnerSelection={paymentMode !== 'autopay'}
-        additionalBowlerIds={additionalBowlerIds}
-        setAdditionalBowlerIds={setAdditionalBowlerIds}
-        partnerPastDueByBowlerId={partnerPastDueByBowlerId}
-      />
-    );
-  }
-  
   return (
-    <PaymentOverviewCard
+    <PaymentStatusView
+      showPaymentSetup={showPaymentSetup}
       league={league}
+      bowler={bowler}
       weeklyFee={weeklyFee}
+      totalWeeks={totalWeeks}
+      paymentMode={paymentMode}
+      selectedSchedule={selectedSchedule}
+      selectedWeeks={selectedWeeks}
+      maxPayableWeeks={maxPayableWeeks}
+      fixedAmount={fixedAmount}
+      fixedAmountType={fixedAmountType}
       financials={financials}
+      seasonPresets={seasonPresets}
+      savedCards={savedCards}
+      cardMode={cardMode}
+      selectedSavedCardId={selectedSavedCardId}
+      cardContainerRef={cardContainerRef}
+      isInitialized={isInitialized}
+      squareError={squareError}
+      storeCard={storeCard}
+      isSubmitting={isSubmitting}
+      onWeekChange={handleWeekChangeWrapper}
+      onFixedAmount={(amount, type) => {
+        setFixedAmount(amount);
+        setFixedAmountType(type);
+        if (type === 'pastDue' && amount !== null) {
+          setSelectedWeeks(Math.max(1, Math.round(amount / weeklyFee)));
+        } else if (type === 'remaining') {
+          setSelectedWeeks(maxPayableWeeks);
+        }
+      }}
+      setCardMode={setCardMode}
+      setSelectedSavedCardId={setSelectedSavedCardId}
+      setStoreCard={setStoreCard}
+      cleanupCard={cleanupCard}
+      calculateTotalAmount={calculateTotalAmount}
+      onSubmit={handleSubmitPayment}
+      onCancel={() => {
+        setShowPaymentSetup(false);
+      }}
+      applePayAvailable={applePayAvailable}
+      googlePayAvailable={googlePayAvailable}
+      applePayRef={applePayRef}
+      googlePayRef={googlePayRef}
+      onApplePayClick={handleApplePayClick}
+      onGooglePayClick={handleGooglePayClick}
+      isWalletProcessing={isWalletProcessing}
+      applePayTokenizeOnly={applePayTokenizeOnly}
+      googlePayTokenizeOnly={googlePayTokenizeOnly}
+      partnerOptions={partnerOptions}
+      targetBowlerId={targetBowlerId}
+      setTargetBowlerId={setTargetBowlerId}
+      additionalBowlerIds={additionalBowlerIds}
+      setAdditionalBowlerIds={setAdditionalBowlerIds}
+      partnerPastDueByBowlerId={partnerPastDueByBowlerId}
       activeSchedule={activeSchedule}
-      bowlerId={bowler.id}
       onSetupPayment={(mode) => {
         setPaymentMode(mode);
         if (mode === 'autopay') {

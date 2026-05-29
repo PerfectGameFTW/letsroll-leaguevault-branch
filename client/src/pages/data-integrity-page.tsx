@@ -536,7 +536,7 @@ export default function DataIntegrityPage() {
                     <TableHeader>
                       <TableRow>
                         {headerForType().map((h, i) => (
-                          <TableHead key={i} className={i === headerForType().length - 1 ? 'text-right' : ''}>{h}</TableHead>
+                          <TableHead key={h} className={i === headerForType().length - 1 ? 'text-right' : ''}>{h}</TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>

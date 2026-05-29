@@ -109,9 +109,16 @@ export default function WeeklyPaymentsPage() {
   }, [enrichedBowlerLeagues]);
 
   const bowlers = useMemo(() => {
-    return sortedBowlerLeagues
-      .map(bl => bl.bowler!)
-      .filter((bowler, index, self) => self.findIndex(b => b.id === bowler.id) === index);
+    const seen = new Set<number>();
+    const unique: NonNullable<(typeof sortedBowlerLeagues)[number]["bowler"]>[] = [];
+    for (const bl of sortedBowlerLeagues) {
+      const bowler = bl.bowler!;
+      if (!seen.has(bowler.id)) {
+        seen.add(bowler.id);
+        unique.push(bowler);
+      }
+    }
+    return unique;
   }, [sortedBowlerLeagues]);
 
   const bowlerTeamMap = useMemo(() => {

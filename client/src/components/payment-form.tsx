@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,20 +13,11 @@ import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { Form } from "@/components/ui/form";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { InsertPayment, Bowler, League, User, ApiResponse } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, AlertCircle, AlertTriangle, Info } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CLOVER_FIELD_LABELS, SQUARE_FIELD_LABELS, type RequiredCloverField, type RequiredSquareField } from "@shared/schema";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
 import { csrfFetch } from '@/lib/queryClient';
 import {
@@ -39,6 +29,11 @@ import { useLocation } from "wouter";
 import { PaymentFormFields } from "@/components/payment-form-fields";
 import { PaymentMethodTabs } from "@/components/payment-method-tabs";
 import { usePaymentFormSubmit } from "@/hooks/use-payment-form-submit";
+import { PaymentFeeInfoAlert } from "@/components/payment-fee-info-alert";
+import { PaymentCheckNumberField } from "@/components/payment-check-number-field";
+import { PaymentReceiptEmailField } from "@/components/payment-receipt-email-field";
+import { PaymentProviderNotConfiguredAlert } from "@/components/payment-provider-not-configured-alert";
+import { PaymentFormActions } from "@/components/payment-form-actions";
 
 interface SavedCard {
   id: string;
@@ -75,11 +70,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   });
   const leagueInfo = leagueData?.data;
 
-  // Admins (system_admin or org_admin) can actually fix a misconfigured
-  // payment provider. Non-admin operators get the static "ask your league
-  // admin" copy with no Open Settings action — they can't reach the
-  // integrations page anyway. (Task #583, mirrors the deep-link rendered
-  // by `providerNotConfiguredToast` in client/src/lib/provider-not-configured.tsx.)
+  // Admins (system_admin or org_admin) can fix a misconfigured provider;
+  // non-admins get the static "ask your league admin" copy. (Task #583,
+  // mirrors `providerNotConfiguredToast` in lib/provider-not-configured.)
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: 1000 * 60 * 5,
@@ -109,24 +102,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     isProviderConfigured,
     missingFields: providerMissingFields,
   } = usePaymentProvider(leagueInfo?.locationId ?? null);
-  // Both Clover (#575) and Square (#579) now expose per-field "missing"
-  // data via `/payments-provider/config`. When the active provider for
-  // the location is partially configured we replace the card UI with a
-  // friendly Alert listing the missing fields and disable the submit
-  // button — instead of trying to spin up a tokenizer that will fail.
-  const cloverNotFullyConfigured =
-    isClover && !providerLoading && !isProviderConfigured;
-  const squareNotFullyConfigured =
-    isSquare && !providerLoading && !isProviderConfigured;
+  // Both Clover (#575) and Square (#579) expose per-field "missing" data via
+  // `/payments-provider/config`. When the active provider is partially
+  // configured we replace the card UI with an alert listing missing fields
+  // and disable submit — instead of spinning up a tokenizer that will fail.
   const providerNotFullyConfigured =
-    cloverNotFullyConfigured || squareNotFullyConfigured;
-  const providerLabel = isClover ? 'Clover' : 'Square';
-  const providerFieldLabels: Record<string, string> = isClover
-    ? CLOVER_FIELD_LABELS
-    : SQUARE_FIELD_LABELS;
-  function labelForMissingField(f: RequiredCloverField | RequiredSquareField): string {
-    return providerFieldLabels[f] ?? f;
-  }
+    (isClover || isSquare) && !providerLoading && !isProviderConfigured;
 
   const {
     card: squareCard,
@@ -198,11 +179,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
   // Default the card picker to the bowler's first saved card whenever the
-  // bowler, payment type, or loaded saved-card set changes (and back to
-  // "new" otherwise). Done as a render-time adjustment keyed on those
-  // inputs rather than an effect so the choice settles before paint and
-  // only re-applies when one of the inputs actually changes — a manual
-  // switch the user makes afterward is never clobbered.
+  // bowler, payment type, or loaded saved-card set changes (and back to "new"
+  // otherwise). Done as a render-time adjustment so the choice settles
+  // before paint; a manual switch the user makes afterward is not clobbered.
   const savedCardSelectionKey = `${firstSavedCardId ?? ''}|${selectedBowlerId ?? ''}|${paymentType}`;
   const [prevSavedCardSelectionKey, setPrevSavedCardSelectionKey] = useState<string | undefined>(undefined);
   if (savedCardSelectionKey !== prevSavedCardSelectionKey) {
@@ -225,34 +204,26 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       }
       return;
     }
-
     if (providerLoading || !cardContainerRef.current) {
       return;
     }
-
-    // Don't even attempt to spin up the active provider's tokenizer
-    // when the location's credentials are missing/partial — the SDK
-    // load would fail with a generic error and leave the user
-    // staring at a broken card form. The friendly notice rendered
-    // below tells admins exactly what to fix. (Tasks #575 + #579.)
+    // Don't spin up the active provider's tokenizer when the location's
+    // credentials are missing/partial — the SDK load would fail with a
+    // generic error. The friendly notice below tells admins what to fix.
+    // (Tasks #575 + #579.)
     if (providerNotFullyConfigured) {
       return;
     }
-    
     if (isInitialized) {
       setIsSquareReady(true);
       return;
     }
-    
     if (initializationAttempted.current && isSquareReady) {
       return;
     }
-
     initializationAttempted.current = true;
     setPaymentError(null);
-    
     const container = cardContainerRef.current;
-    
     const initTimeout = setTimeout(() => {
       if (!isSquareReady) {
         setPaymentError('Failed to initialize payment form in a timely manner');
@@ -265,7 +236,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         });
       }
     }, 5000);
-    
     setTimeout(() => {
       initializeCard(container)
         .then(() => {
@@ -277,7 +247,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           setPaymentError(error instanceof Error ? error.message : 'Failed to initialize payment form');
           initializationAttempted.current = false;
           clearTimeout(initTimeout);
-          
           form.setValue("type", "cash", { shouldDirty: false });
           toast({
             title: "Payment Form Notice",
@@ -286,7 +255,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           });
         });
     }, 300);
-    
     return () => {
       clearTimeout(initTimeout);
     };
@@ -301,10 +269,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open, form.reset]);
 
-  // Clear the inline receipt-email when the operator switches to a
-  // different bowler so we never accidentally reuse the prior bowler's
-  // typed-in address. Done as a render-time adjustment keyed on the
-  // selected bowler rather than an effect.
+  // Clear inline receipt-email when operator switches bowlers so we never
+  // reuse the prior bowler's typed address. Render-time adjustment keyed on
+  // the selected bowler rather than an effect.
   const [prevReceiptBowlerId, setPrevReceiptBowlerId] = useState(selectedBowlerId);
   if (selectedBowlerId !== prevReceiptBowlerId) {
     setPrevReceiptBowlerId(selectedBowlerId);
@@ -315,22 +282,17 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     const bowlerId = form.getValues('bowlerId');
     const amount = form.getValues('amount');
     const currentLeagueId = form.getValues('leagueId');
-
     if (!bowlerId || !amount || !currentLeagueId) {
       setPaymentError('Please select a bowler and enter an amount before paying');
       return;
     }
-
-    // thread the inline-captured email through wallet
-    // (Apple Pay / Google Pay) charges too, so Square's hosted
-    // receipt fires for bowlers with no email on file. Mirrors the
-    // server's BUYER_EMAIL_REQUIRED gate to avoid an avoidable 400
-    // round-trip mid-wallet-flow.
+    // Thread the inline-captured email through wallet (Apple/Google Pay)
+    // charges so Square's hosted receipt fires for bowlers with no email on
+    // file. Mirrors the server's BUYER_EMAIL_REQUIRED gate. Only Square
+    // enforces it; Clover doesn't emit hosted receipts so it must NOT be
+    // blocked here.
     const selected = bowlers.find((b) => b.id === bowlerId);
     const trimmedReceiptEmail = receiptEmail.trim();
-    // only Square enforces
-    // BUYER_EMAIL_REQUIRED server-side; Clover doesn't emit
-    // hosted receipts so it must NOT be blocked here.
     if (!isClover && !selected?.email && !trimmedReceiptEmail) {
       setPaymentError(
         'This bowler has no email on file. Enter an email for the receipt before paying with Apple Pay / Google Pay.',
@@ -338,7 +300,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
     const overrideEmail = !selected?.email && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
-
     try {
       const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
@@ -352,12 +313,10 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           ...(overrideEmail ? { buyerEmail: overrideEmail } : {}),
         }),
       });
-
       const responseData = await response.json();
       if (!response.ok) {
         throw makeApiError(responseData, response.status, 'Payment failed');
       }
-
       const label = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
       if (responseData.deduplicated) {
         toast({ title: "Already Processed", description: `This ${label} payment was already recorded.` });
@@ -408,8 +367,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open, cleanupWallet]);
 
-  // when the selected bowler has no email on file, capture
-  // one inline so Square's hosted receipt still fires for this charge.
+  // When the selected bowler has no email on file, capture one inline so
+  // Square's hosted receipt still fires for this charge.
   const selectedBowler = bowlers.find((b) => b.id === selectedBowlerId);
   const bowlerHasEmail = !!selectedBowler?.email;
 
@@ -431,24 +390,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
-
-        {(leagueInfo?.squareLineageItemName || leagueInfo?.squarePrizeFundItemName) && (
-          <Alert>
-            <Info className="size-4" />
-            <AlertDescription>
-              <div className="space-y-1">
-                <div>Weekly fee: <span className="font-medium">${(leagueInfo.weeklyFee / 100).toFixed(2)}</span></div>
-                {leagueInfo.squareLineageItemName && (
-                  <div className="text-xs text-muted-foreground">Lineage: {leagueInfo.squareLineageItemName}</div>
-                )}
-                {leagueInfo.squarePrizeFundItemName && (
-                  <div className="text-xs text-muted-foreground">Prize Fund: {leagueInfo.squarePrizeFundItemName}</div>
-                )}
-              </div>
-            </AlertDescription>
-          </Alert>
+        {leagueInfo && (leagueInfo.squareLineageItemName || leagueInfo.squarePrizeFundItemName) && (
+          <PaymentFeeInfoAlert league={leagueInfo} />
         )}
-
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {paymentError && (
@@ -457,114 +401,30 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 <AlertDescription>{paymentError}</AlertDescription>
               </Alert>
             )}
-
             <PaymentFormFields form={form} bowlers={bowlers} />
-
             <PaymentMethodTabs
               form={form}
               paymentType={paymentType}
               squareLoadFailed={squareLoadFailed}
             />
-
-            {paymentType === "check" && (
-              <FormField
-                control={form.control}
-                name="checkNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Check Number</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {/* only Square enforces
-                BUYER_EMAIL_REQUIRED. Don't render the inline gate
-                for Clover — it has no hosted-receipt support
+            {paymentType === "check" && <PaymentCheckNumberField form={form} />}
+            {/* only Square enforces BUYER_EMAIL_REQUIRED. Don't render the
+                inline gate for Clover — it has no hosted-receipt support
                 and the server doesn't require buyerEmail. */}
             {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && !isClover && (
-              <FormItem>
-                <FormLabel>
-                  Email for receipt <span className="text-destructive">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="bowler@example.com"
-                    value={receiptEmail}
-                    onChange={(e) => setReceiptEmail(e.target.value)}
-                  />
-                </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  This bowler has no email on file. Add one to send a Square receipt.
-                </p>
-              </FormItem>
+              <PaymentReceiptEmailField value={receiptEmail} onChange={setReceiptEmail} />
             )}
-
             {paymentType === "credit_card" && providerNotFullyConfigured && (
-              <Alert
-                variant="destructive"
-                data-testid={
-                  isClover
-                    ? "alert-clover-not-configured"
-                    : "alert-square-not-configured"
-                }
-              >
-                <AlertTriangle className="size-4" />
-                <AlertTitle>{providerLabel} isn't fully set up for this location</AlertTitle>
-                <AlertDescription>
-                  <p className="text-sm">
-                    Card payments are unavailable until every required {providerLabel}{' '}
-                    credential is filled in.
-                  </p>
-                  {providerMissingFields.length > 0 && (
-                    <p className="text-xs mt-2">
-                      Missing:{" "}
-                      <span className="font-medium">
-                        {providerMissingFields
-                          .map((f) => labelForMissingField(f))
-                          .join(", ")}
-                      </span>
-                      .
-                    </p>
-                  )}
-                  <p className="text-xs mt-2">
-                    {isAdmin
-                      ? `Finish configuring ${providerLabel} in Settings to enable card payments. Cash and check payments still work in the meantime.`
-                      : `Ask your league admin to finish configuring ${providerLabel} in Settings, then try again. Cash and check payments still work in the meantime.`}
-                  </p>
-                  {isAdmin && (
-                    <div className="mt-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        data-testid={
-                          isClover
-                            ? "button-clover-not-configured-open-settings"
-                            : "button-square-not-configured-open-settings"
-                        }
-                        onClick={() => {
-                          const locId = leagueInfo?.locationId ?? null;
-                          navigate(
-                            locId
-                              ? `/integrations?location=${locId}`
-                              : '/integrations',
-                          );
-                        }}
-                      >
-                        Open Settings
-                      </Button>
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
+              <PaymentProviderNotConfiguredAlert
+                isClover={isClover}
+                missingFields={providerMissingFields}
+                isAdmin={isAdmin}
+                onOpenSettings={() => {
+                  const locId = leagueInfo?.locationId ?? null;
+                  navigate(locId ? `/integrations?location=${locId}` : '/integrations');
+                }}
+              />
             )}
-
             {paymentType === "credit_card" && !providerNotFullyConfigured && (
               <PaymentCreditCardSection
                 form={form}
@@ -591,43 +451,20 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 googlePayTokenizeOnly={googlePayTokenizeOnly}
               />
             )}
-
-            <div className="flex justify-end gap-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  form.formState.isSubmitting || 
-                  isWalletProcessing ||
-                  (paymentType === "credit_card" && providerNotFullyConfigured) ||
-                  (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
-                  (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId) ||
-                  // inline email is
-                  // required for Square card charges when bowler has
-                  // none on file. Server enforces this with
-                  // BUYER_EMAIL_REQUIRED; mirrored here so the user
-                  // never sees an avoidable round-trip.
-                  // Clover doesn't
-                  // enforce BUYER_EMAIL_REQUIRED so excluded here.
-                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim() && !isClover)
-                }
-              >
-                {form.formState.isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Processing…
-                  </>
-                ) : (
-                  "Submit Payment"
-                )}
-              </Button>
-            </div>
+            <PaymentFormActions
+              onCancel={onClose}
+              isSubmitting={form.formState.isSubmitting}
+              isWalletProcessing={isWalletProcessing}
+              paymentType={paymentType}
+              providerNotFullyConfigured={providerNotFullyConfigured}
+              cardMode={cardMode}
+              isSquareReady={isSquareReady}
+              selectedSavedCardId={selectedSavedCardId}
+              selectedBowlerId={selectedBowlerId}
+              bowlerHasEmail={bowlerHasEmail}
+              receiptEmail={receiptEmail}
+              isClover={isClover}
+            />
           </form>
         </Form>
       </DialogContent>

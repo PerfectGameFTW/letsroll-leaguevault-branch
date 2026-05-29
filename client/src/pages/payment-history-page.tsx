@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { PageLoadingState, PageErrorState } from "@/components/page-states";
-import { Link, useSearch, useLocation as useWouterLocation } from "wouter";
-import { ChevronDown } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
+import { useSearch, useLocation as useWouterLocation } from "wouter";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCloverPayment } from "@/hooks/use-clover-payment";
 import { usePaymentProvider } from "@/hooks/use-payment-provider";
@@ -20,12 +18,13 @@ import {
 } from "@/lib/provider-not-configured";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
-import { PaymentSummaryCards } from "@/components/payment-summary-cards";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { BowlerPaymentTable } from "@/components/bowler-payment-table";
-import { BowlerPaymentDialog } from "@/components/bowler-payment-dialog";
-import { LeagueSwitcherSheet } from "@/components/league-switcher-sheet";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
+import { AuthErrorView } from "./payment-history-page/auth-error-view";
+import { NoBowlerView } from "./payment-history-page/no-bowler-view";
+import { BowlerErrorView } from "./payment-history-page/bowler-error-view";
+import { NoLeaguesView } from "./payment-history-page/no-leagues-view";
+import { NoLeagueView } from "./payment-history-page/no-league-view";
+import { PaymentHistoryContent } from "./payment-history-page/payment-history-content";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
@@ -366,159 +365,86 @@ export default function PaymentHistoryPage() {
   }
 
   if (userError) {
-    return (
-      <BowlerLayout bowlerName="Authentication Error" leagueName="Error">
-        <PageErrorState message="Please log in to view payment history" />
-        <div className="text-center mt-4">
-          <Link href="/login" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
-            Log In
-          </Link>
-        </div>
-      </BowlerLayout>
-    );
+    return <AuthErrorView />;
   }
-  
+
   if (currentUser?.data && !currentUser.data.bowlerId) {
     return (
-      <BowlerLayout bowlerName={currentUser.data.name || "Administrator"} leagueName="No Bowler Account">
-        <div className="text-center space-y-4">
-          <p>You don't have a bowler account linked to your user profile.</p>
-          {currentUser.data.role === 'system_admin' && (
-            <div className="p-4 border rounded-md bg-amber-50 max-w-md mx-auto">
-              <p className="text-amber-800">As an administrator, you can view payment history by selecting a specific bowler.</p>
-            </div>
-          )}
-          <Link href="/" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
-            Return to Dashboard
-          </Link>
-        </div>
-      </BowlerLayout>
+      <NoBowlerView
+        userName={currentUser.data.name}
+        isSystemAdmin={currentUser.data.role === 'system_admin'}
+      />
     );
   }
 
   if (bowlerId && bowlerError) {
-    return (
-      <BowlerLayout bowlerName="Error" leagueName="Error">
-        <div className="text-center text-destructive">
-          Failed to load bowler information
-        </div>
-      </BowlerLayout>
-    );
+    return <BowlerErrorView />;
   }
 
   if (!bowlerDetailsResponse?.data?.bowlerLeagues?.length) {
-    return (
-      <BowlerLayout bowlerName={bowlerName || 'Bowler'} leagueName="No League">
-        <div className="text-center space-y-4">
-          <p>You are not registered in any leagues</p>
-          <Link href="/bowler-dashboard" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
-            Return to Dashboard
-          </Link>
-        </div>
-      </BowlerLayout>
-    );
+    return <NoLeaguesView bowlerName={bowlerName} />;
   }
 
   if (!league) {
     return (
-      <BowlerLayout bowlerName={bowlerName} leagueName="League not found">
-        <div className="text-center space-y-4">
-          <p>League information cannot be loaded for this bowler</p>
-          <div className="text-left border p-4 rounded-md bg-muted/30">
-            <p className="font-mono text-sm">BowlerId: {bowlerId}</p>
-            <p className="font-mono text-sm">LeagueId: {leagueId}</p>
-          </div>
-          <Link href="/bowler-dashboard" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
-            Return to Dashboard
-          </Link>
-        </div>
-      </BowlerLayout>
+      <NoLeagueView
+        bowlerName={bowlerName}
+        bowlerId={bowlerId}
+        leagueId={leagueId}
+      />
     );
   }
 
   return (
-    <BowlerLayout bowlerName={bowlerName} leagueName={league.name} currentLeagueId={leagueId}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Payment History</h1>
-          {hasMultipleLeagues ? (
-            <button type="button"
-              onClick={() => setLeagueSheetOpen(true)}
-              className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors mb-4"
-            >
-              <span>{league.name}</span>
-              <ChevronDown className="size-4" />
-            </button>
-          ) : (
-            <p className="text-muted-foreground mb-4">
-              {league.name}
-            </p>
-          )}
-        </div>
-
-        <ErrorBoundary level="section">
-          <PaymentSummaryCards
-            totalWeeksInSeason={totalWeeksInSeason}
-            fullSeasonAmount={fullSeasonAmount}
-            weeklyFee={league?.weeklyFee || 0}
-            weeksDueCount={weeksDueCount}
-            totalSeasonDues={totalSeasonDues}
-            weeksPaid={weeksPaid}
-            totalPaidAmount={totalPaidAmount}
-            amountPastDue={amountPastDue}
-            remainingBalance={remainingBalance}
-            doublePay={doublePay}
-            onPayPastDue={() => setPayDialogType('pastdue')}
-            onPayRemaining={() => setPayDialogType('remaining')}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary level="section">
-          <BowlerPaymentDialog
-            payDialogType={payDialogType}
-            onClose={() => setPayDialogType(null)}
-            amountPastDue={amountPastDue}
-            remainingBalance={remainingBalance}
-            savedCards={savedCards}
-            cardMode={cardMode}
-            setCardMode={setCardMode}
-            selectedSavedCardId={selectedSavedCardId}
-            setSelectedSavedCardId={setSelectedSavedCardId}
-            storeCard={storeCard}
-            setStoreCard={setStoreCard}
-            isInitialized={isInitialized}
-            isSubmitting={isSubmitting}
-            onSubmit={handleDialogPayment}
-            initializeCard={initializeCard}
-            cleanupCard={cleanupCard}
-            applePayAvailable={applePayAvailable}
-            googlePayAvailable={googlePayAvailable}
-            applePayTokenizeOnly={applePayTokenizeOnly}
-            googlePayTokenizeOnly={googlePayTokenizeOnly}
-            applePayRef={applePayRef}
-            googlePayRef={googlePayRef}
-            onApplePayClick={handleApplePayClick}
-            onGooglePayClick={handleGooglePayClick}
-            isWalletProcessing={isWalletBusy || isWalletProcessing}
-            bowlerHasEmail={!!bowlerEmail || isClover}
-            receiptEmail={receiptEmail}
-            onReceiptEmailChange={setReceiptEmail}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary level="section">
-          <BowlerPaymentTable payments={bowlerPayments} league={league} />
-        </ErrorBoundary>
-      </div>
-
-      <LeagueSwitcherSheet
-        open={leagueSheetOpen}
-        onClose={() => setLeagueSheetOpen(false)}
-        bowlerLeagues={bowlerLeagues}
-        leagueMap={leagueMap}
-        selectedLeagueId={leagueId}
-        onSelect={setSelectedLeagueId}
-      />
-    </BowlerLayout>
+    <PaymentHistoryContent
+      bowlerName={bowlerName}
+      league={league}
+      leagueId={leagueId}
+      hasMultipleLeagues={hasMultipleLeagues}
+      leagueSheetOpen={leagueSheetOpen}
+      onOpenLeagueSheet={() => setLeagueSheetOpen(true)}
+      onCloseLeagueSheet={() => setLeagueSheetOpen(false)}
+      bowlerLeagues={bowlerLeagues}
+      leagueMap={leagueMap}
+      onSelectLeague={setSelectedLeagueId}
+      totalWeeksInSeason={totalWeeksInSeason}
+      fullSeasonAmount={fullSeasonAmount}
+      weeksDueCount={weeksDueCount}
+      totalSeasonDues={totalSeasonDues}
+      weeksPaid={weeksPaid}
+      totalPaidAmount={totalPaidAmount}
+      amountPastDue={amountPastDue}
+      remainingBalance={remainingBalance}
+      doublePay={doublePay}
+      onPayPastDue={() => setPayDialogType('pastdue')}
+      onPayRemaining={() => setPayDialogType('remaining')}
+      payDialogType={payDialogType}
+      onCloseDialog={() => setPayDialogType(null)}
+      savedCards={savedCards}
+      cardMode={cardMode}
+      setCardMode={setCardMode}
+      selectedSavedCardId={selectedSavedCardId}
+      setSelectedSavedCardId={setSelectedSavedCardId}
+      storeCard={storeCard}
+      setStoreCard={setStoreCard}
+      isInitialized={isInitialized}
+      isSubmitting={isSubmitting}
+      onSubmit={handleDialogPayment}
+      initializeCard={initializeCard}
+      cleanupCard={cleanupCard}
+      applePayAvailable={applePayAvailable}
+      googlePayAvailable={googlePayAvailable}
+      applePayTokenizeOnly={applePayTokenizeOnly}
+      googlePayTokenizeOnly={googlePayTokenizeOnly}
+      applePayRef={applePayRef}
+      googlePayRef={googlePayRef}
+      onApplePayClick={handleApplePayClick}
+      onGooglePayClick={handleGooglePayClick}
+      isWalletProcessing={isWalletBusy || isWalletProcessing}
+      bowlerHasEmail={!!bowlerEmail || isClover}
+      receiptEmail={receiptEmail}
+      onReceiptEmailChange={setReceiptEmail}
+      bowlerPayments={bowlerPayments}
+    />
   );
 }

@@ -2,37 +2,19 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Save, Pencil, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LANGUAGE_AUTO,
-  LANGUAGE_OPTIONS,
-  languageLabelFor,
   languageSelectionToWire,
   normalizeStoredLanguage,
 } from "@/lib/preferred-language";
 import type { PaymentSyncStatus, User } from "@shared/schema";
 import { parsePaymentSyncStatus } from "@shared/schema";
+import { ProfileInfoView } from "./profile-info-view";
+import { ProfileInfoForm } from "./profile-info-form";
 
 // Server augments the /api/user response with a derived
 // `paymentSyncStatus` ('pending_retry' if the linked bowler row has
@@ -54,7 +36,7 @@ const profileSchema = z.object({
   preferredLanguage: z.string(),
 });
 
-type ProfileFormData = z.infer<typeof profileSchema>;
+export type ProfileFormData = z.infer<typeof profileSchema>;
 
 // Defensive fallback when a 429 response from the retry endpoint is
 // missing both `Retry-After` and `RateLimit-Reset` headers (task #441).
@@ -356,154 +338,22 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
       </CardHeader>
       <CardContent>
         {!isEditing ? (
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Name</p>
-              <p className="text-sm mt-1">{currentUser.name}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Email</p>
-              <p className="text-sm mt-1">{currentUser.email}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Phone</p>
-              <p className="text-sm mt-1">{currentUser.phone || "Not provided"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Preferred language</p>
-              <p className="text-sm mt-1" data-testid="text-preferred-language">
-                {languageLabelFor(currentUser.preferredLanguage)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setIsEditing(true)} className="flex items-center gap-2">
-                <Pencil className="size-4" />
-                Edit Profile
-              </Button>
-              {showRetry && (
-                <Button
-                  variant="outline"
-                  onClick={() => retryMutation.mutate()}
-                  disabled={retryMutation.isPending || inRetryCooldown}
-                  className="flex items-center gap-2"
-                  data-testid="button-retry-payment-sync"
-                >
-                  {retryMutation.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-4" />
-                  )}
-                  Retry payment sync
-                </Button>
-              )}
-            </div>
-            {showRetry && inRetryCooldown && (
-              <p
-                className="text-xs text-muted-foreground"
-                data-testid="text-retry-cooldown"
-              >
-                Try again in {cooldownSecondsLeft}s
-              </p>
-            )}
-            {showRetry && !inRetryCooldown && (
-              <p className="text-xs text-muted-foreground">
-                Your payment profile is temporarily out of date. We're retrying in the background; use this button to retry now.
-              </p>
-            )}
-          </div>
+          <ProfileInfoView
+            currentUser={currentUser}
+            showRetry={showRetry}
+            inRetryCooldown={inRetryCooldown}
+            cooldownSecondsLeft={cooldownSecondsLeft}
+            retryPending={retryMutation.isPending}
+            onEdit={() => setIsEditing(true)}
+            onRetry={() => retryMutation.mutate()}
+          />
         ) : (
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl><Input type="email" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone</FormLabel>
-                    <FormControl>
-                      <Input type="tel" placeholder="(555) 555-5555" {...field} value={field.value || ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="preferredLanguage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Preferred language</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-preferred-language">
-                          <SelectValue placeholder="Auto (follow my browser)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value={LANGUAGE_AUTO} data-testid="option-language-auto">
-                          Auto (follow my browser)
-                        </SelectItem>
-                        {LANGUAGE_OPTIONS.map(opt => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value}
-                            data-testid={`option-language-${opt.value}`}
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Used for security emails like password-change notifications.
-                    </p>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex gap-2 pt-1">
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? (
-                    <><Loader2 className="mr-2 size-4 animate-spin" />Saving…</>
-                  ) : (
-                    <><Save className="mr-2 size-4" />Save Changes</>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => { form.reset(); setIsEditing(false); }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </Form>
+          <ProfileInfoForm
+            form={form}
+            isSaving={mutation.isPending}
+            onSubmit={(data) => mutation.mutate(data)}
+            onCancel={() => { form.reset(); setIsEditing(false); }}
+          />
         )}
       </CardContent>
     </Card>

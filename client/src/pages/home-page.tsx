@@ -105,11 +105,11 @@ export default function HomePage() {
 
   const activeLeagues = leagues.filter((l: League) => l.active);
   const activeLeagueIds = new Set(activeLeagues.map((l: League) => l.id));
-  const activeBowlerIds = new Set(
-    bowlerLeaguesData
-      .filter((bl: BowlerLeague) => bl.active && activeLeagueIds.has(bl.leagueId))
-      .map((bl: BowlerLeague) => bl.bowlerId)
-  );
+  const activeLeagueById = new Map<number, League>(activeLeagues.map((l: League) => [l.id, l]));
+  const activeBowlerIds = new Set<number>();
+  for (const bl of bowlerLeaguesData) {
+    if (bl.active && activeLeagueIds.has(bl.leagueId)) activeBowlerIds.add(bl.bowlerId);
+  }
   const activeBowlers = activeBowlerIds.size;
   const totalLeagues = activeLeagueIds.size;
 
@@ -126,7 +126,7 @@ export default function HomePage() {
   activeBowlerIds.forEach(bowlerId => {
     const associations = bowlerLeaguesData.filter((bl: BowlerLeague) => bl.bowlerId === bowlerId && bl.active);
     for (const assoc of associations) {
-      const league = activeLeagues.find(l => l.id === assoc.leagueId);
+      const league = activeLeagueById.get(assoc.leagueId);
       if (!league || !league.seasonStart) continue;
       const bowlerPaid = payments
         .filter(p => p.bowlerId === bowlerId && p.leagueId === league.id && p.status === 'paid')
@@ -140,10 +140,13 @@ export default function HomePage() {
 
   const pastDueRate = activeBowlers > 0 ? Math.round((pastDueBowlerIds.size / activeBowlers) * 100) : 0;
 
-  const leagueHealthData = activeLeagues.map(league => {
-    const leagueBowlerAssocs = bowlerLeaguesData.filter((bl: BowlerLeague) => bl.leagueId === league.id && bl.active);
-    const leagueBowlerIds = new Set(leagueBowlerAssocs.map((bl: BowlerLeague) => bl.bowlerId));
+  const leagueHealthData = activeLeagues.flatMap(league => {
+    const leagueBowlerIds = new Set<number>();
+    for (const bl of bowlerLeaguesData) {
+      if (bl.leagueId === league.id && bl.active) leagueBowlerIds.add(bl.bowlerId);
+    }
     const leagueBowlerCount = leagueBowlerIds.size;
+    if (leagueBowlerCount === 0) return [];
 
     let pastDueCount = 0;
     if (league.seasonStart) {
@@ -155,13 +158,13 @@ export default function HomePage() {
       });
     }
 
-    return {
+    return [{
       id: league.id,
       name: league.name,
       bowlerCount: leagueBowlerCount,
       pastDueBowlerCount: pastDueCount,
-    };
-  }).filter(l => l.bowlerCount > 0);
+    }];
+  });
 
   const userName = userResponse?.data?.name?.split(' ')[0] || "Admin";
 

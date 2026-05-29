@@ -1,67 +1,24 @@
 import { useState, useEffect, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ArrowRight, RefreshCw, AlertTriangle, Calendar, ChevronDown } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { LeagueBottomSheet } from "@/components/league-bottom-sheet";
-import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-utils";
 import { DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
-import { Users } from "lucide-react";
-import type { BowlerGuardian } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
+import { SecretaryToggleButton } from "./bowler-dashboard-page/secretary-toggle-button";
+import { ErrorCard } from "./bowler-dashboard-page/error-card";
+import { MyChildrenSection } from "./bowler-dashboard-page/my-children-section";
+import { AuthRequiredCard } from "./bowler-dashboard-page/auth-required-card";
+import { LeagueUnavailableCard } from "./bowler-dashboard-page/league-unavailable-card";
+import { DashboardHero } from "./bowler-dashboard-page/dashboard-hero";
+import { BackToDashboardButton } from "./bowler-dashboard-page/back-to-dashboard-button";
 
 const STALE_TIME = 1000 * 60 * 5;
-
-// Task #735: render-on-demand toggle that fetches the caller's
-// league_secretary grants and only paints a button when at least one
-// grant exists. Side-effect-free (the same lookup is cached against
-// queryKey ['/api/me/league-secretary-leagues'] on /my-leagues so
-// switching surfaces is instant after the first hop).
-const SecretaryToggleButton: FC<{ enabled: boolean }> = ({ enabled }) => {
-  const { data } = useQuery<ApiResponse<Array<{ id: number }>>>({
-    queryKey: ['/api/me/league-secretary-leagues'],
-    enabled,
-    staleTime: STALE_TIME,
-  });
-  const grants = data?.data ?? [];
-  if (!enabled || grants.length === 0) return null;
-  return (
-    <div className="mb-6">
-      <Button asChild variant="outline" size="sm" data-testid="link-my-leagues">
-        <Link href="/my-leagues">Switch to secretary view</Link>
-      </Button>
-    </div>
-  );
-};
-
-function ErrorCard({ title, description, onRetry }: { title: string; description: string; onRetry?: () => void }) {
-  return (
-    <Card className="mx-auto max-w-md mt-8">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="size-5 text-destructive" />
-          <CardTitle>{title}</CardTitle>
-        </div>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      {onRetry && (
-        <CardContent>
-          <Button variant="outline" onClick={onRetry} className="w-full flex items-center gap-2">
-            <RefreshCw className="size-4" />
-            Try Again
-          </Button>
-        </CardContent>
-      )}
-    </Card>
-  );
-}
 
 export const BowlerDashboardPage: FC = () => {
   const [selectedLeagueId, setSelectedLeagueId] = useSelectedLeague();
@@ -244,22 +201,7 @@ export const BowlerDashboardPage: FC = () => {
   }
 
   if (!currentUser) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Authentication Required</CardTitle>
-          <CardDescription>Please log in to view your dashboard</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            You need to be logged in to access your bowler dashboard.
-          </p>
-          <Button asChild className="w-full">
-            <Link href="/login">Log In</Link>
-          </Button>
-        </CardContent>
-      </Card>
-    );
+    return <AuthRequiredCard />;
   }
 
   if (bowlersError) {
@@ -287,23 +229,7 @@ export const BowlerDashboardPage: FC = () => {
   }
 
   if (!league) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>League Data Unavailable</CardTitle>
-          <CardDescription>Unable to load league information</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Please try again later or contact support if the problem persists.
-          </p>
-          <Button variant="outline" onClick={handleRetry} className="w-full flex items-center gap-2">
-            <RefreshCw className="size-4" />
-            Try Again
-          </Button>
-        </CardContent>
-      </Card>
-    );
+    return <LeagueUnavailableCard onRetry={handleRetry} />;
   }
 
   const isSystemAdmin = currentUser?.role === 'system_admin';
@@ -322,49 +248,20 @@ export const BowlerDashboardPage: FC = () => {
           /api/me/league-secretary-leagues lookup returned at least
           one row so non-secretaries see no extra UI. */}
       <SecretaryToggleButton enabled={!isSystemAdmin} />
-      {isSystemAdmin && (
-        <div className="mb-6">
-          <Button asChild variant="outline" className="flex items-center gap-2">
-            <Link href="/">
-              <ArrowRight className="size-4 rotate-180" />
-              Back to Dashboard
-            </Link>
-          </Button>
-        </div>
-      )}
+      {isSystemAdmin && <BackToDashboardButton />}
       
       <ErrorBoundary level="section">
       <div className="space-y-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h2 className="text-2xl font-bold text-slate-900 mb-1">Hi, {bowler.name}</h2>
-          {isSystemAdmin && (
-            <p className="text-sm text-slate-400 mb-1">Viewing as System Administrator</p>
-          )}
-          {hasMultipleLeagues ? (
-            <button type="button"
-              onClick={() => setSheetOpen(true)}
-              className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors"
-            >
-              <span>{leagueName}</span>
-              <ChevronDown className="size-4" />
-            </button>
-          ) : (
-            <p className="text-slate-500">{leagueName}</p>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-3">
-            <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
-              <span className="size-2 rounded-full bg-indigo-500 mr-2"></span>
-              {teamName}
-            </div>
-            {currentWeek !== null && (
-              <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
-                <Calendar className="size-4 mr-1.5" />
-                Week {currentWeek} of {totalWeeks}
-              </div>
-            )}
-          </div>
-        </div>
+        <DashboardHero
+          bowlerName={bowler.name}
+          isSystemAdmin={isSystemAdmin}
+          hasMultipleLeagues={hasMultipleLeagues}
+          leagueName={leagueName}
+          teamName={teamName}
+          currentWeek={currentWeek}
+          totalWeeks={totalWeeks}
+          onOpenLeagueSheet={() => setSheetOpen(true)}
+        />
 
         <PaymentStatusSection
           key={league.id}
@@ -396,50 +293,3 @@ export const BowlerDashboardPage: FC = () => {
 };
 
 export default BowlerDashboardPage;
-
-interface MyChild {
-  link: BowlerGuardian;
-  bowler: Bowler;
-}
-
-const MyChildrenSection: FC = () => {
-  const { data, isLoading } = useQuery<ApiResponse<MyChild[]>>({
-    queryKey: ['/api/my-children'],
-  });
-  const children = data?.data ?? [];
-  if (isLoading || children.length === 0) return null;
-  return (
-    <Card data-testid="card-my-children">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Users className="size-4" /> My Children
-        </CardTitle>
-        <CardDescription>Bowlers you are a guardian for.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="divide-y">
-          {children.map(({ link, bowler: child }) => (
-            <li
-              key={link.id}
-              className="flex items-center justify-between py-2"
-              data-testid={`row-my-child-${child.id}`}
-            >
-              <div className="flex flex-col">
-                <span className="font-medium">{child.name}</span>
-                <span className="text-xs text-muted-foreground capitalize">
-                  {link.relationship}
-                  {link.isPrimaryContact ? " · primary contact" : ""}
-                  {link.isPayer ? " · payer" : ""}
-                </span>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/bowler/${child.id}`}>View</Link>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-};
-

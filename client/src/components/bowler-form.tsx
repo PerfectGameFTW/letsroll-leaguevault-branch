@@ -7,16 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -24,16 +14,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler } from "@shared/schema";
@@ -41,6 +22,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useState, useCallback } from "react";
+import { BowlerFormFields } from "./bowler-form-fields";
+import { BowlerFormLeagueTeamSelect } from "./bowler-form-league-team-select";
+import { BowlerFormDuplicateDialog } from "./bowler-form-duplicate-dialog";
 
 interface CreateBowlerResponse {
   id: number;
@@ -269,126 +253,18 @@ function BowlerFormInner({ open, onClose, defaultTeamId, bowler, firstLeagueId, 
               onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
               className="space-y-4"
             >
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="isMinor"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3" data-testid="field-isMinor">
-                    <div className="space-y-0.5">
-                      <FormLabel>Minor (Youth Bowler)</FormLabel>
-                      <p className="text-sm text-muted-foreground">
-                        Email is optional for minors. Notifications and payments are routed through a guardian.
-                      </p>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value === true}
-                        onCheckedChange={field.onChange}
-                        data-testid="switch-isMinor"
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{watchedIsMinor ? "Email (optional)" : "Email"}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        {...field}
-                        value={field.value ?? undefined}
-                        onChange={(e) => field.onChange(e.target.value === "" ? null : e.target.value)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input type="tel" placeholder="(555) 555-5555" {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <BowlerFormFields control={form.control} watchedIsMinor={watchedIsMinor} />
 
               {!bowler && (
-                <>
-                  <div>
-                    <FormLabel>League</FormLabel>
-                    <Select
-                      value={selectedLeagueId?.toString() ?? ""}
-                      onValueChange={(val) => {
-                        setSelectedLeagueId(val ? parseInt(val) : null);
-                        setSelectedTeamId(null);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a league" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {leagues.filter((league) => league.active).map((league) => (
-                          <SelectItem key={league.id} value={league.id.toString()}>
-                            {league.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {selectedLeagueId && (
-                    <div>
-                      <FormLabel>Team</FormLabel>
-                      <Select
-                        value={selectedTeamId?.toString() ?? ""}
-                        onValueChange={(val) => setSelectedTeamId(val ? parseInt(val) : null)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a team" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {loadingTeams ? (
-                            <SelectItem value="loading" disabled>Loading teams…</SelectItem>
-                          ) : teams.length === 0 ? (
-                            <SelectItem value="none" disabled>No teams in this league</SelectItem>
-                          ) : (
-                            teams.map((team) => (
-                              <SelectItem key={team.id} value={team.id.toString()}>
-                                {team.name}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </>
+                <BowlerFormLeagueTeamSelect
+                  leagues={leagues}
+                  teams={teams}
+                  loadingTeams={loadingTeams}
+                  selectedLeagueId={selectedLeagueId}
+                  selectedTeamId={selectedTeamId}
+                  onLeagueChange={setSelectedLeagueId}
+                  onTeamChange={setSelectedTeamId}
+                />
               )}
 
               <FormField
@@ -463,39 +339,19 @@ function BowlerFormInner({ open, onClose, defaultTeamId, bowler, firstLeagueId, 
       </DialogContent>
     </Dialog>
 
-      <AlertDialog open={!!duplicateBowler} onOpenChange={(open) => { if (!open) setDuplicateBowler(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Duplicate Bowler Found</AlertDialogTitle>
-            <AlertDialogDescription>
-              A bowler named <strong>{duplicateBowler?.name}</strong> with email{" "}
-              <strong>{duplicateBowler?.email}</strong> already exists. Would you like to add them to this team instead?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDuplicateBowler(null)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (duplicateBowler) {
-                  addExistingBowlerMutation.mutate(duplicateBowler.id);
-                }
-              }}
-              disabled={addExistingBowlerMutation.isPending || !selectedLeagueId || !selectedTeamId}
-            >
-              {addExistingBowlerMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Adding…
-                </>
-              ) : (
-                "Add to Team"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BowlerFormDuplicateDialog
+        duplicateBowler={duplicateBowler}
+        onOpenChange={(open) => { if (!open) setDuplicateBowler(null); }}
+        onCancel={() => setDuplicateBowler(null)}
+        onConfirm={() => {
+          if (duplicateBowler) {
+            addExistingBowlerMutation.mutate(duplicateBowler.id);
+          }
+        }}
+        isPending={addExistingBowlerMutation.isPending}
+        selectedLeagueId={selectedLeagueId}
+        selectedTeamId={selectedTeamId}
+      />
     </>
   );
 }

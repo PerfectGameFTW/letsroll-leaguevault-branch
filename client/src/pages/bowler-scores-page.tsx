@@ -212,7 +212,7 @@ export default function BowlerScoresPage() {
                       <TableCell>{format(new Date(week.date), "MMM d, yyyy")}</TableCell>
                       <TableCell>{week.weekNumber}</TableCell>
                       {week.games.map((game, index) => (
-                        <TableCell key={index} className="text-right">
+                        <TableCell key={`${week.date}-${week.weekNumber}-g${index}`} className="text-right">
                           {game?.isVacant ? "VACANT" :
                            game?.isAbsent ? "ABSENT" :
                            game?.score || "—"}

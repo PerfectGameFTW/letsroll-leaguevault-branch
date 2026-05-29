@@ -168,9 +168,9 @@ export default function LeaguesPage() {
                   <SelectContent>
                     <SelectItem value="all">All Locations</SelectItem>
                     <SelectItem value="none">No Location</SelectItem>
-                    {allLocations.filter(l => l.active).map(loc => (
+                    {allLocations.flatMap(loc => loc.active ? [(
                       <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
-                    ))}
+                    )] : [])}
                   </SelectContent>
                 </Select>
               </div>

@@ -39,7 +39,7 @@
       "count": 1
     }
   },
-  "client/src/components/organization-form-dialog.tsx": {
+  "client/src/components/organization-form-body.tsx": {
     "no-restricted-syntax": {
       "count": 1
     }

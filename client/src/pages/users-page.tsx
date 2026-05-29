@@ -8,31 +8,17 @@ import { Layout } from '@/components/layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import { Plus } from 'lucide-react';
 import { Link } from 'wouter';
 import { UsersTable, type UsersTableUser, type UsersTableLocation } from '@/components/users-table';
 import { AddUserDialog } from '@/components/add-user-dialog';
 import { passwordSchema } from '@shared/password-validation';
 import { parsePaymentSyncStatus, type PaymentSyncStatus } from '@shared/schema';
+import { ResetPasswordDialog } from './userspage/reset-password-dialog';
+import { ChangeEmailDialog } from './userspage/change-email-dialog';
+import { DeleteUserDialog } from './userspage/delete-user-dialog';
 
 const resetPasswordFormSchema = z.object({
   newPassword: passwordSchema,
@@ -240,164 +226,28 @@ export default function UsersPage() {
             orgLocations={orgLocations}
           />
 
-          <Dialog
-            open={!!resetPasswordUserId}
-            onOpenChange={(open) => !open && setResetPasswordUserId(null)}
-          >
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Reset password</DialogTitle>
-                <DialogDescription>
-                  Set a new password for{' '}
-                  <span className="font-medium">
-                    {getUserToReset?.name || getUserToReset?.email}
-                  </span>
-                  . They will be emailed a security notice and any other active sessions they have will be signed out.
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...resetPasswordForm}>
-                <form
-                  onSubmit={resetPasswordForm.handleSubmit((values) => {
-                    if (resetPasswordUserId === null) return;
-                    resetPasswordMutation.mutate({
-                      userId: resetPasswordUserId,
-                      newPassword: values.newPassword,
-                    });
-                  })}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={resetPasswordForm.control}
-                    name="newPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>New password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            autoComplete="new-password"
-                            placeholder="At least 8 characters"
-                            data-testid="input-reset-password"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setResetPasswordUserId(null)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={resetPasswordMutation.isPending}
-                      data-testid="button-confirm-reset-password"
-                    >
-                      {resetPasswordMutation.isPending ? 'Resetting…' : 'Reset password'}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+          <ResetPasswordDialog
+            resetPasswordUserId={resetPasswordUserId}
+            setResetPasswordUserId={setResetPasswordUserId}
+            getUserToReset={getUserToReset}
+            resetPasswordForm={resetPasswordForm}
+            resetPasswordMutation={resetPasswordMutation}
+          />
 
-          <Dialog
-            open={!!changeEmailUserId}
-            onOpenChange={(open) => !open && setChangeEmailUserId(null)}
-          >
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Change email</DialogTitle>
-                <DialogDescription>
-                  Request a new sign-in email for{' '}
-                  <span className="font-medium">
-                    {getUserToChangeEmail?.name || getUserToChangeEmail?.email}
-                  </span>
-                  . The new address will receive a confirmation link, and their sign-in email will only change once they click it.
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...changeEmailForm}>
-                <form
-                  noValidate
-                  onSubmit={changeEmailForm.handleSubmit((values) => {
-                    if (changeEmailUserId === null) return;
-                    changeEmailMutation.mutate({
-                      userId: changeEmailUserId,
-                      email: values.email,
-                    });
-                  })}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={changeEmailForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>New email</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            autoComplete="off"
-                            placeholder="user@example.com"
-                            data-testid="input-change-email"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setChangeEmailUserId(null)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={changeEmailMutation.isPending}
-                      data-testid="button-confirm-change-email"
-                    >
-                      {changeEmailMutation.isPending ? 'Sending…' : 'Send confirmation'}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+          <ChangeEmailDialog
+            changeEmailUserId={changeEmailUserId}
+            setChangeEmailUserId={setChangeEmailUserId}
+            getUserToChangeEmail={getUserToChangeEmail}
+            changeEmailForm={changeEmailForm}
+            changeEmailMutation={changeEmailMutation}
+          />
 
-          <Dialog open={!!deleteUserId} onOpenChange={(open) => !open && setDeleteUserId(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete user permanently?</DialogTitle>
-                <DialogDescription>
-                  This will permanently delete{' '}
-                  <span className="font-medium">
-                    {getUserToDelete?.name || getUserToDelete?.email}
-                  </span>
-                  's account. They will lose access immediately and their login will stop working. This action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDeleteUserId(null)}>Cancel</Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => deleteUserId && deleteUserMutation.mutate(deleteUserId)}
-                  disabled={deleteUserMutation.isPending}
-                  data-testid="button-confirm-delete-user"
-                >
-                  {deleteUserMutation.isPending ? 'Deleting…' : 'Delete user'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <DeleteUserDialog
+            deleteUserId={deleteUserId}
+            setDeleteUserId={setDeleteUserId}
+            getUserToDelete={getUserToDelete}
+            deleteUserMutation={deleteUserMutation}
+          />
         </div>
       </ErrorBoundary>
     </Layout>

@@ -95,19 +95,15 @@ const ClaimBowlerPage: FC = () => {
     if (!searchQuery.trim()) return unlinkedData;
 
     const query = searchQuery.toLowerCase();
-    return unlinkedData
-      .map((leagueGroup) => ({
-        ...leagueGroup,
-        teams: leagueGroup.teams
-          .map((teamGroup) => ({
-            ...teamGroup,
-            bowlers: teamGroup.bowlers.filter((b) =>
-              b.name.toLowerCase().includes(query)
-            ),
-          }))
-          .filter((tg) => tg.bowlers.length > 0),
-      }))
-      .filter((lg) => lg.teams.length > 0);
+    return unlinkedData.flatMap((leagueGroup) => {
+      const teams = leagueGroup.teams.flatMap((teamGroup) => {
+        const bowlers = teamGroup.bowlers.filter((b) =>
+          b.name.toLowerCase().includes(query)
+        );
+        return bowlers.length > 0 ? [{ ...teamGroup, bowlers }] : [];
+      });
+      return teams.length > 0 ? [{ ...leagueGroup, teams }] : [];
+    });
   }, [unlinkedData, searchQuery]);
 
   const totalBowlers = useMemo(() => {

@@ -110,9 +110,9 @@ const PasswordRequirements: FC<{ errors: Record<string, unknown> }> = ({ errors 
     <div className="space-y-2">
       <p className="text-sm font-medium">Password requirements:</p>
       <ul className="text-sm space-y-1">
-        {requirements.map((req, index) => (
+        {requirements.map((req) => (
           <li
-            key={index}
+            key={req.text}
             className={`flex items-center gap-x-2 ${
               errors.password ? "text-destructive" : "text-muted-foreground"
             }`}

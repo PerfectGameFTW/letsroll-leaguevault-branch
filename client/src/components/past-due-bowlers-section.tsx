@@ -48,16 +48,16 @@ export function PastDueBowlersSection() {
 
   // Calculate past due details for each bowler in each league
   const pastDueBowlers = bowlers
-    .filter(bowler => bowler.active)
     .flatMap(bowler => {
+      if (!bowler.active) return [];
       const bowlerAssociations = bowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
 
-      return bowlerAssociations.map(association => {
+      return bowlerAssociations.flatMap(association => {
         const league = leagues.find(l => l.id === association.leagueId);
         const team = teams.find(t => t.id === association.teamId);
 
         if (!league || !team || !league.seasonStart) {
-          return null;
+          return [];
         }
 
         const leaguePayments = payments.filter(p =>
@@ -77,16 +77,15 @@ export function PastDueBowlersSection() {
             ? String(Math.floor(pastDueAmount / league.weeklyFee))
             : "0";
 
-        return pastDueAmount > 0 ? {
+        return pastDueAmount > 0 ? [{
           bowler,
           team,
           league,
           weeksPastDueDisplay,
           pastDueAmount,
-        } : null;
+        }] : [];
       });
     })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => b.pastDueAmount - a.pastDueAmount);
 
   return (
