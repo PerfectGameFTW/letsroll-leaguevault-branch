@@ -344,12 +344,6 @@ export default function DataIntegrityPage() {
   });
   const organizations = orgsResponse?.data ?? [];
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data', activeType] });
-    queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-audits'] });
-  };
-
   const reassignMutation = useMutation({
     mutationFn: async (vars: { type: OrphanType; id: number; organizationId: number }) =>
       apiRequest(
@@ -358,7 +352,9 @@ export default function DataIntegrityPage() {
         { organizationId: vars.organizationId },
       ),
     onSuccess: () => {
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data', activeType] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-audits'] });
       setRepair(null);
       setReassignOrgId('');
       toast({ title: 'Row reassigned', description: 'The orphaned row now belongs to the selected organization.' });
@@ -372,7 +368,9 @@ export default function DataIntegrityPage() {
     mutationFn: async (vars: { type: OrphanType; id: number }) =>
       apiRequest(`/api/system-admin/orphaned-data/${vars.type}/${vars.id}/delete`, 'POST'),
     onSuccess: () => {
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data', activeType] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-audits'] });
       setRepair(null);
       toast({ title: 'Row deleted', description: 'The orphaned row was removed.' });
     },

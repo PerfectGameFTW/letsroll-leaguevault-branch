@@ -176,7 +176,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     if (leagueId) {
       form.setValue('leagueId', leagueId, { shouldDirty: false });
     }
-  }, [leagueId]);
+  }, [leagueId, form.setValue]);
 
   const paymentType = form.watch("type");
   const selectedBowlerId = form.watch("bowlerId");
@@ -195,16 +195,17 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     retry: false,
   });
   const savedCards = savedCardsResponse?.data || [];
+  const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
   useEffect(() => {
-    if (savedCards.length > 0 && paymentType === 'credit_card') {
+    if (firstSavedCardId !== null && paymentType === 'credit_card') {
       setCardMode('saved');
-      setSelectedSavedCardId(savedCards[0].id);
+      setSelectedSavedCardId(firstSavedCardId);
     } else {
       setCardMode('new');
       setSelectedSavedCardId('');
     }
-  }, [savedCards.length, selectedBowlerId, paymentType]);
+  }, [firstSavedCardId, selectedBowlerId, paymentType]);
 
   useEffect(() => {
     if (!open || paymentType !== "credit_card") {
@@ -280,7 +281,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     return () => {
       clearTimeout(initTimeout);
     };
-  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form, providerLoading]);
+  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form, providerLoading, providerNotFullyConfigured]);
 
   useEffect(() => {
     if (!open) {
@@ -289,7 +290,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       setSelectedSavedCardId('');
       setReceiptEmail('');
     }
-  }, [open]);
+  }, [open, form.reset]);
 
   // clear inline receipt-email when the operator switches
   // to a different bowler so we never accidentally reuse the prior
@@ -368,7 +369,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       setPaymentError(errorMessage);
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
-  }, [form, toast, queryClient, onClose, bowlers, receiptEmail, navigate, leagueInfo?.locationId]);
+  }, [form, toast, queryClient, onClose, bowlers, receiptEmail, navigate, leagueInfo?.locationId, isClover]);
 
   const {
     applePayAvailable,

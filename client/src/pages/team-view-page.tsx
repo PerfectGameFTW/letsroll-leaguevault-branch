@@ -60,8 +60,8 @@ export default function TeamViewPage() {
 
   const team = detailsResponse?.data?.team;
   const league = detailsResponse?.data?.league;
-  const bowlerLeagues = detailsResponse?.data?.bowlerLeagues || [];
-  const bowlers = detailsResponse?.data?.bowlers || [];
+  const bowlerLeagues = useMemo(() => detailsResponse?.data?.bowlerLeagues || [], [detailsResponse?.data?.bowlerLeagues]);
+  const bowlers = useMemo(() => detailsResponse?.data?.bowlers || [], [detailsResponse?.data?.bowlers]);
 
   const teamBowlers = useMemo(
     () => getTeamBowlers(bowlerLeagues, bowlers, teamId),

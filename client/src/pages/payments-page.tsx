@@ -145,9 +145,9 @@ export default function PaymentsPage() {
     },
   });
 
-  const payments = paymentsResponse?.data || [];
+  const payments = useMemo(() => paymentsResponse?.data || [], [paymentsResponse?.data]);
   const pagination = paymentsResponse?.pagination;
-  const bowlers = bowlersResponse?.data || [];
+  const bowlers = useMemo(() => bowlersResponse?.data || [], [bowlersResponse?.data]);
   const leagues = leaguesResponse?.data || [];
   const defaultLeagueId = leagues.length > 0 ? leagues[0].id : undefined;
 

@@ -41,16 +41,12 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
     [bowlerId, mine],
   );
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/bowler-links/admin"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
-  };
-
   const link = useMutation({
     mutationFn: async (otherId: number) =>
       apiRequest("/api/bowler-links/admin", "POST", { bowlerAId: bowlerId, bowlerBId: otherId }),
     onSuccess: () => {
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-links/admin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
       toast({ title: "Partner linked" });
     },
     onError: (err: Error) =>
@@ -59,7 +55,10 @@ export const AdminBowlerLinkPanel: FC<{ bowlerId: number; organizationId: number
 
   const unlink = useMutation({
     mutationFn: async (id: number) => apiRequest(`/api/bowler-links/${id}`, "DELETE"),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-links/admin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
+    },
     onError: (err: Error) =>
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),
   });

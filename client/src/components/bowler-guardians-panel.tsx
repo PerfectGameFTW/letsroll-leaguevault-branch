@@ -74,7 +74,7 @@ export function BowlerGuardiansPanel({ bowlerId, bowlerIsMinor }: BowlerGuardian
     queryFn: async () => apiRequest<GuardianRow[]>(`/api/bowlers/${bowlerId}/guardians`, "GET"),
     staleTime: 1000 * 60,
   });
-  const guardians = data?.data ?? [];
+  const guardians = useMemo(() => data?.data ?? [], [data?.data]);
 
   const inviteForm = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),

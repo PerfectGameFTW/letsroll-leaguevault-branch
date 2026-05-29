@@ -76,8 +76,8 @@ export default function BowlerViewPage() {
   });
 
   const bowler = detailsResponse?.data?.bowler;
-  const detailsLeagues = detailsResponse?.data?.leagues || [];
-  const detailsTeams = detailsResponse?.data?.teams || [];
+  const detailsLeagues = useMemo(() => detailsResponse?.data?.leagues || [], [detailsResponse?.data?.leagues]);
+  const detailsTeams = useMemo(() => detailsResponse?.data?.teams || [], [detailsResponse?.data?.teams]);
 
   const bowlerLeagues = useMemo(() => {
     const allLeagues = detailsResponse?.data?.bowlerLeagues || [];

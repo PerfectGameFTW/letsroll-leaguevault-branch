@@ -57,13 +57,11 @@ export const BowlerPaymentLinksSection: FC<{
   const payload = data?.data;
   const hasAny = !!payload?.hasAny;
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
-
   const inviteMutation = useMutation({
     mutationFn: async (inviteeBowlerId: number) =>
       apiRequest("/api/bowler-links/invite", "POST", { inviteeBowlerId }),
     onSuccess: () => {
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] });
       toast({ title: "Invite sent" });
     },
     onError: (err: Error) =>
@@ -73,7 +71,7 @@ export const BowlerPaymentLinksSection: FC<{
   const respond = useMutation({
     mutationFn: async ({ id, action }: { id: number; action: "accept" | "decline" }) =>
       apiRequest(`/api/bowler-links/${id}/${action}`, "POST"),
-    onSuccess: () => invalidate(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] }),
     onError: (err: Error) =>
       toast({ title: "Action failed", description: err.message, variant: "destructive" }),
   });
@@ -82,7 +80,7 @@ export const BowlerPaymentLinksSection: FC<{
 
   const unlink = useMutation({
     mutationFn: async (id: number) => apiRequest(`/api/bowler-links/${id}`, "DELETE"),
-    onSuccess: () => invalidate(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bowler-links"] }),
     onError: (err: Error) =>
       toast({ title: "Unlink failed", description: err.message, variant: "destructive" }),
     onSettled: () => setPartnerToRemove(null),

@@ -67,7 +67,7 @@ const ClaimBowlerPage: FC = () => {
     },
   });
 
-  const unlinkedData = unlinkedResponse?.data ?? [];
+  const unlinkedData = useMemo(() => unlinkedResponse?.data ?? [], [unlinkedResponse?.data]);
 
   const claimMutation = useMutation({
     mutationFn: async (bowlerId: number) => {

@@ -187,16 +187,17 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     retry: false,
   });
   const savedCards = savedCardsResponse?.data || [];
+  const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
   useEffect(() => {
-    if (savedCards.length > 0) {
+    if (firstSavedCardId !== null) {
       setCardMode('saved');
-      setSelectedSavedCardId(savedCards[0].id);
+      setSelectedSavedCardId(firstSavedCardId);
     } else {
       setCardMode('new');
       setSelectedSavedCardId('');
     }
-  }, [savedCards.length]);
+  }, [firstSavedCardId]);
 
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && cardMode === 'new' && !providerLoading) {

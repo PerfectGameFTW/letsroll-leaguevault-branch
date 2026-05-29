@@ -92,7 +92,7 @@ export default function WeeklyPaymentsPage() {
   });
 
   const league = leagueResponse?.data;
-  const enrichedBowlerLeagues = bowlerLeaguesResponse?.data || [];
+  const enrichedBowlerLeagues = useMemo(() => bowlerLeaguesResponse?.data || [], [bowlerLeaguesResponse?.data]);
 
   const sortedBowlerLeagues = useMemo(() => {
     return [...enrichedBowlerLeagues]
@@ -141,7 +141,7 @@ export default function WeeklyPaymentsPage() {
       const weekNum = getWeekNumber(nearestBowlingDay, league);
       setSelectedWeek(Math.max(1, Math.min(weekNum, maxWeek)));
     }
-  }, [league?.weekDay, selectedWeek, maxWeek]);
+  }, [league, selectedWeek, maxWeek]);
 
   const selectedDate = useMemo(() => {
     if (!league?.weekDay || !league?.seasonStart || selectedWeek === null) return undefined;

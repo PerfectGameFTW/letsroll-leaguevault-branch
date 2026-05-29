@@ -119,7 +119,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     if (computedSeasonEnd) {
       form.setValue('seasonEnd', computedSeasonEnd.toISOString());
     }
-  }, [computedSeasonEnd]);
+  }, [computedSeasonEnd, form.setValue]);
 
   const { mutation, deleteMutation } = useLeagueFormData({
     open,

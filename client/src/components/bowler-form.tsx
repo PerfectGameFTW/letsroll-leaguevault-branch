@@ -76,6 +76,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
 
   const watchedIsMinor = form.watch("isMinor") === true;
 
+  const firstLeagueId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].leagueId : null;
+  const firstTeamId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].teamId : null;
+
   useEffect(() => {
     if (open && bowler) {
       form.reset({
@@ -85,9 +88,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         active: bowler.active,
         isMinor: bowler.isMinor ?? false,
       });
-      if (bowlerLeagues && bowlerLeagues.length > 0) {
-        setSelectedLeagueId(bowlerLeagues[0].leagueId);
-        setSelectedTeamId(bowlerLeagues[0].teamId);
+      if (firstLeagueId !== null) {
+        setSelectedLeagueId(firstLeagueId);
+        setSelectedTeamId(firstTeamId);
       }
     } else if (open && !bowler) {
       form.reset({
@@ -100,7 +103,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       setSelectedLeagueId(null);
       setSelectedTeamId(null);
     }
-  }, [open, bowler]);
+  }, [open, bowler, form.reset, firstLeagueId, firstTeamId]);
 
   // Query for leagues with proper caching
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({

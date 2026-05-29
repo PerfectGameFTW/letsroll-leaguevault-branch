@@ -64,16 +64,17 @@ export default function PaymentHistoryPage() {
     retry: false,
   });
   const savedCards = savedCardsResponse?.data || [];
+  const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
   useEffect(() => {
-    if (savedCards.length > 0) {
+    if (firstSavedCardId !== null) {
       setCardMode('saved');
-      setSelectedSavedCardId(savedCards[0].id);
+      setSelectedSavedCardId(firstSavedCardId);
     } else {
       setCardMode('new');
       setSelectedSavedCardId('');
     }
-  }, [savedCards.length]);
+  }, [firstSavedCardId]);
 
   const { data: bowlerDetailsResponse, isLoading: loadingBowlerDetails, error: bowlerError } = useQuery<ApiResponse<BowlerDetailsResponse>>({
     queryKey: [`/api/bowlers/${bowlerId}/details`, { includePayments: true }],
@@ -92,7 +93,7 @@ export default function PaymentHistoryPage() {
     enabled: !!bowlerId,
   });
 
-  const bowlerLeagues = bowlerDetailsResponse?.data?.bowlerLeagues ?? [];
+  const bowlerLeagues = useMemo(() => bowlerDetailsResponse?.data?.bowlerLeagues ?? [], [bowlerDetailsResponse?.data?.bowlerLeagues]);
   const hasMultipleLeagues = bowlerLeagues.length > 1;
 
   useEffect(() => {
@@ -101,11 +102,11 @@ export default function PaymentHistoryPage() {
     if (selectedLeagueId !== null && !validIds.includes(selectedLeagueId)) {
       setSelectedLeagueId(validIds[0]);
     }
-  }, [bowlerLeagues.map(bl => bl.leagueId).join(',')]);
+  }, [bowlerLeagues, selectedLeagueId, setSelectedLeagueId]);
 
   const leagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId;
 
-  const detailsLeagues = bowlerDetailsResponse?.data?.leagues || [];
+  const detailsLeagues = useMemo(() => bowlerDetailsResponse?.data?.leagues || [], [bowlerDetailsResponse?.data?.leagues]);
 
   const leagueMap = useMemo(() => {
     const map = new Map<number, League>();
@@ -171,7 +172,7 @@ export default function PaymentHistoryPage() {
       // checkout attempt.
       setReceiptEmail('');
     }
-  }, [payDialogType]);
+  }, [payDialogType, cleanupCard]);
 
   const payments = hasPaymentsFromDetails ? allPaymentsFromDetails : (paymentsResponse?.data || []);
   const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
