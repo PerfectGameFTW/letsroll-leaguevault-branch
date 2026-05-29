@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useBowlers } from "@/hooks/use-bowlers";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PaymentSyncRetryStatus } from "@/components/payment-sync-retry-status";
 
 function BowlerTableSkeleton() {
@@ -86,6 +86,7 @@ export default function BowlersPage() {
     },
     onSuccess: (resp) => {
       const d = resp?.data;
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
         title: "BowlNow Sync Complete",
         description: `Synced ${d?.synced ?? 0} bowlers. ${d?.failed ?? 0} failed.`,
