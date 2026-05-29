@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Card,
@@ -34,6 +34,23 @@ interface BowlNowCardProps {
 }
 
 export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
+  // Re-key the inner card on any change to the server-derived config so
+  // its local form state re-initializes from props (and the API-key
+  // input clears) on a refetch — replacing the old prop-mirroring
+  // effect. Pure UI toggles (expanded/showApiKey) reset with it, which
+  // only differs from the old effect in the rare case of an external
+  // refetch landing while the panel is open mid-edit.
+  const configKey = [
+    config.apiKeyConfigured,
+    config.enabled,
+    config.locationId,
+    config.leagueNameFieldId,
+    config.leagueSeasonFieldId,
+  ].join("\u0000");
+  return <BowlNowCardInner key={configKey} config={config} orgId={orgId} />;
+}
+
+function BowlNowCardInner({ config, orgId }: BowlNowCardProps) {
   const { toast } = useToast();
   const isConfigured = config.apiKeyConfigured && config.enabled;
   const [expanded, setExpanded] = useState(false);
@@ -43,20 +60,6 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const [leagueNameFieldId, setLeagueNameFieldId] = useState(config.leagueNameFieldId);
   const [leagueSeasonFieldId, setLeagueSeasonFieldId] = useState(config.leagueSeasonFieldId);
   const [showApiKey, setShowApiKey] = useState(false);
-
-  useEffect(() => {
-    setEnabled(config.enabled);
-    setLocationId(config.locationId);
-    setLeagueNameFieldId(config.leagueNameFieldId);
-    setLeagueSeasonFieldId(config.leagueSeasonFieldId);
-    setApiKey("");
-  }, [
-    config.apiKeyConfigured,
-    config.enabled,
-    config.locationId,
-    config.leagueNameFieldId,
-    config.leagueSeasonFieldId,
-  ]);
 
   const mutation = useMutation({
     mutationFn: async (data: {

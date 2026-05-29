@@ -25,7 +25,7 @@ import type { ScheduleWeekType } from "@shared/schedule-utils";
 import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { LeagueSchedulePreview } from "@/components/league-schedule-preview";
 import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { LeagueBasicInfo } from "@/components/league-form-basic-info";
 import { LeagueScheduleSection } from "@/components/league-form-schedule";
@@ -115,11 +115,14 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     return getAllBowlingDates(watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates, doublePayDates);
   }, [watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates, doublePayDates]);
 
-  useEffect(() => {
-    if (computedSeasonEnd) {
-      form.setValue('seasonEnd', computedSeasonEnd.toISOString());
-    }
-  }, [computedSeasonEnd, form.setValue]);
+  // `seasonEnd` is fully derived from the schedule inputs via
+  // `computedSeasonEnd` (above) and is applied directly at submit time
+  // (`computedSeasonEnd ?? data.seasonEnd` in useLeagueFormData) and
+  // displayed via the `computedSeasonEnd` prop on the schedule
+  // sections. No effect mirrors it back into the form: the registered
+  // `seasonEnd` field only carries the reset baseline, which the schema
+  // refinement (`seasonEnd > seasonStart`) always accepts, so validation
+  // and submission are unchanged.
 
   const { mutation, deleteMutation } = useLeagueFormData({
     open,

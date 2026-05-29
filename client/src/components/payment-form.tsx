@@ -197,7 +197,16 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const savedCards = savedCardsResponse?.data || [];
   const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
-  useEffect(() => {
+  // Default the card picker to the bowler's first saved card whenever the
+  // bowler, payment type, or loaded saved-card set changes (and back to
+  // "new" otherwise). Done as a render-time adjustment keyed on those
+  // inputs rather than an effect so the choice settles before paint and
+  // only re-applies when one of the inputs actually changes — a manual
+  // switch the user makes afterward is never clobbered.
+  const savedCardSelectionKey = `${firstSavedCardId ?? ''}|${selectedBowlerId ?? ''}|${paymentType}`;
+  const [prevSavedCardSelectionKey, setPrevSavedCardSelectionKey] = useState(savedCardSelectionKey);
+  if (savedCardSelectionKey !== prevSavedCardSelectionKey) {
+    setPrevSavedCardSelectionKey(savedCardSelectionKey);
     if (firstSavedCardId !== null && paymentType === 'credit_card') {
       setCardMode('saved');
       setSelectedSavedCardId(firstSavedCardId);
@@ -205,7 +214,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       setCardMode('new');
       setSelectedSavedCardId('');
     }
-  }, [firstSavedCardId, selectedBowlerId, paymentType]);
+  }
 
   useEffect(() => {
     if (!open || paymentType !== "credit_card") {
@@ -292,12 +301,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open, form.reset]);
 
-  // clear inline receipt-email when the operator switches
-  // to a different bowler so we never accidentally reuse the prior
-  // bowler's typed-in address.
-  useEffect(() => {
+  // Clear the inline receipt-email when the operator switches to a
+  // different bowler so we never accidentally reuse the prior bowler's
+  // typed-in address. Done as a render-time adjustment keyed on the
+  // selected bowler rather than an effect.
+  const [prevReceiptBowlerId, setPrevReceiptBowlerId] = useState(selectedBowlerId);
+  if (selectedBowlerId !== prevReceiptBowlerId) {
+    setPrevReceiptBowlerId(selectedBowlerId);
     setReceiptEmail('');
-  }, [selectedBowlerId]);
+  }
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     const bowlerId = form.getValues('bowlerId');

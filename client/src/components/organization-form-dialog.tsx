@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,19 @@ interface OrganizationFormDialogProps {
 }
 
 export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationFormDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
+        {/* Keying by edit-target id resets the inner form when the dialog
+            switches which org it edits. DialogContent unmounts on close,
+            so the body also re-initializes fresh from props on each open. */}
+        <OrganizationFormBody key={editOrg?.id ?? 'new'} editOrg={editOrg} onClose={onClose} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function OrganizationFormBody({ editOrg, onClose }: { editOrg?: Organization | null; onClose: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,50 +36,24 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   const appIconInputRef = useRef<HTMLInputElement>(null);
   const editId = editOrg?.id ?? null;
 
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [subdomain, setSubdomain] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [zipCode, setZipCode] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [logo, setLogo] = useState<string | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [darkLogo, setDarkLogo] = useState<string | null>(null);
-  const [darkLogoPreview, setDarkLogoPreview] = useState<string | null>(null);
-  const [appIcon, setAppIcon] = useState<string | null>(null);
-  const [appIconPreview, setAppIconPreview] = useState<string | null>(null);
+  const [name, setName] = useState(editOrg?.name ?? '');
+  const [slug, setSlug] = useState(editOrg?.slug ?? '');
+  const [subdomain, setSubdomain] = useState(editOrg?.subdomain ?? '');
+  const [address, setAddress] = useState(editOrg?.address ?? '');
+  const [city, setCity] = useState(editOrg?.city ?? '');
+  const [state, setState] = useState(editOrg?.state ?? '');
+  const [zipCode, setZipCode] = useState(editOrg?.zipCode ?? '');
+  const [phone, setPhone] = useState(editOrg?.phone ?? '');
+  const [email, setEmail] = useState(editOrg?.email ?? '');
+  const [logo, setLogo] = useState<string | null>(editOrg?.logo ?? null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(editOrg?.logo ?? null);
+  const [darkLogo, setDarkLogo] = useState<string | null>(editOrg?.darkLogo ?? null);
+  const [darkLogoPreview, setDarkLogoPreview] = useState<string | null>(editOrg?.darkLogo ?? null);
+  const [appIcon, setAppIcon] = useState<string | null>(editOrg?.appIcon ?? null);
+  const [appIconPreview, setAppIconPreview] = useState<string | null>(editOrg?.appIcon ?? null);
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
-
-  useEffect(() => {
-    if (open) {
-      setName(editOrg?.name ?? '');
-      setSlug(editOrg?.slug ?? '');
-      setSubdomain(editOrg?.subdomain ?? '');
-      setAddress(editOrg?.address ?? '');
-      setCity(editOrg?.city ?? '');
-      setState(editOrg?.state ?? '');
-      setZipCode(editOrg?.zipCode ?? '');
-      setPhone(editOrg?.phone ?? '');
-      setEmail(editOrg?.email ?? '');
-      setLogo(editOrg?.logo ?? null);
-      setLogoPreview(editOrg?.logo ?? null);
-      setDarkLogo(editOrg?.darkLogo ?? null);
-      setDarkLogoPreview(editOrg?.darkLogo ?? null);
-      setAppIcon(editOrg?.appIcon ?? null);
-      setAppIconPreview(editOrg?.appIcon ?? null);
-      setAdminName('');
-      setAdminEmail('');
-      setAdminPhone('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (darkFileInputRef.current) darkFileInputRef.current.value = '';
-      if (appIconInputRef.current) appIconInputRef.current.value = '';
-    }
-  }, [open, editOrg]);
 
   const createMutation = useMutation({
     mutationFn: async (org: InsertOrganization) => {
@@ -145,253 +132,251 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editId ? 'Edit Organization' : 'Create Organization'}</DialogTitle>
-          <DialogDescription>
-            {editId
-              ? 'Update the organization details below.'
-              : 'Add a new organization to the system with an administrator account.'}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleFormSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="name" className="md:text-right">Name</Label>
-              <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} onBlur={generateSlug} className="md:col-span-3" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="slug" className="md:text-right">Slug</Label>
-              <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} className="md:col-span-3" placeholder="org-name" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="subdomain" className="md:text-right">Subdomain</Label>
-              <div className="md:col-span-3">
-                <div className="flex items-center gap-1">
-                  <Input id="subdomain" value={subdomain} onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} className="flex-1" placeholder="orgname" />
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">.leaguevault.app</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Custom subdomain for this org (lowercase letters and numbers only). Leave blank to use the slug.</p>
+    <>
+      <DialogHeader>
+        <DialogTitle>{editId ? 'Edit Organization' : 'Create Organization'}</DialogTitle>
+        <DialogDescription>
+          {editId
+            ? 'Update the organization details below.'
+            : 'Add a new organization to the system with an administrator account.'}
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleFormSubmit}>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="name" className="md:text-right">Name</Label>
+            <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} onBlur={generateSlug} className="md:col-span-3" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="slug" className="md:text-right">Slug</Label>
+            <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} className="md:col-span-3" placeholder="org-name" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="subdomain" className="md:text-right">Subdomain</Label>
+            <div className="md:col-span-3">
+              <div className="flex items-center gap-1">
+                <Input id="subdomain" value={subdomain} onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} className="flex-1" placeholder="orgname" />
+                <span className="text-sm text-muted-foreground whitespace-nowrap">.leaguevault.app</span>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="phone" className="md:text-right">Phone</Label>
-              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="md:col-span-3" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="email" className="md:text-right">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="md:col-span-3" />
-            </div>
-
-            {!editId && (
-              <>
-                <div className="mt-4 mb-2">
-                  <h3 className="text-lg font-medium">Administrator Account</h3>
-                  <p className="text-sm text-muted-foreground">
-                    An invite email will be sent to the administrator to set up their password.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-                  <Label htmlFor="adminName" className="md:text-right">Admin Name</Label>
-                  <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="md:col-span-3" required={!editId} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-                  <Label htmlFor="adminEmail" className="md:text-right">Admin Email</Label>
-                  <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="md:col-span-3" required={!editId} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-                  <Label htmlFor="adminPhone" className="md:text-right">Admin Phone</Label>
-                  <Input id="adminPhone" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} className="md:col-span-3" />
-                </div>
-              </>
-            )}
-
-            <div className="mt-4 mb-2">
-              <h3 className="text-lg font-medium">Organization Details</h3>
-              <p className="text-sm text-muted-foreground">Additional organization information</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="address" className="md:text-right">Address</Label>
-              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} className="md:col-span-3" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="city" className="md:text-right">City</Label>
-              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="md:col-span-3" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="state" className="md:text-right">State</Label>
-              <Input id="state" value={state} onChange={(e) => setState(e.target.value)} className="md:col-span-3" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
-              <Label htmlFor="zipCode" className="md:text-right">ZIP Code</Label>
-              <Input id="zipCode" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="md:col-span-3" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4 mt-4">
-              <Label htmlFor="logo" className="md:text-right pt-2">Logo</Label>
-              <div className="md:col-span-3 space-y-2">
-                {logoPreview ? (
-                  <div className="relative size-40 rounded-md overflow-hidden border">
-                    <img src={logoPreview} alt="Organization logo" className="w-full h-full object-contain" />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 size-6 rounded-full"
-                      onClick={() => {
-                        setLogo(null);
-                        setLogoPreview(null);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="w-full">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        id="logo"
-                        accept="image/*"
-                        className="flex-1"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            toast({ title: "File too large", description: "The logo file must be less than 2MB.", variant: "destructive" });
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            const base64 = event.target?.result as string;
-                            setLogo(base64);
-                            setLogoPreview(base64);
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Upload your organization logo (PNG, JPG, SVG - max 2MB).</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
-              <Label htmlFor="darkLogo" className="md:text-right pt-2">Dark Logo</Label>
-              <div className="md:col-span-3 space-y-2">
-                {darkLogoPreview ? (
-                  <div className="relative size-40 rounded-md overflow-hidden border bg-slate-900">
-                    <img src={darkLogoPreview} alt="Dark background logo" className="w-full h-full object-contain" />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 size-6 rounded-full"
-                      onClick={() => {
-                        setDarkLogo(null);
-                        setDarkLogoPreview(null);
-                        if (darkFileInputRef.current) darkFileInputRef.current.value = '';
-                      }}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="w-full">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        ref={darkFileInputRef}
-                        type="file"
-                        id="darkLogo"
-                        accept="image/*"
-                        className="flex-1"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            toast({ title: "File too large", description: "The logo file must be less than 2MB.", variant: "destructive" });
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            const base64 = event.target?.result as string;
-                            setDarkLogo(base64);
-                            setDarkLogoPreview(base64);
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Logo for dark backgrounds (sidebar navigation). Use a light/white version.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
-              <Label htmlFor="appIcon" className="md:text-right pt-2">App Icon</Label>
-              <div className="md:col-span-3 space-y-2">
-                {appIconPreview ? (
-                  <div className="relative size-40 rounded-md overflow-hidden border">
-                    <img src={appIconPreview} alt="App icon" className="w-full h-full object-contain" />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 size-6 rounded-full"
-                      onClick={() => {
-                        setAppIcon(null);
-                        setAppIconPreview(null);
-                        if (appIconInputRef.current) appIconInputRef.current.value = '';
-                      }}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="w-full">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        ref={appIconInputRef}
-                        type="file"
-                        id="appIcon"
-                        accept="image/*"
-                        className="flex-1"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            toast({ title: "File too large", description: "The app icon file must be less than 2MB.", variant: "destructive" });
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            const base64 = event.target?.result as string;
-                            setAppIcon(base64);
-                            setAppIconPreview(base64);
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Square icon for phone home screens and browser tabs. Use a simple, recognizable icon (PNG - max 2MB). Falls back to the main logo if not set.</p>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">Custom subdomain for this org (lowercase letters and numbers only). Leave blank to use the slug.</p>
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-              {editId ? 'Update' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="phone" className="md:text-right">Phone</Label>
+            <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="md:col-span-3" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="email" className="md:text-right">Email</Label>
+            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="md:col-span-3" />
+          </div>
+
+          {!editId && (
+            <>
+              <div className="mt-4 mb-2">
+                <h3 className="text-lg font-medium">Administrator Account</h3>
+                <p className="text-sm text-muted-foreground">
+                  An invite email will be sent to the administrator to set up their password.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                <Label htmlFor="adminName" className="md:text-right">Admin Name</Label>
+                <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="md:col-span-3" required={!editId} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                <Label htmlFor="adminEmail" className="md:text-right">Admin Email</Label>
+                <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="md:col-span-3" required={!editId} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                <Label htmlFor="adminPhone" className="md:text-right">Admin Phone</Label>
+                <Input id="adminPhone" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} className="md:col-span-3" />
+              </div>
+            </>
+          )}
+
+          <div className="mt-4 mb-2">
+            <h3 className="text-lg font-medium">Organization Details</h3>
+            <p className="text-sm text-muted-foreground">Additional organization information</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="address" className="md:text-right">Address</Label>
+            <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} className="md:col-span-3" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="city" className="md:text-right">City</Label>
+            <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="md:col-span-3" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="state" className="md:text-right">State</Label>
+            <Input id="state" value={state} onChange={(e) => setState(e.target.value)} className="md:col-span-3" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+            <Label htmlFor="zipCode" className="md:text-right">ZIP Code</Label>
+            <Input id="zipCode" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="md:col-span-3" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4 mt-4">
+            <Label htmlFor="logo" className="md:text-right pt-2">Logo</Label>
+            <div className="md:col-span-3 space-y-2">
+              {logoPreview ? (
+                <div className="relative size-40 rounded-md overflow-hidden border">
+                  <img src={logoPreview} alt="Organization logo" className="w-full h-full object-contain" />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 size-6 rounded-full"
+                    onClick={() => {
+                      setLogo(null);
+                      setLogoPreview(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="w-full">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      id="logo"
+                      accept="image/*"
+                      className="flex-1"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast({ title: "File too large", description: "The logo file must be less than 2MB.", variant: "destructive" });
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const base64 = event.target?.result as string;
+                          setLogo(base64);
+                          setLogoPreview(base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Upload your organization logo (PNG, JPG, SVG - max 2MB).</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
+            <Label htmlFor="darkLogo" className="md:text-right pt-2">Dark Logo</Label>
+            <div className="md:col-span-3 space-y-2">
+              {darkLogoPreview ? (
+                <div className="relative size-40 rounded-md overflow-hidden border bg-slate-900">
+                  <img src={darkLogoPreview} alt="Dark background logo" className="w-full h-full object-contain" />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 size-6 rounded-full"
+                    onClick={() => {
+                      setDarkLogo(null);
+                      setDarkLogoPreview(null);
+                      if (darkFileInputRef.current) darkFileInputRef.current.value = '';
+                    }}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="w-full">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={darkFileInputRef}
+                      type="file"
+                      id="darkLogo"
+                      accept="image/*"
+                      className="flex-1"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast({ title: "File too large", description: "The logo file must be less than 2MB.", variant: "destructive" });
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const base64 = event.target?.result as string;
+                          setDarkLogo(base64);
+                          setDarkLogoPreview(base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Logo for dark backgrounds (sidebar navigation). Use a light/white version.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
+            <Label htmlFor="appIcon" className="md:text-right pt-2">App Icon</Label>
+            <div className="md:col-span-3 space-y-2">
+              {appIconPreview ? (
+                <div className="relative size-40 rounded-md overflow-hidden border">
+                  <img src={appIconPreview} alt="App icon" className="w-full h-full object-contain" />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 size-6 rounded-full"
+                    onClick={() => {
+                      setAppIcon(null);
+                      setAppIconPreview(null);
+                      if (appIconInputRef.current) appIconInputRef.current.value = '';
+                    }}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="w-full">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={appIconInputRef}
+                      type="file"
+                      id="appIcon"
+                      accept="image/*"
+                      className="flex-1"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast({ title: "File too large", description: "The app icon file must be less than 2MB.", variant: "destructive" });
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const base64 = event.target?.result as string;
+                          setAppIcon(base64);
+                          setAppIconPreview(base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Square icon for phone home screens and browser tabs. Use a simple, recognizable icon (PNG - max 2MB). Falls back to the main logo if not set.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+            {editId ? 'Update' : 'Create'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
   );
 }

@@ -189,7 +189,15 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const savedCards = savedCardsResponse?.data || [];
   const firstSavedCardId = savedCards.length > 0 ? savedCards[0].id : null;
 
-  useEffect(() => {
+  // Default the card picker to the bowler's first saved card once the
+  // saved-cards query resolves (and back to "new" if the set empties).
+  // Done as a render-time adjustment keyed on the loaded id rather than
+  // an effect so the choice settles before paint and only re-applies
+  // when firstSavedCardId itself changes — a manual switch the user
+  // makes afterward is never clobbered.
+  const [prevFirstSavedCardId, setPrevFirstSavedCardId] = useState(firstSavedCardId);
+  if (firstSavedCardId !== prevFirstSavedCardId) {
+    setPrevFirstSavedCardId(firstSavedCardId);
     if (firstSavedCardId !== null) {
       setCardMode('saved');
       setSelectedSavedCardId(firstSavedCardId);
@@ -197,7 +205,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setCardMode('new');
       setSelectedSavedCardId('');
     }
-  }, [firstSavedCardId]);
+  }
 
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && cardMode === 'new' && !providerLoading) {
@@ -211,25 +219,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [showPaymentSetup, cleanupCard]);
 
-  // opening or closing the form, OR switching into autopay,
-  // resets the recipient back to self so a stale partner choice never
-  // silently rides into a new checkout. Autopay's per-payer schedule
-  // is always self; combined-pay (multi-select) handles partners.
-  useEffect(() => {
-    if (!showPaymentSetup || paymentMode === 'autopay') {
-      setTargetBowlerId(bowler.id);
-    }
-  }, [showPaymentSetup, paymentMode, bowler.id]);
-
-  // Task #706: combined-pay reset. Clear selected combined partners
-  // only when the form CLOSES — combined-pay is now valid in every
-  // payment mode (autopay, one-time, upfront), so flipping mode no
-  // longer drops the selection.
-  useEffect(() => {
-    if (!showPaymentSetup) {
-      setAdditionalBowlerIds([]);
-    }
-  }, [showPaymentSetup]);
+  // Recipient (self vs partner) and combined-pay selections are reset
+  // when the form is opened (see `onSetupPayment` below) rather than via
+  // close/open effects, so a stale partner choice never silently rides
+  // into a new checkout. paymentMode only ever changes at open time (the
+  // PaymentOverviewCard that triggers it is rendered only while the form
+  // is closed), so resetting at open also covers the old "switching into
+  // autopay resets to self" case. The reconcile effect just below keeps
+  // these selections valid against the eligible-partner set while open.
 
   // Task #725: reconcile recipient + combined-pay selections to the
   // currently-eligible partner set. When the user navigates between
@@ -516,6 +513,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         } else {
           setSelectedSchedule('custom');
         }
+        // Reset recipient + combined-pay picks on open so a stale choice
+        // from a prior session never rides into the new checkout. (These
+        // used to be cleared by close/open effects.)
+        setTargetBowlerId(bowler.id);
+        setAdditionalBowlerIds([]);
         setShowPaymentSetup(true);
       }}
     />

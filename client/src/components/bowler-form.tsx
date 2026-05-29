@@ -40,7 +40,7 @@ import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bow
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 
 interface CreateBowlerResponse {
   id: number;
@@ -57,9 +57,42 @@ interface BowlerFormProps {
 }
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues }: BowlerFormProps) {
+  const firstLeagueId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].leagueId : null;
+  const firstTeamId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].teamId : null;
+
+  // Re-key the inner form so its state (RHF values + league/team
+  // selection) re-initializes from props on each fresh open and when
+  // the edited bowler / its first league assignment changes — replacing
+  // the old open/bowler-driven reset effect. The inner stays mounted
+  // while closed so the leagues query still prefetches as before.
+  const formKey = `${open ? "open" : "closed"}-${bowler?.id ?? "new"}-${firstLeagueId ?? "x"}-${firstTeamId ?? "x"}`;
+
+  return (
+    <BowlerFormInner
+      key={formKey}
+      open={open}
+      onClose={onClose}
+      defaultTeamId={defaultTeamId}
+      bowler={bowler}
+      firstLeagueId={firstLeagueId}
+      firstTeamId={firstTeamId}
+    />
+  );
+}
+
+interface BowlerFormInnerProps {
+  open: boolean;
+  onClose: () => void;
+  defaultTeamId?: number;
+  bowler?: Bowler;
+  firstLeagueId: number | null;
+  firstTeamId: number | null;
+}
+
+function BowlerFormInner({ open, onClose, defaultTeamId, bowler, firstLeagueId, firstTeamId }: BowlerFormInnerProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler ? firstLeagueId : null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(bowler ? firstTeamId : null);
   const [duplicateBowler, setDuplicateBowler] = useState<{ id: number; name: string; email: string } | null>(null);
 
   // Move form initialization before any conditional logic
@@ -75,35 +108,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   });
 
   const watchedIsMinor = form.watch("isMinor") === true;
-
-  const firstLeagueId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].leagueId : null;
-  const firstTeamId = bowlerLeagues && bowlerLeagues.length > 0 ? bowlerLeagues[0].teamId : null;
-
-  useEffect(() => {
-    if (open && bowler) {
-      form.reset({
-        name: bowler.name,
-        email: bowler.email ?? "",
-        phone: bowler.phone ?? "",
-        active: bowler.active,
-        isMinor: bowler.isMinor ?? false,
-      });
-      if (firstLeagueId !== null) {
-        setSelectedLeagueId(firstLeagueId);
-        setSelectedTeamId(firstTeamId);
-      }
-    } else if (open && !bowler) {
-      form.reset({
-        name: "",
-        email: "",
-        phone: "",
-        active: true,
-        isMinor: false,
-      });
-      setSelectedLeagueId(null);
-      setSelectedTeamId(null);
-    }
-  }, [open, bowler, form.reset, firstLeagueId, firstTeamId]);
 
   // Query for leagues with proper caching
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({
