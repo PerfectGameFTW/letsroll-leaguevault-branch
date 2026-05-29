@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
+import { logger } from "@/lib/logger";
 import { formatCurrency } from "@/lib/utils";
 import {
   isProviderNotConfiguredError,
@@ -458,7 +459,7 @@ export function useBowlerPaymentSubmit({
         queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${chargeForBowlerId}/details`] });
       }
     } catch (error) {
-      console.error('[Payment Error]:', error);
+      logger.error('Payment', 'Payment submission failed', error);
       if (isProviderNotConfiguredError(error)) {
         toast(providerNotConfiguredToast({
           navigate,

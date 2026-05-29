@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 
 interface ReorderBowlersDialogProps {
@@ -97,7 +98,7 @@ export function ReorderBowlersDialog({
 
       onClose();
     } catch (error) {
-      console.error("[ReorderBowlers] Error updating order:", error);
+      logger.error('ReorderBowlers', 'Error updating order', error);
       toast({
         title: "Error updating order",
         description: error instanceof Error ? error.message : "Failed to update order",

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest, queryClient, csrfFetch, clearCsrfToken } from '@/lib/queryClient';
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, ChangeEvent } from "react";
@@ -52,7 +53,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
         description: "You have been successfully logged out.",
       });
     } catch (error) {
-      console.error('Logout failed:', error);
+      logger.error('UserProfileMenu', 'Logout failed', error);
       toast({
         variant: "destructive",
         title: "Logout failed",
@@ -130,7 +131,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
         description: "Your profile picture has been updated successfully.",
       });
     } catch (error) {
-      console.error('Avatar upload failed:', error);
+      logger.error('UserProfileMenu', 'Avatar upload failed', error);
       toast({
         variant: "destructive",
         title: "Upload failed",

@@ -1,5 +1,6 @@
 import { Switch, Route } from "wouter";
 import { queryClient, prefetchQueries } from "./lib/queryClient";
+import { logger } from "@/lib/logger";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { BetaBanner } from "@/components/beta-banner";
@@ -147,9 +148,9 @@ function Router() {
       const user = userData.data;
       const isAdmin = user.role === 'system_admin' || user.role === 'org_admin';
       if (isAdmin) {
-        prefetchQueries('admin').catch(console.error);
+        prefetchQueries('admin').catch((error) => logger.error('App', 'Failed to prefetch admin queries', error));
       } else if (user.bowlerId) {
-        prefetchQueries('bowler').catch(console.error);
+        prefetchQueries('bowler').catch((error) => logger.error('App', 'Failed to prefetch bowler queries', error));
       }
     }
   }, [userData]);

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning, UserPlus } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ const setStoredValue = (key: string, value: unknown) => {
       localStorage.setItem(key, JSON.stringify(value));
     }
   } catch (error) {
-    console.warn('[Layout] localStorage access error:', error);
+    logger.warn('Layout', 'localStorage access error', error);
   }
 };
 

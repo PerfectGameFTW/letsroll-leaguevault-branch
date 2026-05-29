@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { logger } from "@/lib/logger";
 
 let csrfToken: string | null = null;
 let csrfFetchPromise: Promise<string> | null = null;
@@ -184,11 +185,11 @@ export async function apiRequest<T = unknown>(
         await fetchCsrfToken();
         return await doApiRequest<T>(url, method, data);
       } catch (retryError) {
-        console.error(`[API] ${method} retry after CSRF refresh failed:`, retryError);
+        logger.error('API', `${method} retry after CSRF refresh failed`, retryError);
         throw retryError;
       }
     }
-    console.error(`[API] ${method} request failed:`, error);
+    logger.error('API', `${method} request failed`, error);
     throw error;
   }
 }
@@ -214,7 +215,7 @@ export const getQueryFn: QueryFunction = async ({ queryKey, signal }) => {
     }
     const is401 = error instanceof Error && error.message.startsWith('401');
     if (!is401) {
-      console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
+      logger.error('Query', `Error fetching ${queryKey[0]}`, error);
     }
     throw error;
   }
@@ -246,6 +247,6 @@ export const prefetchQueries = async (role: 'admin' | 'bowler') => {
       await queryClient.prefetchQuery({ queryKey: ['/api/bowler-leagues'] });
     }
   } catch (error) {
-    console.error('[Query] Error prefetching initial data:', error);
+    logger.error('Query', 'Error prefetching initial data', error);
   }
 };

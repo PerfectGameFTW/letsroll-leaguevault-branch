@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 interface CloverTokenizeResult {
   token: string;
@@ -199,7 +200,7 @@ export function useCloverPayment({
       setIsInitialized(true);
       setError(null);
     } catch (err) {
-      console.error('[useCloverPayment] Initialization error:', err);
+      logger.error('useCloverPayment', 'Initialization error', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize payment form';
       if (mountedRef.current) {
         setError(errorMessage);

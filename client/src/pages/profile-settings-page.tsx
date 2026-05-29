@@ -10,6 +10,7 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, clearCsrfToken } from "@/lib/queryClient";
+import { logger } from "@/lib/logger";
 import { ProfileInfoCard, type CurrentUserWithSyncStatus } from "@/components/profile-info-card";
 import { ChangePasswordCard } from "@/components/change-password-card";
 import { SavedPaymentMethodsCard } from "@/components/saved-payment-methods-card";
@@ -40,7 +41,7 @@ const ProfileSettingsPage: FC = () => {
       clearCsrfToken();
       window.location.href = '/login';
     } catch (error) {
-      console.error('Logout failed:', error);
+      logger.error('ProfileSettings', 'Logout failed', error);
       toast({ title: "Logout failed", description: "Please try again.", variant: "destructive" });
     } finally {
       setIsLoggingOut(false);

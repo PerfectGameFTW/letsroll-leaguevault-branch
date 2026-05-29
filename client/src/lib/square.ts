@@ -1,4 +1,5 @@
 import { loadScript } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import { csrfFetch } from '@/lib/queryClient';
 import { makeApiError, type ApiErrorLike } from "@/lib/provider-not-configured";
 import type { CloverCard } from "@/hooks/use-clover-payment";
@@ -132,12 +133,12 @@ async function getSquareConfig(locationId?: number | null): Promise<{ appId: str
     const res = await fetch(url);
     data = await res.json() as SquareConfigResponse;
   } catch (err) {
-    console.error('[Square] Failed to fetch config from server:', err);
+    logger.error('Square', 'Failed to fetch config from server', err);
     throw new Error('Payment is temporarily unavailable. Please try again or contact support.');
   }
 
   if (!data.appId) {
-    console.error('[Square] Server returned no appId in config response');
+    logger.error('Square', 'Server returned no appId in config response');
     throw new Error('Payment is temporarily unavailable. Please try again or contact support.');
   }
 
@@ -188,7 +189,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
         payments = await window.Square.payments(config.appId, config.locationId);
         return payments;
       } catch (initError) {
-        console.error('[Square] Failed to initialize with existing SDK, will reload:', initError);
+        logger.error('Square', 'Failed to initialize with existing SDK, will reload', initError);
         document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
         (window as { Square?: typeof window.Square }).Square = undefined;
       }
@@ -213,7 +214,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
           scriptLoaded = true;
         } catch (err) {
           lastError = err;
-          console.error(`[Square] Failed to load SDK on attempt ${attempts}/${SDK_LOAD_MAX_ATTEMPTS}:`, err);
+          logger.error('Square', `Failed to load SDK on attempt ${attempts}/${SDK_LOAD_MAX_ATTEMPTS}`, err);
           if (attempts < SDK_LOAD_MAX_ATTEMPTS) {
             await new Promise(resolve => setTimeout(resolve, SDK_LOAD_RETRY_DELAY_MS));
           }
@@ -232,7 +233,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
         payments = await window.Square.payments(config.appId, config.locationId);
         return payments;
       } catch (initError) {
-        console.error('[Square] Failed to initialize payments with credentials:', initError);
+        logger.error('Square', 'Failed to initialize payments with credentials', initError);
         const errorMessage = initError instanceof Error ? initError.message : String(initError);
         if (errorMessage.includes('location_id') || errorMessage.includes('invalid location')) {
           throw new Error(`Square location ID issue: ${errorMessage}`);
@@ -259,7 +260,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
         if (attemptCount <= INIT_MAX_RETRIES) {
           await new Promise(resolve => setTimeout(resolve, INIT_RETRY_DELAY_MS));
         } else {
-          console.error('[Square] All initialization attempts failed');
+          logger.error('Square', 'All initialization attempts failed');
           throw error;
         }
       }
@@ -267,7 +268,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
 
     throw new Error("Square initialization failed after multiple attempts");
   } catch (error) {
-    console.error('[Square] Critical error during Square initialization:', error);
+    logger.error('Square', 'Critical error during Square initialization', error);
     payments = null;
     throw error;
   }

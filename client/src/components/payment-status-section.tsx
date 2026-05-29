@@ -7,6 +7,7 @@ import { useSavedCardDefault } from "@/hooks/use-saved-card-default";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { csrfFetch, queryClient } from '@/lib/queryClient';
+import { logger } from "@/lib/logger";
 import { calculateFinancials, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { League, Bowler, Payment, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
@@ -82,7 +83,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const { card: sqCard, isInitialized: sqInit, error: sqError, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     locationId: league.locationId ?? null,
     onError: (error) => {
-      console.error('[Square Payment Error]:', error);
+      logger.error('Square Payment', 'Payment failed', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
@@ -92,7 +93,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     merchantId: providerConfig?.merchantId,
     environment: providerConfig?.environment,
     onError: (error) => {
-      console.error('[Clover Payment Error]:', error);
+      logger.error('Clover Payment', 'Payment failed', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });

@@ -1,5 +1,6 @@
 import { FC, useMemo } from "react";
 import { queryClient } from "@/lib/queryClient";
+import { logger } from "@/lib/logger";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Card,
@@ -276,7 +277,7 @@ const SignUpPage: FC = () => {
         }
       }
     } catch (error) {
-      console.error('[SignUp] Registration error:', error);
+      logger.error('SignUp', 'Registration error', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to sign up. Please try again.",

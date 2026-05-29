@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { logger } from "@/lib/logger"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -40,7 +41,7 @@ export function loadScript(src: string): Promise<void> {
     };
     
     script.onerror = (e) => {
-      console.error(`[loadScript] Error loading script: ${src}`, e);
+      logger.error('loadScript', `Error loading script: ${src}`, e);
       reject(new Error(`Failed to load script: ${src}`));
     };
     

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } from "@/lib/square";
+import { logger } from "@/lib/logger";
 import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 
 interface SquareCardTokenizeResult {
@@ -49,7 +50,7 @@ export function useSquarePayment({ onError, locationId }: UseSquarePaymentOption
       try {
         cardRef.current.destroy();
       } catch (e) {
-        console.error('[useSquarePayment] Error during cleanup:', e);
+        logger.error('useSquarePayment', 'Error during cleanup', e);
       }
       cardRef.current = null;
     }
@@ -119,7 +120,7 @@ export function useSquarePayment({ onError, locationId }: UseSquarePaymentOption
         initializingRef.current = false;
       }
     } catch (err) {
-      console.error('[useSquarePayment] Card initialization error:', err);
+      logger.error('useSquarePayment', 'Card initialization error', err);
       initializingRef.current = false;
       // task #514: sanitize the SDK init error before surfacing it,
       // so a stack-trace fragment or JSON-shaped string from the
@@ -171,7 +172,7 @@ export function useSquarePayment({ onError, locationId }: UseSquarePaymentOption
         try {
           cardRef.current.destroy();
         } catch (e) {
-          console.error('[useSquarePayment] Error during unmount cleanup:', e);
+          logger.error('useSquarePayment', 'Error during unmount cleanup', e);
         }
         cardRef.current = null;
       }

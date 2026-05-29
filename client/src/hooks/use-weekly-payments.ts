@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { subDays, addWeeks } from "date-fns";
 import type { Payment, League } from "@shared/schema";
@@ -151,7 +152,7 @@ export function useWeeklyPayments(leagueId: number) {
     try {
       await deletePaymentMutation.mutateAsync(id);
     } catch (error) {
-      console.error('[WeeklyPayments] Error in handleDelete:', error);
+      logger.error('WeeklyPayments', 'Error in handleDelete', error);
     }
   }, [deletePaymentMutation]);
 

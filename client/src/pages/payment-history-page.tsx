@@ -10,6 +10,7 @@ import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { useSavedCardDefault } from "@/hooks/use-saved-card-default";
 import { createPayment } from "@/lib/square";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
 import {
@@ -143,7 +144,7 @@ export default function PaymentHistoryPage() {
 
   const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     onError: (error) => {
-      console.error('[Square Payment Error]:', error);
+      logger.error('Square Payment', 'Payment failed', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
@@ -153,7 +154,7 @@ export default function PaymentHistoryPage() {
     merchantId: providerConfig?.merchantId,
     environment: providerConfig?.environment,
     onError: (error) => {
-      console.error('[Clover Payment Error]:', error);
+      logger.error('Clover Payment', 'Payment failed', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
@@ -245,7 +246,7 @@ export default function PaymentHistoryPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (error) {
-      console.error('[Wallet Payment Error]:', error);
+      logger.error('Wallet Payment', 'Payment failed', error);
       if (isProviderNotConfiguredError(error)) {
         toast(providerNotConfiguredToast({
           navigate,
@@ -341,7 +342,7 @@ export default function PaymentHistoryPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/payments", { bowlerId, leagueId }] });
       queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
     } catch (error) {
-      console.error('[Payment Error]:', error);
+      logger.error('Payment', 'Payment failed', error);
       if (isProviderNotConfiguredError(error)) {
         toast(providerNotConfiguredToast({
           navigate,

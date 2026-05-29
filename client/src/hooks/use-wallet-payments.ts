@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeSquare } from "@/lib/square";
+import { logger } from "@/lib/logger";
 import type { SquarePaymentRequest, SquareWalletPayment, TokenizeError } from "@/lib/square";
 
 function errorMessage(err: unknown): string {
@@ -121,7 +122,7 @@ export function useWalletPayments({
           },
         });
       } catch (err) {
-        console.error('[WalletPayments] Error updating payment request:', err);
+        logger.error('WalletPayments', 'Error updating payment request', err);
       }
     }
   }, [amountCents]);
@@ -152,7 +153,6 @@ export function useWalletPayments({
     }
 
     if (!locationId) {
-      console.log('[WalletPayments] Skipping init — no locationId yet');
       setDebugStatus('no-locationId');
       prevLocationIdRef.current = locationId;
       return;

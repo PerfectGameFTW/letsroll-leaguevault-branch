@@ -17,6 +17,7 @@ import {
 import { Loader2 } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
 import { queryClient, apiRequest } from '@/lib/queryClient';
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 
 interface AssignBowlerFormProps {
@@ -89,7 +90,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       setSelectedBowlerId("");
     },
     onError: (error: Error) => {
-      console.error("[AssignBowler] Error in mutation:", error);
+      logger.error('AssignBowler', 'Error in mutation', error);
       toast({
         title: "Error assigning bowler",
         description: error.message,
