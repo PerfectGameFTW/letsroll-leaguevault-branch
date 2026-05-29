@@ -193,6 +193,15 @@ afterEach(async () => {
 });
 
 describe('executeAccountDeletion — service', () => {
+  // These tests run executeAccountDeletion with the default
+  // notifyOnCompletion=true and do not stub the email helper, so the
+  // real sendAccountDeletionConfirmation emits a SENDGRID_API_KEY-not-
+  // configured [ERROR] line in CI. Allowlist it so the in-process
+  // error-log guard (Task #746) doesn't fail these otherwise-green tests.
+  beforeEach(() => {
+    expectErrorLog(/Cannot send account-deletion confirmation/);
+  });
+
   it('anonymizes matching bowlers and deletes the matching user', async () => {
     const orgId = await makeOrg();
     const adminId = await makeUser(uniqueEmail('admin'), orgId);
@@ -278,6 +287,14 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
 
   beforeEach(() => {
     getPaymentProviderSpy = vi.spyOn(paymentProviderFactory, 'getPaymentProvider');
+    // These tests run executeAccountDeletion with the default
+    // notifyOnCompletion=true and do not stub the email helper, so the
+    // real sendAccountDeletionConfirmation emits a SENDGRID_API_KEY-not-
+    // configured [ERROR] line in CI. Allowlist it so the in-process
+    // error-log guard (Task #746) doesn't fail these otherwise-green
+    // tests. Harmless for the nested confirmation-email block, which
+    // stubs the email helper (the matcher simply finds zero matches).
+    expectErrorLog(/Cannot send account-deletion confirmation/);
   });
 
   afterEach(() => {
