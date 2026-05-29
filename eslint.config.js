@@ -1,6 +1,8 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import tanstackQuery from '@tanstack/eslint-plugin-query';
 import leaguevault from './tools/eslint-plugin-leaguevault/index.js';
 import factoryMustUseSchema from './eslint-rules/factory-must-use-schema.js';
 
@@ -214,6 +216,47 @@ export default tseslint.config(
     },
     rules: {
       'local/factory-must-use-schema': 'error',
+    },
+  },
+  // React Hooks + TanStack Query correctness rules, scoped to the
+  // frontend (only client code uses React and @tanstack/react-query).
+  //
+  // These replace ad-hoc "React Doctor" audits with rules that plug into
+  // the same lint gate as the rest of the repo: net-new violations fail
+  // `npm run lint`, existing debt is acknowledged via
+  // `eslint-suppressions.json` (count-based, ratchets down only).
+  //
+  // `react-hooks/rules-of-hooks` is a hard correctness rule (conditional
+  // hook calls break React) and is kept at `error` with zero
+  // suppressions. `react-hooks/exhaustive-deps` and the TanStack Query
+  // rules catch real staleness/identity bugs (e.g. a mutation that
+  // forgets to invalidate, or a query key missing a dependency).
+  //
+  // We deliberately do NOT enable eslint-plugin-react-hooks v7's broader
+  // React-Compiler rule suite (set-state-in-effect, no-deriving-state-in-
+  // effects, etc.): those overlap with the React Doctor "State & Effects"
+  // category we already triaged by hand and found to be dominated by
+  // false positives for this codebase.
+  {
+    files: ['client/src/**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': reactHooks,
+      '@tanstack/query': tanstackQuery,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      '@tanstack/query/exhaustive-deps': 'error',
+      '@tanstack/query/no-rest-destructuring': 'error',
+      '@tanstack/query/stable-query-client': 'error',
+      '@tanstack/query/no-unstable-deps': 'error',
+      '@tanstack/query/no-void-query-fn': 'error',
+      '@tanstack/query/infinite-query-property-order': 'error',
+      '@tanstack/query/mutation-property-order': 'error',
+      // `prefer-query-options` is intentionally OFF: it is a pure style
+      // preference (wrap query config in the `queryOptions()` helper),
+      // not a correctness rule, and flagged 193 existing call sites with
+      // no bug-catching value. Enabling it would be linter-chasing.
     },
   },
 );

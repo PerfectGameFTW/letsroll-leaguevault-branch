@@ -115,6 +115,16 @@ const RULE_CEILINGS: Record<string, number> = {
   // actually update eslint-suppressions.json, so the pre-existing
   // baseline already failed the check.
   'no-restricted-syntax': 153,
+  // Seeded when eslint-plugin-react-hooks + @tanstack/eslint-plugin-query
+  // were wired into the lint gate. The clean rules (rules-of-hooks and the
+  // 0-violation query rules) carry no suppressions; these three had
+  // pre-existing violations that were baselined rather than risk-edited
+  // (exhaustive-deps fixes can change effect/refetch behavior). Net-new
+  // violations now fail lint. Ratchet down as each site is fixed
+  // deliberately.
+  'react-hooks/exhaustive-deps': 14,
+  '@tanstack/query/exhaustive-deps': 7,
+  '@tanstack/query/no-unstable-deps': 5,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
@@ -142,7 +152,12 @@ const RULE_CEILINGS: Record<string, number> = {
 // per-rule drop on `no-unnecessary-type-assertion` (85 → 84). True
 // live baseline: 220 nna + 84 nuta + 4 cta + 153 nrs + 22 pre-existing
 // `no-undef` = 483.
-const TOTAL_CEILING = 483;
+// Raised 483 → 509 when eslint-plugin-react-hooks +
+// @tanstack/eslint-plugin-query were wired into the lint gate: +14
+// react-hooks/exhaustive-deps, +7 @tanstack/query/exhaustive-deps, +5
+// @tanstack/query/no-unstable-deps — all pre-existing violations
+// baselined rather than risk-edited. See BASELINE_BUMP_REASON.md.
+const TOTAL_CEILING = 509;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');
