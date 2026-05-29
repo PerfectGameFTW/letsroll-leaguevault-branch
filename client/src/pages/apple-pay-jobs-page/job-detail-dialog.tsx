@@ -104,6 +104,11 @@ export function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: ()
     return false;
   };
 
+  // NOTE (react-doctor audit): react-doctor flags the mutations below as
+  // "missing query invalidation" because it can't follow the helper call.
+  // False positive — every onSuccess invalidates via invalidateJobQueries(jobId)
+  // (which refreshes the job list + this job's detail cache). Audited; do not
+  // "fix" by inlining queryClient.invalidateQueries here.
   const cancelMutation = useMutation({
     mutationFn: async () => apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/cancel`, 'POST'),
     onSuccess: (resp) => {

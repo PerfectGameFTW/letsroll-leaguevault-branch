@@ -61,6 +61,11 @@ const hasPendingInvite = (user: UsersTableUser) => !!user.inviteToken;
 export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onResetPassword, onChangeEmail }: Props) {
   const { toast } = useToast();
 
+  // NOTE (react-doctor audit): react-doctor reports the role/location
+  // mutations below as missing cache invalidation. False positive —
+  // invalidation is delegated to the shared invalidateOrgAdminUsers() helper
+  // in each onSuccess. (resendInviteMutation intentionally skips it; see its
+  // own note.) Audited; leave as-is.
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, makeOrgAdmin }: { userId: number; makeOrgAdmin: boolean }) => {
       return apiRequest(`/api/org-admin/users/${userId}/admin-status`, "PATCH", { makeOrgAdmin });

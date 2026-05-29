@@ -55,6 +55,10 @@ const AdminUnclaimedUsersPage: FC = () => {
   });
   const users = usersResp?.data ?? [];
 
+  // NOTE (react-doctor audit): react-doctor flags the mutations on this page
+  // as missing query invalidation. False positive — invalidation is delegated
+  // to the shared invalidateUnclaimedUsers() helper (called here and from the
+  // dialog onSuccess callbacks further below). Audited; leave as-is.
   const deleteMutation = useMutation({
     mutationFn: async (userId: number) => {
       return apiRequest(`/api/admin/unclaimed-users/${userId}`, "DELETE");
