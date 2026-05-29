@@ -190,13 +190,26 @@ export async function createApp(opts: CreateAppOptions = {}): Promise<CreatedApp
   app.use(compression());
   app.use(securityHeaders);
 
+  // Admin email templates hold rich HTML bodies (and may carry inline
+  // markup/base64) that can legitimately exceed the small global ceiling.
+  // Mount a route-scoped 1 MB JSON parser BEFORE the global parser so it
+  // claims the body first; the global parser then sees `req._body` set and
+  // skips re-parsing. rawBody capture isn't needed here (only webhooks use
+  // it), so this parser intentionally omits the verify hook.
+  app.use('/api/admin/email-templates', express.json({ limit: '1mb' }));
+
+  // Global body-parser ceilings are intentionally small (256 KB). Normal
+  // auth/account/admin/payment/public-embed JSON payloads are far below this;
+  // oversized bodies are rejected early with a 413 before route handlers run.
+  // The `verify` hook captures the exact raw bytes so signature-verifying
+  // webhook receivers (Clover today; Square tripwire) can HMAC the payload.
   app.use(express.json({
-    limit: '10mb',
+    limit: '256kb',
     verify: (req: Request, _res, buf) => {
       req.rawBody = buf;
     },
   }));
-  app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+  app.use(express.urlencoded({ extended: false, limit: '256kb' }));
   await setupAuth(app);
   app.use(orgSessionGuard);
 
