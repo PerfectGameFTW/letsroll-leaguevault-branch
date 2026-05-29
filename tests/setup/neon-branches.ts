@@ -39,8 +39,13 @@
  *   error messages.
  */
 import { setTimeout as sleep } from 'node:timers/promises';
+import pg from 'pg';
+import { getPgErrorCode } from '../../server/utils/db-errors';
 
 const API_BASE = 'https://console.neon.tech/api/v2';
+
+/** Postgres SQLSTATE for "password authentication failed for user". */
+const PG_INVALID_PASSWORD = '28P01';
 
 export interface NeonConfig {
   apiKey: string;
@@ -305,8 +310,12 @@ export async function revealBranchRolePassword(
   cfg: NeonConfig,
   branchId: string,
   roleName: string,
+  opts: { forceRefresh?: boolean } = {},
 ): Promise<string> {
   const key = `${branchId}/${roleName}`;
+  // Force-refresh bypasses the per-process cache so a SCRAM verifier
+  // that propagated to the compute mid-retry is picked up (Task #752).
+  if (opts.forceRefresh) revealCache.delete(key);
   const cached = revealCache.get(key);
   if (cached) return cached;
   const promise = (async () => {
@@ -343,6 +352,94 @@ export function __resetRevealPasswordCacheForTests(): void {
   revealCache.clear();
 }
 
+/** Tunables for the cold-branch connectivity probe (Task #752). */
+export interface ConnectivityProbeOptions {
+  /** Total connection attempts (1 probe + retries). Default 6. */
+  maxAttempts?: number;
+  /** Backoff base in ms; grows per attempt (`base * attempt`). Default 750. */
+  baseDelayMs?: number;
+}
+
+/**
+ * Open a short-lived connection and run `SELECT 1`. Resolves on
+ * success; rejects with the underlying `pg` error (its SQLSTATE `code`
+ * preserved) on failure. Never logs the URL/password.
+ */
+async function probeBranchConnection(url: string): Promise<void> {
+  const client = new pg.Client({
+    connectionString: url,
+    connectionTimeoutMillis: 10_000,
+  });
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      /* noop — probe teardown failures are not actionable */
+    }
+  }
+}
+
+/**
+ * Verify a freshly-composed branch URL actually accepts the revealed
+ * credentials before handing it out (Task #752).
+ *
+ * A branch created off a long-suspended parent compute can land inside
+ * a cold-start "warm-up window" during which the just-spun-up compute
+ * still rejects even the verifier-correct password with `28P01`. The
+ * Task #727 reveal happens once at create/resolve time, so the very
+ * first connection on a cold branch fails and takes the worker down
+ * before any test runs. Here we ride out that window with a bounded,
+ * `28P01`-aware retry: on each failure we sleep with backoff, re-reveal
+ * the role password (force-refreshing the per-process cache so a
+ * verifier that propagated mid-retry is picked up), recompose the URL,
+ * and retry.
+ *
+ * Only `28P01` is retried — any other failure (bad host, network,
+ * etc.) is a real error surfaced immediately. On success returns the
+ * verified URL; on budget exhaustion throws a generic, secret-free
+ * error. Never logs or echoes the password.
+ */
+export async function verifyBranchUrl(
+  cfg: NeonConfig,
+  branchId: string,
+  roleName: string,
+  endpointHost: string,
+  initialUrl: string,
+  opts: ConnectivityProbeOptions = {},
+): Promise<string> {
+  const maxAttempts = opts.maxAttempts ?? 6;
+  const baseDelayMs = opts.baseDelayMs ?? 750;
+  let url = initialUrl;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await probeBranchConnection(url);
+      return url;
+    } catch (err) {
+      const isColdVerifier = getPgErrorCode(err) === PG_INVALID_PASSWORD;
+      if (!isColdVerifier || attempt === maxAttempts) {
+        // Surface a generic, secret-free message: never include the
+        // URL, password, or the raw driver error (which may echo
+        // connection details on some failure modes).
+        const reason = isColdVerifier ? '28P01-warmup-timeout' : 'connect-error';
+        throw new Error(
+          `branch ${branchId} connectivity probe failed after ${attempt} ` +
+            `attempt(s) (${reason})`,
+        );
+      }
+      await sleep(baseDelayMs * attempt);
+      const password = await revealBranchRolePassword(cfg, branchId, roleName, {
+        forceRefresh: true,
+      });
+      url = buildBranchUrl(endpointHost, password);
+    }
+  }
+  // Unreachable: the loop either returns or throws above.
+  throw new Error(`branch ${branchId} connectivity probe failed (exhausted)`);
+}
+
 export interface CreatedBranch {
   branchId: string;
   endpointId: string;
@@ -371,7 +468,10 @@ export async function createBranchWithEndpoint(
   }
   const role = roleFromUrl(process.env.DATABASE_URL ?? '');
   const password = await revealBranchRolePassword(cfg, result.branch.id, role);
-  const url = buildBranchUrl(endpoint.host, password);
+  const composedUrl = buildBranchUrl(endpoint.host, password);
+  // Don't hand out the URL until the cold compute actually accepts the
+  // credentials — rides out the 28P01 warm-up window (Task #752).
+  const url = await verifyBranchUrl(cfg, result.branch.id, role, endpoint.host, composedUrl);
   console.log(
     `[lv-perf] neon createBranch name=${name} branchId=${result.branch.id}` +
       ` endpoint=${endpoint.id} state=${result.branch.current_state ?? '?'}` +
@@ -400,7 +500,10 @@ export async function resolveBranchUrl(cfg: NeonConfig, branchId: string): Promi
   }
   const role = roleFromUrl(process.env.DATABASE_URL ?? '');
   const password = await revealBranchRolePassword(cfg, branchId, role);
-  return buildBranchUrl(ep.host, password);
+  const composedUrl = buildBranchUrl(ep.host, password);
+  // Same cold-verifier guard as createBranchWithEndpoint: a resolved
+  // (possibly long-suspended) branch can also be mid warm-up (Task #752).
+  return verifyBranchUrl(cfg, branchId, role, ep.host, composedUrl);
 }
 
 let cachedTemplateBranchId: string | null = null;
