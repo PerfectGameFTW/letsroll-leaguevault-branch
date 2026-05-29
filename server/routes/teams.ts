@@ -3,7 +3,7 @@ import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError, parseOptionalIntParam, sanitizeBowler } from '../utils/api.js';
-import { hasAdminAccessToLeague } from '../utils/access-control.js';
+import { hasAdminAccessToLeague, isOrgOrHigher } from '../utils/access-control.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("Teams");
@@ -60,10 +60,14 @@ router.get("/", async (req, res) => {
         const allTeams = await storage.getTeams();
         teams = allTeams.filter(t => orgScopedLeagueIds.has(t.leagueId));
       } else if (scopedOrgId !== null) {
-        // Task #735: a secretary (role !== org_admin) only sees teams
-        // for leagues they have an active grant on. Org admins see all
-        // teams across the org as before.
-        if (req.user?.role === 'org_admin') {
+        // Task #735: a secretary (a plain `user`-role caller with grants)
+        // only sees teams for leagues they have an active grant on. Org
+        // admins AND affiliated system admins see all teams across the org.
+        // (An affiliated system_admin is neither org_admin nor a secretary,
+        // so without this they would fall into the grant-only branch and get
+        // an empty list — mirrors the org-or-higher handling in leagues.ts /
+        // bowlers.ts and was the cause of empty past-due reports.)
+        if (isOrgOrHigher(req.user)) {
           const leagues = await storage.getLeagues(scopedOrgId);
           const teamPromises = leagues.map(league => storage.getTeams(league.id));
           const teamsArrays = await Promise.all(teamPromises);
