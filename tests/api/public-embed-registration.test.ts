@@ -8,6 +8,8 @@
  * bowlers + bowler_leagues + league_registrations + bowler_guardians
  * + guardian users. No leakage to the shared dev DB.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq, inArray, and } from 'drizzle-orm';
 import { db } from '../../server/db';
@@ -277,6 +279,39 @@ describe('public embed registration endpoints', () => {
       });
       expect(r.status).toBe(200);
       expect(r.body.data?.bowlerIds.length).toBe(1);
+    });
+  });
+
+  describe('guardian placeholder password hardening (task #743)', () => {
+    it('creates the new guardian account forced to change password', async () => {
+      // The happy-path submit above creates the guardian under guardianEmail.
+      const [guardian] = await db
+        .select({
+          id: users.id,
+          password: users.password,
+          mustChangePassword: users.mustChangePassword,
+        })
+        .from(users)
+        .where(eq(users.email, guardianEmail));
+
+      expect(guardian).toBeDefined();
+      // Forced through the password-set/forgot-password gate on first login.
+      expect(guardian.mustChangePassword).toBe(true);
+      // The placeholder is hashed; the predictable embed marker must never
+      // appear and the stored value must be a real hash, not plaintext.
+      expect(guardian.password).not.toContain('embed-');
+      expect(guardian.password.length).toBeGreaterThan(0);
+    });
+
+    it('does not use Math.random() as the placeholder password source', () => {
+      // Static guard: fail if a low-entropy placeholder source is reintroduced
+      // into the embed registration route (must stay on node:crypto randomness).
+      const routePath = fileURLToPath(
+        new URL('../../server/routes/public-embed-registration.ts', import.meta.url),
+      );
+      const src = readFileSync(routePath, 'utf8');
+      expect(src).not.toMatch(/Math\.random\(\)/);
+      expect(src).toContain('randomBytes(32).toString("hex")');
     });
   });
 });

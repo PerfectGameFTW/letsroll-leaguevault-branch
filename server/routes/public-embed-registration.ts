@@ -24,6 +24,7 @@
  * collecting nothing. The follow-up scope to actually run a Square
  * Web-Payments tokenized charge here is documented on the task.
  */
+import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { z } from "zod";
@@ -321,10 +322,10 @@ router.post("/registrations", embedSubmitLimiter, async (req, res) => {
           // Random unset-able placeholder password; the guardian must
           // use the forgot-password flow to set a real one. Marking
           // mustChangePassword=true keeps them on the rotate gate
-          // when they do log in for the first time.
-          const placeholder = await hashPassword(
-            `embed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          );
+          // when they do log in for the first time. Use crypto-strength
+          // randomness (matching the sibling invite/placeholder flows)
+          // so the hash source is never predictable.
+          const placeholder = await hashPassword(randomBytes(32).toString("hex"));
           const [u] = await tx
             .insert(users)
             .values({
