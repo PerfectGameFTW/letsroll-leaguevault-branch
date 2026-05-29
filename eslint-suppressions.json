@@ -176,9 +176,14 @@
       "count": 1
     }
   },
-  "server/routes/account.ts": {
+  "server/routes/account-profile.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
+      "count": 3
+    }
+  },
+  "server/routes/account-security.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
     }
   },
   "server/routes/auth.ts": {
