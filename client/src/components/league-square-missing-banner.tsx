@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, X } from 'lucide-react';
 import type { ApiResponse, League, User } from '@shared/schema';
@@ -104,13 +104,41 @@ export function LeagueSquareMissingBanner({ leagues, onEditLeague }: LeagueSquar
   );
   const newest = visibleAlerts[0] ?? null;
 
-  const [dismissedAt, setDismissedAt] = useState<string | null>(() => readDismissed(userId));
-  useEffect(() => {
-    setDismissedAt(readDismissed(userId));
-  }, [newest?.sentAt, userId]);
-
   if (!isAdmin || !userId || visibleAlerts.length === 0 || !newest) return null;
-  if (dismissedAt === newest.sentAt) return null;
+
+  // Remount the body whenever the newest alert OR the signed-in user
+  // changes so its dismissal state re-reads from storage on a fresh
+  // mount (re-surfaces a fresh audit run, and never inherits another
+  // admin's dismissal on a shared browser).
+  return (
+    <LeagueSquareMissingBannerBody
+      key={`${userId}:${newest.sentAt}`}
+      userId={userId}
+      newest={newest}
+      visibleAlerts={visibleAlerts}
+      leagues={leagues}
+      onEditLeague={onEditLeague}
+    />
+  );
+}
+
+function LeagueSquareMissingBannerBody({
+  userId,
+  newest,
+  visibleAlerts,
+  leagues,
+  onEditLeague,
+}: {
+  userId: number;
+  newest: RecentLeagueSquareMissingAlert;
+  visibleAlerts: RecentLeagueSquareMissingAlert[];
+  leagues: League[];
+  onEditLeague: (league: League) => void;
+}) {
+  // Initialise dismissal from storage once per mount (parent key forces
+  // a fresh mount when the alert or user changes).
+  const [dismissed, setDismissed] = useState(() => readDismissed(userId) === newest.sentAt);
+  if (dismissed) return null;
 
   return (
     <div
@@ -158,7 +186,7 @@ export function LeagueSquareMissingBanner({ leagues, onEditLeague }: LeagueSquar
         type="button"
         onClick={() => {
           writeDismissed(userId, newest.sentAt);
-          setDismissedAt(newest.sentAt);
+          setDismissed(true);
         }}
         className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
         aria-label="Dismiss league Square-catalog missing alert banner"

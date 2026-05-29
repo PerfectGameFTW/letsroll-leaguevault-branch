@@ -57,7 +57,12 @@ type PasswordFormData = z.infer<typeof passwordSchema>;
 // the guard releases the user automatically.
 export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}) {
   const { toast } = useToast();
-  const [showForm, setShowForm] = useState(forced);
+  // `forced` is a stable prop for this card's lifetime, so deriving the
+  // visible state from it (rather than seeding state and syncing) keeps
+  // a single source of truth: the form is open whenever it's forced open
+  // or the user opened it via the toggle.
+  const [userOpen, setUserOpen] = useState(false);
+  const showForm = forced || userOpen;
   const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
     useThrottleCountdown();
 
@@ -81,7 +86,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
       // invalidation below releases the route guard and the user
       // navigates away naturally.
       if (!forced) {
-        setShowForm(false);
+        setUserOpen(false);
       }
       clearThrottle();
       // Task #455: invalidate /api/user so the guard sees
@@ -114,7 +119,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
       </CardHeader>
       <CardContent>
         {!showForm ? (
-          <Button variant="outline" onClick={() => setShowForm(true)} className="flex items-center gap-2" data-testid="button-change-password-toggle">
+          <Button variant="outline" onClick={() => setUserOpen(true)} className="flex items-center gap-2" data-testid="button-change-password-toggle">
             <Lock className="size-4" />
             Change Password
           </Button>
@@ -196,7 +201,7 @@ export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => { form.reset(); setShowForm(false); }}
+                    onClick={() => { form.reset(); setUserOpen(false); }}
                   >
                     Cancel
                   </Button>

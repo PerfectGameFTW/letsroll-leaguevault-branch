@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, X } from 'lucide-react';
@@ -77,17 +77,22 @@ export function ApplePayRecoveryBanner() {
 
   const alert = data?.data?.alert ?? null;
 
-  // Initialise from storage so a dismissed alert stays dismissed across
-  // navigations within the same browser. Re-read whenever the alert
-  // identity OR the signed-in user changes — switching accounts on a
-  // shared browser must not inherit the previous admin's dismissal.
-  const [dismissedAt, setDismissedAt] = useState<string | null>(() => readDismissed(userId));
-  useEffect(() => {
-    setDismissedAt(readDismissed(userId));
-  }, [alert?.sentAt, userId]);
-
   if (!isSystemAdmin || !alert || !userId) return null;
-  if (dismissedAt === alert.sentAt) return null;
+
+  // Remount the body whenever the alert identity OR the signed-in user
+  // changes so its dismissal state re-reads from storage on a fresh
+  // mount. This keeps a dismissed alert dismissed across navigations,
+  // re-surfaces a fresh alert (new sentAt) even after a prior dismissal,
+  // and ensures switching accounts on a shared browser never inherits
+  // the previous admin's dismissal.
+  return <ApplePayRecoveryBannerBody key={`${userId}:${alert.sentAt}`} userId={userId} alert={alert} />;
+}
+
+function ApplePayRecoveryBannerBody({ userId, alert }: { userId: number; alert: RecentRecoveryAlert }) {
+  // Initialise dismissal from storage once per mount (the parent's key
+  // forces a fresh mount when the alert or user changes).
+  const [dismissed, setDismissed] = useState(() => readDismissed(userId) === alert.sentAt);
+  if (dismissed) return null;
 
   const jobsParam = alert.affectedJobIds.length > 0 ? `?jobs=${alert.affectedJobIds.join(',')}` : '';
   const jobsLabel = alert.affectedJobIds.length === 1
@@ -125,7 +130,7 @@ export function ApplePayRecoveryBanner() {
         type="button"
         onClick={() => {
           writeDismissed(userId, alert.sentAt);
-          setDismissedAt(alert.sentAt);
+          setDismissed(true);
         }}
         className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
         aria-label="Dismiss recovery alert banner"

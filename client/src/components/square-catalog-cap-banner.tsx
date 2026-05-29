@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, X } from 'lucide-react';
 import type { ApiResponse, User } from '@shared/schema';
@@ -84,13 +84,35 @@ export function SquareCatalogCapBanner() {
   const alerts = data?.data?.alerts ?? [];
   const newest = alerts[0] ?? null;
 
-  const [dismissedAt, setDismissedAt] = useState<string | null>(() => readDismissed(userId));
-  useEffect(() => {
-    setDismissedAt(readDismissed(userId));
-  }, [newest?.sentAt, userId]);
-
   if (!isSystemAdmin || !newest || !userId) return null;
-  if (dismissedAt === newest.sentAt) return null;
+
+  // Remount the body whenever the newest alert OR the signed-in user
+  // changes so its dismissal state re-reads from storage on a fresh
+  // mount (re-surfaces a fresh cap-hit, and never inherits another
+  // admin's dismissal on a shared browser).
+  return (
+    <SquareCatalogCapBannerBody
+      key={`${userId}:${newest.sentAt}`}
+      userId={userId}
+      newest={newest}
+      alerts={alerts}
+    />
+  );
+}
+
+function SquareCatalogCapBannerBody({
+  userId,
+  newest,
+  alerts,
+}: {
+  userId: number;
+  newest: RecentCatalogCapAlert;
+  alerts: RecentCatalogCapAlert[];
+}) {
+  // Initialise dismissal from storage once per mount (parent key forces
+  // a fresh mount when the alert or user changes).
+  const [dismissed, setDismissed] = useState(() => readDismissed(userId) === newest.sentAt);
+  if (dismissed) return null;
 
   const orgsAffected = new Set(alerts.map((a) => a.organizationId ?? `loc:${a.locationId}`)).size;
   const orgLabel =
@@ -118,7 +140,7 @@ export function SquareCatalogCapBanner() {
         type="button"
         onClick={() => {
           writeDismissed(userId, newest.sentAt);
-          setDismissedAt(newest.sentAt);
+          setDismissed(true);
         }}
         className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
         aria-label="Dismiss Square catalog cap alert banner"
