@@ -41,6 +41,7 @@ export const LeagueBottomSheet: FC<LeagueBottomSheetProps> = ({
             <h3 className="text-lg font-semibold text-slate-900">Switch League</h3>
             <button type="button"
               onClick={onClose}
+              aria-label="Close league switcher"
               className="size-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
             >
               <X className="size-5" />

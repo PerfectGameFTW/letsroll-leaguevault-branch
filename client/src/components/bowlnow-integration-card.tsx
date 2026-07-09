@@ -186,6 +186,7 @@ function BowlNowCardInner({ config, orgId }: BowlNowCardProps) {
                 <button
                   type="button"
                   onClick={() => setShowApiKey(!showApiKey)}
+                  aria-label={showApiKey ? "Hide BowlNow API key" : "Show BowlNow API key"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

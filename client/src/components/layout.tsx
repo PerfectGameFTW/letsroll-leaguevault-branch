@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning, UserPlus } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, ChevronDown, Settings, Trash2, Apple, ShieldAlert, ShieldCheck, MessageSquare, MailWarning, UserPlus } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -757,6 +757,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-end px-3 pb-2">
             <button type="button"
               onClick={toggleSidebar}
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
             >
               <Menu className="size-4" />
@@ -873,10 +874,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-3 md:gap-5">
             <GlobalSearch />
-
-            <button type="button" className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
-              <Bell className="size-5" />
-            </button>
           </div>
         </header>
 

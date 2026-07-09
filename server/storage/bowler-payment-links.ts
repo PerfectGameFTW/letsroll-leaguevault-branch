@@ -202,11 +202,3 @@ export async function getAcceptedPartnerBowlerIds(
     );
   return rows.map((r) => (r.a === bowlerId ? r.b : r.a));
 }
-
-async function countLinksForBowler(bowlerId: number): Promise<number> {
-  const [row] = await db
-    .select({ c: sql<number>`count(*)` })
-    .from(bowlerPaymentLinks)
-    .where(or(eq(bowlerPaymentLinks.bowlerAId, bowlerId), eq(bowlerPaymentLinks.bowlerBId, bowlerId)));
-  return Number(row?.c ?? 0);
-}

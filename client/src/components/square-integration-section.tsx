@@ -244,6 +244,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}
+                aria-label={showToken ? "Hide Square access token" : "Show Square access token"}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -440,6 +441,7 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}
+                aria-label={showToken ? "Hide Clover API token" : "Show Clover API token"}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
