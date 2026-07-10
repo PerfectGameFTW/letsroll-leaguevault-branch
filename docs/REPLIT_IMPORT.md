@@ -174,4 +174,3 @@ to the private repository may be able to view other branches according to
 their GitHub permissions. For ongoing development, create a separately owned
 repository for the new installation and point its Git remote there rather
 than pushing changes back to upstream `main`.
-
