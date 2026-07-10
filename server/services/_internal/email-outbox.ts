@@ -16,7 +16,7 @@
  * relying on the buffer to hold everything.
  */
 
-import type { MailDataRequired } from '@sendgrid/mail';
+import type { MailDataRequired } from '@sendgrid/helpers/classes/mail';
 
 const MAX_CAPTURED = 200;
 

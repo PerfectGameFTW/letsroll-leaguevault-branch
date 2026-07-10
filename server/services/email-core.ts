@@ -1,4 +1,5 @@
-import sgMail, { type MailDataRequired } from '@sendgrid/mail';
+import sgMail from '@sendgrid/mail';
+import type { MailDataRequired } from '@sendgrid/helpers/classes/mail';
 import sanitizeHtml from 'sanitize-html';
 import { storage } from '../storage';
 import { env, isDev } from '../config';

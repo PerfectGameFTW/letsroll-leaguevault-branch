@@ -33,7 +33,7 @@ async function uploadFile(
   opts: { buffer: Buffer; filename: string; contentType: string; query?: string },
 ): Promise<UploadResult> {
   const form = new FormData();
-  const blob = new Blob([opts.buffer], { type: opts.contentType });
+  const blob = new Blob([Uint8Array.from(opts.buffer)], { type: opts.contentType });
   form.append('file', blob, opts.filename);
 
   const res = await fetch(`${BASE_URL}${IMPORT_PATH}${opts.query ?? ''}`, {
