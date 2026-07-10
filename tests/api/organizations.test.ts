@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { db } from '../../server/db';
+import { organizations, users } from '@shared/schema';
 import {
+  apiDelete,
   login,
   apiGet,
   apiPost,
@@ -85,6 +89,35 @@ describe('Organizations API', () => {
       expect(data.success).toBe(true);
       const orgs = data.data as Array<{ name: string }>;
       expect(orgs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('permanently deletes an organization and its administrator account', async () => {
+      const [organization] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.slug, CREATE_ORG_SLUG));
+      expect(organization).toBeDefined();
+
+      const [organizationUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organizationId, organization!.id));
+      expect(organizationUser).toBeDefined();
+
+      const { status, data } = await apiDelete(`/api/organizations/${organization!.id}`, adminSession);
+      expect(status).toBe(200);
+      expect(data.success).toBe(true);
+
+      const [deletedOrganization] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, organization!.id));
+      const [deletedUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, organizationUser!.id));
+      expect(deletedOrganization).toBeUndefined();
+      expect(deletedUser).toBeUndefined();
     });
   });
 

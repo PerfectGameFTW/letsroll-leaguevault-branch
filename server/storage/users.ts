@@ -64,12 +64,6 @@ export class NonAdminMissingOrgError extends Error {
 }
 
 /**
- * Thrown when a destructive operation on an organization (currently
- * `deleteOrganization`) would leave non-admin users without an
- * organization. Callers should reassign or delete the affected users
- * first.
- */
-/**
  * Thrown by `deleteUser` when the target is a system_admin. System admins
  * are never deletable through the user-admin UI — that would let any
  * org_admin escalate themselves into the only admin role and delete
@@ -97,15 +91,6 @@ export class UserHasAuditTrailError extends Error {
       `User has ${auditCount} cleanup audit row(s) and cannot be deleted. Delete or reassign the audits first.`,
     );
     this.name = 'UserHasAuditTrailError';
-  }
-}
-
-export class OrgHasUsersError extends Error {
-  constructor(public readonly userCount: number) {
-    super(
-      `Organization still has ${userCount} user(s). Reassign or delete them before deleting the organization.`,
-    );
-    this.name = 'OrgHasUsersError';
   }
 }
 

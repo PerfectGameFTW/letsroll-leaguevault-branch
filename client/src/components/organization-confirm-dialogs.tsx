@@ -99,6 +99,8 @@ export function OrganizationConfirmDialogs({
                   <li>All payment records</li>
                   <li>All game and score history</li>
                   <li>All payment schedules</li>
+                  <li>All user accounts belonging to this organization</li>
+                  <li>Organization-specific administrative audit history</li>
                 </ul>
                 <p className="text-sm">Consider archiving instead if you may need this data in the future.</p>
                 <div className="pt-2">

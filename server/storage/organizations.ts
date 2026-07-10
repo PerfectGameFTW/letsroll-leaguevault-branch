@@ -1,15 +1,32 @@
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, or } from "drizzle-orm";
 import { db } from "../db.js";
 import {
-  organizations, leagues, users,
+  adminEmailChangeAudits,
+  adminPasswordResetAudits,
+  adminProfileEditAudits,
+  adminRoleChangeAudits,
+  applePayJobItems,
+  applePayJobs,
+  bowlerGuardians,
+  bowlerPaymentLinks,
+  bowlers,
+  deletionRequests,
+  leagueRegistrations,
+  leagueSecretaries,
+  leagueSecretaryAudits,
+  leagues,
+  locations,
   orgIntegrationsSchema,
+  organizations,
+  orphanCleanupAudits,
+  users,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type User,
   type OrgIntegrations,
 } from "@shared/schema";
 import { createLogger } from '../logger';
 import { cacheInvalidate } from '../utils/cache';
-import { NonAdminMissingOrgError, OrgHasUsersError } from './users';
+import { NonAdminMissingOrgError } from './users';
 
 const log = createLogger("StorageOrgs");
 
@@ -53,28 +70,106 @@ export async function restoreOrganization(id: number): Promise<Organization> {
 }
 
 export async function deleteOrganization(id: number): Promise<void> {
+  let deletedUserIds: number[] = [];
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM ${organizations} WHERE id = ${id} FOR UPDATE`);
 
-    // Refuse to delete an org that still has users attached. Orphaning
-    // them into role=user / organization_id=null would violate the
-    // `users_role_org_required` CHECK constraint, and silently dropping
-    // their accounts is too destructive to do automatically. Admins must
-    // reassign or delete the users first via the org admin UI.
-    const orgUsers = await tx.select({ id: users.id }).from(users).where(eq(users.organizationId, id));
-    if (orgUsers.length > 0) {
-      throw new OrgHasUsersError(orgUsers.length);
+    // The system-admin-only delete route is an intentional full teardown.
+    // Clear restrictive audit FKs and organization-owned join rows first,
+    // null global references that must survive, then remove tenant data in
+    // dependency order. Every write shares this transaction, so a foreign-key
+    // conflict leaves the organization entirely intact.
+    const orgUsers = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.organizationId, id));
+    const userIds = orgUsers.map((user) => user.id);
+    deletedUserIds = userIds;
+    const orgBowlers = await tx
+      .select({ id: bowlers.id })
+      .from(bowlers)
+      .where(eq(bowlers.organizationId, id));
+    const bowlerIds = orgBowlers.map((bowler) => bowler.id);
+    const orgLocations = await tx
+      .select({ id: locations.id })
+      .from(locations)
+      .where(eq(locations.organizationId, id));
+    const locationIds = orgLocations.map((location) => location.id);
+
+    await tx.delete(leagueSecretaryAudits).where(eq(leagueSecretaryAudits.organizationId, id));
+    await tx.delete(leagueSecretaries).where(eq(leagueSecretaries.organizationId, id));
+    await tx.delete(leagueRegistrations).where(eq(leagueRegistrations.organizationId, id));
+    await tx.delete(bowlerGuardians).where(eq(bowlerGuardians.organizationId, id));
+    await tx.delete(bowlerPaymentLinks).where(eq(bowlerPaymentLinks.organizationId, id));
+    await tx.delete(applePayJobItems).where(eq(applePayJobItems.organizationId, id));
+    await tx.delete(adminRoleChangeAudits).where(eq(adminRoleChangeAudits.organizationId, id));
+    await tx.delete(adminPasswordResetAudits).where(eq(adminPasswordResetAudits.organizationId, id));
+    await tx
+      .delete(orphanCleanupAudits)
+      .where(or(
+        eq(orphanCleanupAudits.organizationId, id),
+        eq(orphanCleanupAudits.previousOrganizationId, id),
+      ));
+
+    if (userIds.length > 0) {
+      await tx.delete(adminEmailChangeAudits).where(or(
+        inArray(adminEmailChangeAudits.actorUserId, userIds),
+        inArray(adminEmailChangeAudits.targetUserId, userIds),
+      ));
+      await tx.delete(adminProfileEditAudits).where(or(
+        inArray(adminProfileEditAudits.actorUserId, userIds),
+        inArray(adminProfileEditAudits.targetUserId, userIds),
+      ));
+      await tx.delete(adminPasswordResetAudits).where(or(
+        inArray(adminPasswordResetAudits.actorUserId, userIds),
+        inArray(adminPasswordResetAudits.targetUserId, userIds),
+      ));
+      await tx.delete(adminRoleChangeAudits).where(or(
+        inArray(adminRoleChangeAudits.actorUserId, userIds),
+        inArray(adminRoleChangeAudits.targetUserId, userIds),
+      ));
+      await tx.delete(leagueSecretaryAudits).where(or(
+        inArray(leagueSecretaryAudits.actorUserId, userIds),
+        inArray(leagueSecretaryAudits.targetUserId, userIds),
+      ));
+      await tx.delete(orphanCleanupAudits).where(inArray(orphanCleanupAudits.adminUserId, userIds));
+
+      await tx
+        .update(applePayJobs)
+        .set({ createdBy: null })
+        .where(inArray(applePayJobs.createdBy, userIds));
+      await tx
+        .update(deletionRequests)
+        .set({ reviewedBy: null })
+        .where(inArray(deletionRequests.reviewedBy, userIds));
     }
 
-    const orgLeagues = await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
-    const leagueIds = orgLeagues.map(l => l.id);
-    if (leagueIds.length > 0) {
-      await tx.delete(leagues).where(inArray(leagues.id, leagueIds));
+    if (bowlerIds.length > 0) {
+      await tx
+        .update(users)
+        .set({ bowlerId: null })
+        .where(inArray(users.bowlerId, bowlerIds));
     }
+    if (locationIds.length > 0) {
+      await tx
+        .update(users)
+        .set({ locationId: null })
+        .where(inArray(users.locationId, locationIds));
+    }
+
+    await tx.delete(leagues).where(eq(leagues.organizationId, id));
+    await tx.delete(bowlers).where(eq(bowlers.organizationId, id));
+    await tx.delete(users).where(eq(users.organizationId, id));
+    await tx.delete(locations).where(eq(locations.organizationId, id));
     await tx.delete(organizations).where(eq(organizations.id, id));
   });
+  for (const userId of deletedUserIds) {
+    cacheInvalidate(`user:${userId}`);
+  }
+  cacheInvalidate('organizations');
   cacheInvalidate('leagues:');
   cacheInvalidate('bowlers:');
+  cacheInvalidate('locations:');
 }
 
 export async function getUserOrganizations(userId: number): Promise<Organization[]> {
