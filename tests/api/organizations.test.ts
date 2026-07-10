@@ -97,25 +97,27 @@ describe('Organizations API', () => {
         .from(organizations)
         .where(eq(organizations.slug, CREATE_ORG_SLUG));
       expect(organization).toBeDefined();
+      if (!organization) throw new Error('Expected test organization to exist');
 
       const [organizationUser] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.organizationId, organization!.id));
+        .where(eq(users.organizationId, organization.id));
       expect(organizationUser).toBeDefined();
+      if (!organizationUser) throw new Error('Expected test organization admin to exist');
 
-      const { status, data } = await apiDelete(`/api/organizations/${organization!.id}`, adminSession);
+      const { status, data } = await apiDelete(`/api/organizations/${organization.id}`, adminSession);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
 
       const [deletedOrganization] = await db
         .select({ id: organizations.id })
         .from(organizations)
-        .where(eq(organizations.id, organization!.id));
+        .where(eq(organizations.id, organization.id));
       const [deletedUser] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.id, organizationUser!.id));
+        .where(eq(users.id, organizationUser.id));
       expect(deletedOrganization).toBeUndefined();
       expect(deletedUser).toBeUndefined();
     });
