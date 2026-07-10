@@ -7,7 +7,7 @@ interface PaymentSetupSummaryCardProps {
   paymentMode: 'autopay' | 'onetime';
   weeklyFee: number;
   totalWeeks: number;
-  fullSeasonAmount: number;
+  upfrontPaymentAmount: number;
   additionalBowlerCount: number;
   anyAutopayPastDue: boolean;
   autopayDueTodayTotal: number;
@@ -18,7 +18,7 @@ export const PaymentSetupSummaryCard: FC<PaymentSetupSummaryCardProps> = ({
   paymentMode,
   weeklyFee,
   totalWeeks,
-  fullSeasonAmount,
+  upfrontPaymentAmount,
   additionalBowlerCount,
   anyAutopayPastDue,
   autopayDueTodayTotal,
@@ -37,7 +37,7 @@ export const PaymentSetupSummaryCard: FC<PaymentSetupSummaryCardProps> = ({
         <div className="border-t pt-3 flex items-center justify-between">
           <span className="font-semibold">Total due today</span>
           <span className="text-lg font-bold" data-testid="upfront-total-due">
-            {formatCurrency(fullSeasonAmount * (1 + additionalBowlerCount))}
+            {formatCurrency(upfrontPaymentAmount * (1 + additionalBowlerCount))}
           </span>
         </div>
       </div>

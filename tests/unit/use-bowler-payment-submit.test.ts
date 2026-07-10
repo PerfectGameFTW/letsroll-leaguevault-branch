@@ -129,6 +129,7 @@ function makeOptions(overrides: Partial<SubmitOpts> = {}): SubmitOpts {
     storeCard: false,
     financials: {
       fullSeasonAmount: 30000,
+      remainingBalance: 30000,
       amountPastDue: 0,
     },
     calculateTotalAmount: () => 2000,
@@ -203,6 +204,33 @@ describe('useBowlerPaymentSubmit success toasts', () => {
     );
   });
 
+  it('charges and labels only the remaining balance for an upfront league after a legacy partial payment', async () => {
+    csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ data: { id: 'pmt-1' } }));
+
+    const submit = useBowlerPaymentSubmit(
+      makeOptions({
+        league: makeLeague('upfront'),
+        financials: {
+          fullSeasonAmount: 30000,
+          remainingBalance: 25000,
+          amountPastDue: 25000,
+        },
+      }),
+    );
+
+    await submit();
+
+    expect(csrfFetchMock).toHaveBeenCalledWith(
+      '/api/payments-provider/payments',
+      expect.objectContaining({
+        body: expect.stringContaining('"amount":25000'),
+      }),
+    );
+    expect(lastToast().description).toBe(
+      'Your remaining season balance of $250.00 has been processed.',
+    );
+  });
+
   it('shows the auto-pay no-balance toast that does not mention a charge today', async () => {
     csrfFetchMock.mockResolvedValueOnce(await jsonResponse({ ok: true }));
 
@@ -211,6 +239,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         selectedSchedule: 'weekly',
         financials: {
           fullSeasonAmount: 30000,
+          remainingBalance: 30000,
           amountPastDue: 0,
         },
         calculateTotalAmount: () => 2000,
@@ -250,6 +279,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         partnerPastDueByBowlerId: { 42: 4000, 43: 0 },
         financials: {
           fullSeasonAmount: 30000,
+          remainingBalance: 30000,
           amountPastDue: 6000,
         },
         calculateTotalAmount: () => 2000,
@@ -300,7 +330,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         selectedSchedule: 'weekly',
         cardMode: 'saved',
         selectedSavedCardId: 'card-1',
-        financials: { fullSeasonAmount: 30000, amountPastDue: 6000 },
+        financials: { fullSeasonAmount: 30000, remainingBalance: 30000, amountPastDue: 6000 },
         calculateTotalAmount: () => 2000,
       }),
     );
@@ -325,6 +355,7 @@ describe('useBowlerPaymentSubmit success toasts', () => {
         selectedSchedule: 'weekly',
         financials: {
           fullSeasonAmount: 30000,
+          remainingBalance: 30000,
           amountPastDue: 6000,
         },
         calculateTotalAmount: () => 8000,

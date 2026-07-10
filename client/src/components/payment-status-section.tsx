@@ -259,13 +259,18 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   const calculateTotalAmount = useCallback(() => {
     if (league.paymentMode === 'upfront') {
-      return financials.fullSeasonAmount;
+      // An upfront league normally charges the full season in one payment.
+      // A legacy partial payment must settle only the remaining balance or
+      // the server correctly rejects the charge as an overpayment.
+      return additionalBowlerIds.length > 0
+        ? financials.fullSeasonAmount
+        : financials.remainingBalance;
     }
     if (selectedSchedule === 'custom') {
       return fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
     }
     return weeklyFee;
-  }, [league.paymentMode, financials.fullSeasonAmount, selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
+  }, [league.paymentMode, financials.fullSeasonAmount, financials.remainingBalance, additionalBowlerIds.length, selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     try {

@@ -203,7 +203,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
         {!activeSchedule && financials.remainingBalance > 0 && league.paymentMode === 'upfront' && (
           <div className="space-y-2">
             <Button className="w-full" onClick={() => onSetupPayment('onetime')}>
-              Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
+              {financials.totalPaid > 0 ? 'Pay Remaining Balance' : 'Pay Full Season'} ({formatCurrency(financials.remainingBalance)})
               <CreditCard className="ml-2 size-4" />
             </Button>
           </div>

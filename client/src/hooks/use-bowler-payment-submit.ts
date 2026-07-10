@@ -56,6 +56,7 @@ interface UseBowlerPaymentSubmitOptions {
   partnerPastDueByBowlerId?: Record<number, number>;
   financials: {
     fullSeasonAmount: number;
+    remainingBalance: number;
     amountPastDue: number;
   };
   calculateTotalAmount: () => number;
@@ -128,7 +129,14 @@ export function useBowlerPaymentSubmit({
       setIsSubmitting(true);
 
       if (isUpfront) {
-        const upfrontAmount = financials.fullSeasonAmount;
+        // Preserve the established combined-upfront behavior. For one
+        // bowler, settle a legacy partial payment with only the remaining
+        // balance so the server-side overpayment guard accepts it.
+        const upfrontAmount = hasCombinedPartners
+          ? financials.fullSeasonAmount
+          : financials.remainingBalance;
+        const isRemainingBalanceSettlement =
+          upfrontAmount < financials.fullSeasonAmount;
         const trimmedBuyerEmail = (buyerEmail ?? '').trim();
 
         // Task #706: combined upfront — route through combined-payments
@@ -203,7 +211,9 @@ export function useBowlerPaymentSubmit({
 
         toast({
           title: "Payment Successful",
-          description: `Your full season payment of ${formatCurrency(upfrontAmount)} has been processed.`,
+          description: isRemainingBalanceSettlement
+            ? `Your remaining season balance of ${formatCurrency(upfrontAmount)} has been processed.`
+            : `Your full season payment of ${formatCurrency(upfrontAmount)} has been processed.`,
         });
         setShowPaymentSetup(false);
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });

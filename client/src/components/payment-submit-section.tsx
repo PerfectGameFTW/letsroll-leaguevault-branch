@@ -13,7 +13,6 @@ interface PaymentSubmitSectionProps {
   cardMode: 'new' | 'saved';
   isInitialized: boolean;
   selectedSavedCardId: string;
-  fullSeasonAmount: number;
   additionalBowlerCount?: number;
   // Task #715: when weekly auto-pay is being set up against a bowler
   // (or combined group) with a past-due balance, the immediate charge
@@ -34,7 +33,6 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
   cardMode,
   isInitialized,
   selectedSavedCardId,
-  fullSeasonAmount,
   additionalBowlerCount = 0,
   autopayDueTodayOverride = null,
   onSubmit,
@@ -95,7 +93,7 @@ export const PaymentSubmitSection: FC<PaymentSubmitSectionProps> = ({
               Processing…
             </>
           ) : league.paymentMode === 'upfront' ? (
-            `Pay ${formatCurrency(fullSeasonAmount * multiplier)}`
+            `Pay ${formatCurrency(calculateTotalAmount() * multiplier)}`
           ) : (
             <>{selectedSchedule === 'custom' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</>
           )}
