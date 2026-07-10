@@ -125,6 +125,9 @@ const PARALLEL_ISOLATED = [
   'tests/unit/confirm-email-change-no-token-leak.test.ts',
   'tests/unit/csrf-no-token-leak.test.ts', // Task #720 hoist preserved as precaution after sibling regressions (#722). Reverted.
   'tests/unit/customers-route-pnce-422.test.ts',
+  // This test mocks email-core exports; without module isolation a sibling's
+  // cached email-core instance can bypass its mocked SendGrid configuration.
+  'tests/unit/email-auth-fallback-escaping.test.ts',
   'tests/unit/email-block-domains.test.ts',
   'tests/unit/has-access-to-bowler.test.ts', // Task #720 hoist insufficient — vi.mock(server/storage) pollutes shared registry under isolate:false (#722). Reverted.
   'tests/unit/has-access-to-bowlers.test.ts', // Task #720 hoist insufficient — same storage-mock pollution as has-access-to-bowler (#722). Reverted.
