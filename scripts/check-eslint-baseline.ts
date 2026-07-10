@@ -65,7 +65,9 @@ const RULE_CEILINGS: Record<string, number> = {
   // Ratcheted 220 → 218 alongside the query-staleness fix: the standard
   // `eslint --prune-suppressions` pass cleared two now-stale `value!`
   // suppressions in client/src/lib/utils (lane-pairing, score-organization).
-  '@typescript-eslint/no-non-null-assertion': 218,
+  // Ratcheted 218 -> 187 after removing all remaining assertions from
+  // server/routes/organization-admin.ts.
+  '@typescript-eslint/no-non-null-assertion': 187,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -174,7 +176,9 @@ const RULE_CEILINGS: Record<string, number> = {
 // sites (-7) and a prune-suppressions pass that cleared 6 pre-existing
 // stale suppressions (-2 no-non-null-assertion, -4
 // no-unnecessary-type-assertion).
-const TOTAL_CEILING = 496;
+// Ratcheted 496 -> 465 after removing the 31 stale organization-admin
+// non-null-assertion suppressions.
+const TOTAL_CEILING = 465;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');
