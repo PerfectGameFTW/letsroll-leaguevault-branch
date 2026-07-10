@@ -39,7 +39,7 @@ localPort = 23638
 externalPort = 4200
 
 [workflows]
-runButton = "Project"
+runButton = "Start application"
 
 [[workflows.workflow]]
 name = "Project"
@@ -87,7 +87,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash scripts/setup-ssh.sh --quiet || true; npm run dev"
+args = "npm run dev"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -171,18 +171,6 @@ outputType = "console"
 run = ["sh", "-c", "NODE_ENV=production node --import ./dist/instrument.js dist/index.js"]
 deploymentTarget = "cloudrun"
 build = ["sh", "-c", "npm run build && esbuild server/instrument.ts --platform=node --packages=external --bundle --format=esm --outdir=dist"]
-
-[userenv]
-
-[userenv.shared]
-SQUARE_PRODUCTION_APP_ID = "sq0idp-7qXqEqFgsEkS1NpNbvhyDA"
-SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
-SENTRY_DSN = "https://424c61a13e92d32157f44e43c5d2e03f@o4511069370777600.ingest.us.sentry.io/4511069394960384"
-VITE_SENTRY_DSN = "https://424c61a13e92d32157f44e43c5d2e03f@o4511069370777600.ingest.us.sentry.io/4511069394960384"
-
-[userenv.development]
-TRUST_PROXY_PROBE_TOKEN = "devonly-trustproxy-probe-token-do-not-use-in-prod-1234567890"
-DEV_DB_HOST_ALLOWLIST = "ep-orange-base-aqbtlb1g,ep-dawn-unit-a66zn28k"
 
 [postMerge]
 path = "scripts/post-merge.sh"

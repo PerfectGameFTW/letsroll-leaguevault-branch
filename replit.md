@@ -2,6 +2,14 @@
 
 A full-stack bowling league management application with multi-tenant support for managing leagues, teams, bowlers, scores, and financial payments.
 
+## Replit Handoff Branch
+
+This branch is prepared for a new, independently owned Replit installation.
+Before running setup, read `docs/REPLIT_IMPORT.md` completely. Do not connect
+this copy to the upstream LeagueVault production Neon database or reuse its
+payment-provider credentials. The Render production notes below describe the
+upstream project and are not deployment instructions for this handoff branch.
+
 ## Run & Operate
 
 - **Production Hosting**: Render hosts the live application. Replit is not part of the production runtime or release workflow.
