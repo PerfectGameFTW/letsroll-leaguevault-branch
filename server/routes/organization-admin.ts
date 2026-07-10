@@ -476,14 +476,25 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
       return sendError(res, 'You can only delete users from your own organization', 403, 'forbidden');
     }
 
-    // Last-org-admin guard applies regardless of who the caller is —
-    // a system_admin must not be able to leave an organization with
-    // zero administrators either, since that effectively orphans the
-    // tenant from a management perspective.
+    // A live organization must always retain an administrator. The
+    // system-admin organization deletion flow is the sole exception:
+    // after an organization is archived, its final administrator may be
+    // deleted so the now-inactive tenant can be permanently removed.
     if (user.role === 'org_admin' && user.organizationId) {
       const adminCount = await storage.countOrgAdmins(user.organizationId);
       if (adminCount <= 1) {
-        return sendError(res, 'Cannot delete the last administrator in this organization', 400, 'bad_request');
+        const organization = await storage.getOrganization(user.organizationId);
+        const deletingArchivedOrganizationAdmin =
+          req.user!.role === 'system_admin' && organization?.active === false;
+
+        if (!deletingArchivedOrganizationAdmin) {
+          return sendError(
+            res,
+            'Cannot delete the last administrator in this organization. Archive the organization first before permanently removing it.',
+            400,
+            'bad_request',
+          );
+        }
       }
     }
 
