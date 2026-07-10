@@ -4,6 +4,10 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Run & Operate
 
+- **Production Hosting**: Render hosts the live application. Replit is not part of the production runtime or release workflow.
+- **Source of Truth**: GitHub `main`. The GitHub Actions CI and race-suite checks must pass for the exact commit before that commit is deployed to Render.
+- **Production Database**: Neon PostgreSQL.
+- **Production Domain**: `leaguevault.app` (with organization subdomains under the same base domain).
 - **Run Dev Server**: `npm run dev` (Express + Vite on port 5000)
 - **Database Push**: `npm run db:push` (applies schema changes from `shared/schema/`)
 - **Typecheck**: `npm run check`
@@ -12,7 +16,8 @@ A full-stack bowling league management application with multi-tenant support for
 - **Test**: `npm test`
 - **Post-Pull Hook**: `bash scripts/post-pull.sh` (after `git pull` for external changes)
 - **OWASP ZAP Scan**: `bash scripts/zap-scan.sh` (requires Docker)
-- **Required Env Vars**: `DATABASE_URL`, `SESSION_SECRET`
+- **Required Env Vars**: `DATABASE_URL`, `SESSION_SECRET`, `FIELD_ENCRYPTION_KEY`
+- **Production Deployment Env**: Configure `APP_DOMAIN=leaguevault.app` and the appropriate `APP_ENV`. Render secrets are literal environment-variable values; the application does not expect secret files.
 - **Optional Env Vars**: `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
 
 ## Stack
@@ -43,7 +48,7 @@ A full-stack bowling league management application with multi-tenant support for
 ## Architecture decisions
 
 - **Multi-Tenant Org-less Data Policy**: All access control helpers deny access to any row with a `NULL` `organizationId`, even for `system_admin`. Org-less rows are considered bugs/stale data. A system-admin "Data integrity" surface exists at `/admin/data-integrity` to count, list, reassign, or delete orphaned data.
-- **Environment Promotion Workflow**: Features flow `main` → `beta` → `main` (for production release). Beta environment (`APP_ENV=beta`) has strict boot guards refusing to start with live payment credentials.
+- **Production Release Workflow**: Changes land on GitHub `main`, CI validates the exact commit, and that passing commit is deployed to Render. The old Replit `main` to `beta` to `main` promotion flow is historical and is not the production release process.
 - **Server-Side Pagination**: API endpoints like `/api/payments` support `page` and `limit` query parameters for paginated results, falling back to full results if not provided.
 - **Avatar Storage**: Avatars are stored on disk at `/uploads/avatars/` and served via a gated `GET /api/user/avatar/:userId` endpoint, preventing enumeration. Legacy DB storage and direct static file serving have been migrated/removed.
 - **Subdomain Multi-Tenancy**: Organizations can have custom subdomains (`subdomain` field) for branding. A middleware (`server/middleware/subdomain.ts`) resolves the organization and an `orgSessionGuard` prevents session leakage across subdomains.
@@ -83,15 +88,17 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Gotchas
 
+- **Replit Mockup Sandbox Is Non-Production**: `artifacts/mockup-sandbox` is isolated Replit Canvas preview tooling and is never included in the LeagueVault production build. It is being retained temporarily for a one-time external Replit handoff; do not treat it as production application code or deploy it separately.
 - **Capacitor is an intentional native-mobile target, not dead code**: The `@capacitor/*` dependencies and the `ios/`, `android/`, and `capacitor.config.ts` files back a confirmed product target (native iOS/Android apps — see `NATIVE_BUILD.md`). They are not imported by the web runtime (`server/`, `client/`, `shared/`), so dead-code/cleanup tooling may flag them as unused. Do not remove them; they stay in `dependencies` deliberately. (Knip already ignores the camera/preferences/splash-screen/status-bar plugins via `knip.json`.)
 - **Tooling lives in `devDependencies`, not `dependencies`**: Test, lint, type-only, and static-analysis packages (`vitest`, `playwright`, `jsdom`, `knip`, `@testing-library/*`, `eslint-plugin-react-hooks`, `@tanstack/eslint-plugin-query`, `@types/*`) are dev-only and must stay under `devDependencies`. The deploy build (`npm run build`) installs devDependencies at build time (it relies on `vite`/`esbuild`), so moving these out of `dependencies` does not break the build or runtime (Task #762).
-- **DB Schema Changes**: Modify `shared/schema/` files, then `npm run db:push`.
+- **DB Schema Changes**: Modify `shared/schema/` files. Before a production release, back up the intended Neon database, verify the target `DATABASE_URL`, run `npm run db:push`, deploy the matching passing commit, and perform post-deployment health and workflow verification. Never run `db:push` against production by assumption.
+- **Permanent Organization Teardown**: The system-admin-only permanent-delete action is one atomic database transaction. It deletes all app-owned tenant data, including organization users and organization-specific audit history; any failure rolls the transaction back. It does not delete remote Square or Clover customer objects.
 - **`APP_ENV=beta` Safety**: Beta environment refuses to start if live Square payment credentials are detected.
 - **`SETUP_SECRET` Strength**: Must be at least 32 characters and not a single repeated character.
 - **`log.debug` in Production**: PII audit ensures no sensitive data is logged at `debug` level. Default `LOG_LEVEL` is `info` in production.
 - **Test-Fixture Leak Tripwire**: `tests/api/orphaned-data-audits.test.ts` has specific cleanup and checks to prevent test data from leaking. Use `SKIP_AUDIT_LEAK_CHECK=1` for local debugging only.
 - **Background Worker Kick Suppression in Tests**: New background workers must be suppressible via `x-test-suppress-<worker>-kick` headers to prevent race conditions in tests.
-- **Test Suite Baseline**: 204 test files / 1945 tests / ~340s wall-clock (setup ~350s, tests ~445s overlapped across 4 forks). ESLint suppression baseline: 483 total (no-non-null-assertion 220, no-restricted-syntax 153, no-unnecessary-type-assertion 84, consistent-type-assertions 4, no-explicit-any 0; plus 22 pre-existing `no-undef` in `client/public/sw.js`).
+- **Test and Lint Baselines**: Do not hard-code test-file or test-case counts here; the suite changes frequently. The current ESLint suppression baseline is 465 total, including 187 `no-non-null-assertion` suppressions. `eslint-suppressions.json` and `scripts/check-eslint-baseline.ts` are the source of truth for all rule counts.
 - **ESLint Baseline Bumps Require a Justification**: If you need to bump an ESLint baseline ceiling (any value in `RULE_CEILINGS` or `TOTAL_CEILING` in `scripts/check-eslint-baseline.ts`), add a row to `BASELINE_BUMP_REASON.md` in the same commit. The check (`tsx scripts/check-eslint-baseline.ts --strict`) will fail otherwise. Decreases (ratchet-downs) and unchanged ceilings do not require an entry. See the file's "How to bump a ceiling" section for the row format.
 - **`.local/known-failures.md` interpretation**: The banner is **advisory, not blocking** — it reports the post-merge state of `npm run check`, `npm run lint`, and `npm test` so each task can make informed scope decisions. Treat any check listed as `FAIL` as a pre-existing failure that should be fixed in-task per the user-preferences rule, unless it is clearly out-of-scope (in which case call it out in the completion notes). New failures that did **not** appear in the banner are always in scope. The post-merge hook runs `scripts/snapshot-failures.sh --fast` (typecheck + lint synchronously, tests detached into the background) to fit the platform's 60s post-merge cap, so the **Tests section may show `PENDING` for a few minutes after a merge** before the async worker rewrites the banner in place. The banner header includes a `_Test section: fresh|pending|stale_` marker so you can tell. Re-run with `bash scripts/snapshot-failures.sh` (or `npm run snapshot:failures`) for a synchronous full refresh.
 - **Workflow status diagnosis — read the log before blaming concurrency**: Workflows in this repo run as independent processes; one workflow being slow does not block another. Before claiming a workflow is "timing out due to concurrency" or "blocked by another process," open its log file and check its exit status. A workflow that exited non-zero in <30s failed for a real reason (read the error). A workflow still running after several minutes is genuinely slow (look at its own log, not at sibling workflows). The classic misdiagnosis is conflating a fast `typecheck` failure with a slow `test` run because both appear in the workflow grid at once — they are unrelated. If `typecheck` shows `FAILED`, fix the type error; do not wait or restart.
