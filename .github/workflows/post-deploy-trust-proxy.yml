@@ -133,6 +133,12 @@ name: Post-deploy trust-proxy probe
 #   exactly as documented above.
 #
 # Repository secrets required:
+#
+# Handoff-repository gate:
+#   Scheduled probes remain disabled until the deployed app exists and the
+#   repository variable `DEPLOY_MONITOR_ENABLED` is set to `true`. Manual
+#   `workflow_dispatch` runs remain available for setup/debugging and still
+#   fail clearly when the URL or authentication secret is missing.
 #   DEPLOY_BASE_URL    — e.g. https://app.example.com (no trailing /)
 #
 #   AND exactly ONE of the following auth secrets:
@@ -198,6 +204,11 @@ concurrency:
 jobs:
   probe:
     name: Probe trust-proxy on live deploy
+    # Chris's handoff repository is not necessarily deployed when it is
+    # imported. Do not turn an unconfigured scheduled monitor into a red CI
+    # signal. Once the app is live, set DEPLOY_MONITOR_ENABLED=true and add
+    # the required repository secrets; manual runs always remain available.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.DEPLOY_MONITOR_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     # The probe is a single HTTP round-trip; 5 minutes is generous
     # ceiling that still kills a hung run before it eats CI budget.
