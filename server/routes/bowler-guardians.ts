@@ -23,6 +23,7 @@ import { hashPassword } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from "../services/email";
 import { GUARDIAN_RELATIONSHIPS, type GuardianRelationship } from "@shared/schema";
 import { createLogger } from "../logger";
+import { singleRouteParam } from "../utils/route-params";
 
 const log = createLogger("BowlerGuardians");
 
@@ -30,8 +31,7 @@ const childRouter = Router({ mergeParams: true });
 const rowRouter = Router({ mergeParams: true });
 
 function parseChildId(req: Request): number | null {
-  const raw = req.params.childId;
-  const id = parseInt(raw ?? "", 10);
+  const id = parseInt(singleRouteParam(req.params.childId), 10);
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
@@ -227,7 +227,7 @@ const updateSchema = z.object({
 // PATCH /api/bowler-guardians/:id
 rowRouter.patch("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(singleRouteParam(req.params.id), 10);
     if (!Number.isFinite(id) || id <= 0) return sendError(res, "Invalid id", 400, "INVALID_ID");
     const row = await guardianStorage.getGuardianRow(id);
     if (!row) return sendError(res, "Guardian link not found", 404, "NOT_FOUND");
@@ -246,7 +246,7 @@ rowRouter.patch("/:id", async (req, res) => {
 // DELETE /api/bowler-guardians/:id
 rowRouter.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(singleRouteParam(req.params.id), 10);
     if (!Number.isFinite(id) || id <= 0) return sendError(res, "Invalid id", 400, "INVALID_ID");
     const row = await guardianStorage.getGuardianRow(id);
     if (!row) return sendError(res, "Guardian link not found", 404, "NOT_FOUND");

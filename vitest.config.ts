@@ -62,8 +62,8 @@ const PARALLEL_ISOLATED_WITH_APP = [
 ];
 
 /**
- * Pure in-process unit tests that `vi.mock('pg')` (and `fetch`) and need
- * NO real database or spawned app. They verify the Neon test-infra
+ * Pure in-process unit tests that need NO real database or spawned app.
+ * Some `vi.mock('pg')` (and `fetch`) to verify the Neon test-infra
  * helpers (`tests/setup/neon-branches.ts` reveal-password probing and the
  * connection-aware cleanup sweep) by mocking the `pg` driver outright.
  *
@@ -82,13 +82,15 @@ const PARALLEL_ISOLATED_WITH_APP = [
 const UNIT_NO_DB = [
   'tests/unit/neon-branches-reveal-password.test.ts',
   'tests/unit/cleanup-connection-aware-sweep.test.ts',
+  'tests/unit/zod-v4-migration-contracts.test.ts',
+  'tests/unit/express5-static-wildcard.test.ts',
+  'server/services/__tests__/square-version-header.test.ts',
 ];
 
 const PARALLEL_ISOLATED = [
   'server/routes/__tests__/leagues-square-missing-alerts.test.ts',
   'server/services/__tests__/apple-pay-worker.test.ts',
   'server/services/__tests__/square.test.ts',
-  'server/services/__tests__/square-version-header.test.ts',
   'server/services/__tests__/square-version-runtime-guard.test.ts',
   'server/services/__tests__/third-party-pins.test.ts',
   'server/services/__tests__/third-party-pin-verifier.test.ts',
@@ -168,6 +170,10 @@ const sharedAlias = {
 };
 
 export default defineConfig({
+  // Vite 8 uses Oxc for TS/JSX transforms. Keep the automatic JSX runtime
+  // enabled for every Vitest project, including node-environment suites that
+  // import shared client .tsx modules.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     globals: true,
     environment: 'node',
@@ -257,6 +263,9 @@ export default defineConfig({
         },
       },
       {
+        // Vitest projects do not consistently inherit Vite transform options;
+        // this project imports shared client .tsx modules from node tests.
+        oxc: { jsx: { runtime: 'automatic' } },
         test: {
           name: 'parallel-isolated',
           sequence: { groupOrder: 2 },
@@ -328,9 +337,10 @@ export default defineConfig({
         // so the node-environment suites above don't pay the
         // jsdom setup cost.
         // Vite's React plugin isn't loaded for vitest, so opt in to
-        // esbuild's automatic JSX runtime here so .tsx test files
-        // don't need to import React explicitly.
-        esbuild: { jsx: 'automatic' },
+        // Oxc's automatic JSX runtime here so .tsx test files don't
+        // need to import React explicitly. Vite 8 migrated this from
+        // the deprecated esbuild.jsx option.
+        oxc: { jsx: { runtime: 'automatic' } },
         test: {
           name: 'client-components',
           sequence: { groupOrder: 3 },

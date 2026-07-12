@@ -8,10 +8,10 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import type { InsertBowler } from "@shared/schema";
+import type { InsertBowler, InsertBowlerInput } from "@shared/schema";
 
 interface BowlerFormFieldsProps {
-  control: Control<InsertBowler>;
+  control: Control<InsertBowlerInput, unknown, InsertBowler>;
   watchedIsMinor: boolean;
 }
 
