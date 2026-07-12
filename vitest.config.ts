@@ -83,13 +83,14 @@ const UNIT_NO_DB = [
   'tests/unit/neon-branches-reveal-password.test.ts',
   'tests/unit/cleanup-connection-aware-sweep.test.ts',
   'tests/unit/zod-v4-migration-contracts.test.ts',
+  'tests/unit/express5-static-wildcard.test.ts',
+  'server/services/__tests__/square-version-header.test.ts',
 ];
 
 const PARALLEL_ISOLATED = [
   'server/routes/__tests__/leagues-square-missing-alerts.test.ts',
   'server/services/__tests__/apple-pay-worker.test.ts',
   'server/services/__tests__/square.test.ts',
-  'server/services/__tests__/square-version-header.test.ts',
   'server/services/__tests__/square-version-runtime-guard.test.ts',
   'server/services/__tests__/third-party-pins.test.ts',
   'server/services/__tests__/third-party-pin-verifier.test.ts',
