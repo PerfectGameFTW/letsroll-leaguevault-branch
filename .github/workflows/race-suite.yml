@@ -141,7 +141,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.decide.outputs.run == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           # Pinned to the runtime declared in `.node-version` so CI matches
           # the dev/prod environment. Bump in lockstep when that file
